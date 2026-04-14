@@ -25,7 +25,7 @@ export const FlowStage = memo(function FlowStage() {
   const configured = isEvolinkConfigured();
 
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-4 overflow-y-auto bg-background p-3 sm:gap-6 sm:p-4">
+    <div className="flex h-full w-full flex-col items-center justify-start gap-4 overflow-y-auto bg-background p-3 sm:justify-center sm:gap-6 sm:p-4">
       {!configured && <ApiKeyInput />}
 
       {/* Three-node layout: vertical on mobile, horizontal on desktop */}
@@ -34,10 +34,10 @@ export const FlowStage = memo(function FlowStage() {
         <NodeStart />
 
         {/* Connector: horizontal on desktop, vertical on mobile */}
-        <svg width="40" height="2" className="hidden text-border sm:block">
+        <svg width="40" height="2" className="hidden text-border sm:block" aria-hidden="true">
           <line x1="0" y1="1" x2="40" y2="1" stroke="currentColor" strokeWidth="2" strokeDasharray="4 4" />
         </svg>
-        <svg width="2" height="24" className="block text-border sm:hidden">
+        <svg width="2" height="24" className="block text-border sm:hidden" aria-hidden="true">
           <line x1="1" y1="0" x2="1" y2="24" stroke="currentColor" strokeWidth="2" strokeDasharray="4 4" />
         </svg>
 
@@ -45,10 +45,10 @@ export const FlowStage = memo(function FlowStage() {
         <NodeBridge onCancelVideo={handleCancelVideo} />
 
         {/* Connector: horizontal on desktop, vertical on mobile */}
-        <svg width="40" height="2" className="hidden text-border sm:block">
+        <svg width="40" height="2" className="hidden text-border sm:block" aria-hidden="true">
           <line x1="0" y1="1" x2="40" y2="1" stroke="currentColor" strokeWidth="2" strokeDasharray="4 4" />
         </svg>
-        <svg width="2" height="24" className="block text-border sm:hidden">
+        <svg width="2" height="24" className="block text-border sm:hidden" aria-hidden="true">
           <line x1="1" y1="0" x2="1" y2="24" stroke="currentColor" strokeWidth="2" strokeDasharray="4 4" />
         </svg>
 
