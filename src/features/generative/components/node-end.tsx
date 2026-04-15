@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState, memo } from 'react';
 import { ImagePlus, X } from 'lucide-react';
+import { toast } from 'sonner';
 import { useGenerativeStore } from '../stores/generative-store';
 import { ImageGenDialog } from './image-gen-dialog';
 import type { ImageSource } from '../types';
@@ -11,13 +12,21 @@ export const NodeEnd = memo(function NodeEnd() {
   const [dragOver, setDragOver] = useState(false);
 
   const handleFile = useCallback(
-    (file: File) => {
+    async (file: File) => {
       if (!file.type.startsWith('image/')) return;
       if (endImage?.type === 'file') {
         URL.revokeObjectURL(endImage.objectUrl);
       }
-      const objectUrl = URL.createObjectURL(file);
-      setEndImage({ type: 'file', blob: file, objectUrl });
+      try {
+        // Read file data into memory immediately to prevent stale file handle references.
+        // Raw File objects can become unreadable when the browser tab goes inactive.
+        const buffer = await file.arrayBuffer();
+        const blob = new Blob([buffer], { type: file.type });
+        const objectUrl = URL.createObjectURL(blob);
+        setEndImage({ type: 'file', blob, objectUrl });
+      } catch {
+        toast.error('Could not read the selected image. Please try again.');
+      }
     },
     [setEndImage, endImage],
   );
@@ -79,6 +88,10 @@ export const NodeEnd = memo(function NodeEnd() {
               src={previewUrl}
               alt="End"
               className="h-full w-full rounded-lg object-cover"
+              onError={() => {
+                handleClear();
+                toast.error('Image preview expired. Please re-add the image.');
+              }}
             />
             <button
               onClick={(e) => {
