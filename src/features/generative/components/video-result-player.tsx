@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import { toast } from 'sonner';
 
 interface VideoResultPlayerProps {
   url: string;
@@ -15,6 +16,7 @@ export const VideoResultPlayer = memo(function VideoResultPlayer({
       autoPlay
       loop
       playsInline
+      onError={() => toast.error('Failed to load the generated video.')}
     />
   );
 });

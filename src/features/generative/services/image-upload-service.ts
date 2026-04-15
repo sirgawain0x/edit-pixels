@@ -25,7 +25,8 @@ function blobToDataUri(blob: Blob): Promise<string> {
         reject(new Error('FileReader did not return a string'));
       }
     };
-    reader.onerror = () => reject(reader.error ?? new Error('FileReader error'));
+    reader.onerror = () =>
+      reject(new Error('The image file could not be read. It may have expired — please re-add the image.'));
     reader.readAsDataURL(blob);
   });
 }
