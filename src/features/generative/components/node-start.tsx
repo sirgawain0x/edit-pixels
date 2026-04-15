@@ -19,15 +19,16 @@ export const NodeStart = memo(function NodeStart() {
   const handleFile = useCallback(
     async (file: File) => {
       if (!file.type.startsWith('image/')) return;
-      if (startImage?.type === 'file') {
-        URL.revokeObjectURL(startImage.objectUrl);
-      }
       try {
         // Read file data into memory immediately to prevent stale file handle references.
         // Raw File objects can become unreadable when the browser tab goes inactive.
         const buffer = await file.arrayBuffer();
         const blob = new Blob([buffer], { type: file.type });
         const objectUrl = URL.createObjectURL(blob);
+        // Revoke the old URL only after the new one is ready to avoid a broken-image flash.
+        if (startImage?.type === 'file') {
+          URL.revokeObjectURL(startImage.objectUrl);
+        }
         setStartImage({ type: 'file', blob, objectUrl });
       } catch {
         toast.error('Could not read the selected image. Please try again.');
