@@ -14,7 +14,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useBuyUsdcOnramp } from '@/hooks/use-buy-usdc-onramp';
 import { useLiveSessionStore } from '../stores/live-session-store';
 import { usePlaybackStore } from '@/shared/state/playback';
 import { useTimelineStore, useProjectStore } from '../deps/editor';
@@ -39,6 +38,8 @@ import {
   isSD15Model,
   isSDXLTurboModel,
 } from '../config/curated-loras';
+import { InsufficientBalancePaywall } from './insufficient-balance-paywall';
+import { UsageMeter } from './usage-meter';
 import type { StreamData, LoraDict, IpAdapterConfig } from '../types';
 
 const MODEL_OPTIONS = [
@@ -802,8 +803,6 @@ function LiveAISessionWithBroadcastCore({
   const setStreamId = useLiveSessionStore((s) => s.setStreamId);
   const billingError = useLiveSessionStore((s) => s.billingError);
   const setBillingError = useLiveSessionStore((s) => s.setBillingError);
-  const { address } = useAccount({ type: 'LightAccount' });
-  const { openBuyUsdc, isLoading: isOnrampLoading } = useBuyUsdcOnramp();
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recordingStartRef = useRef<number>(0);
   const linkedTimelineStartRef = useRef<number>(0);
@@ -1050,24 +1049,17 @@ function LiveAISessionWithBroadcastCore({
           Connect your wallet to enable billing for this session.
         </p>
       )}
-      {billingEnabled && billingError && (
+      {billingEnabled && <UsageMeter />}
+      {billingEnabled && billingError === 'insufficient_balance' && (
+        <InsufficientBalancePaywall />
+      )}
+      {billingEnabled && billingError && billingError !== 'insufficient_balance' && (
         <div className="mb-2 p-2 rounded-md bg-destructive/10 border border-destructive/20 text-xs">
-          {billingError === 'insufficient_balance' && (
-            <div className="flex flex-col gap-2">
-              <p>Top up USDC on Arbitrum to continue.</p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-fit text-xs"
-                onClick={() => void openBuyUsdc({ address: address ?? undefined })}
-                disabled={isOnrampLoading}
-              >
-                {isOnrampLoading ? 'Opening…' : 'Buy USDC'}
-              </Button>
-            </div>
-          )}
           {billingError === 'session_limit_exceeded' && (
-            <p>You&apos;ve used 10 USDC this session. Authorize another 10 USDC to continue?</p>
+            <p>
+              You&apos;ve hit the $50 daily spend cap. Re-authorize your session
+              key to continue, or wait until the cap resets.
+            </p>
           )}
           {billingError === 'rpc_or_unknown' && (
             <p>Billing failed. Check connection and try again.</p>
