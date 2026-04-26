@@ -1,0 +1,5 @@
+# Use npm to resolve package-lock.json conflicts during local merges/rebases.
+# Opt in per clone with: npx npm-merge-driver install
+# Without that one-time install, git falls back to the default text merge
+# (same behavior as before this file existed) — adding the line here is safe.
+package-lock.json merge=npm-merge-driver
