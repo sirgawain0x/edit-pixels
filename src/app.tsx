@@ -6,6 +6,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { GlobalTooltip } from '@/components/ui/global-tooltip';
 import { Toaster } from '@/components/ui/sonner';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { SubscriptionRenewalWatcher } from '@/components/subscription-renewal-watcher';
 import { alchemyConfig, queryClient } from '@/config/alchemy';
 import { routeTree } from './routeTree.gen';
 
@@ -67,6 +68,7 @@ export function App() {
             <TooltipProvider delayDuration={300}>
               {content}
               <GlobalTooltip />
+              <SubscriptionRenewalWatcher />
               <Toaster />
             </TooltipProvider>
           </AlchemyAccountProvider>

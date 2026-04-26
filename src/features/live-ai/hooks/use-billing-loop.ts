@@ -3,6 +3,7 @@ import { useAccount, useChain, useSmartAccountClient, useSendUserOperation } fro
 import { getPaymentContractAddress } from '@/config/billing';
 import { buildPayAiRenderCalldata, classifyPayFailure } from '../api/pay-ai-render';
 import { useLiveSessionStore } from '../stores/live-session-store';
+import { useFreeTier } from './use-free-tier';
 import { usePremiumMembership } from './use-premium-membership';
 
 const ARBITRUM_ONE_CHAIN_ID = 42_161;
@@ -21,8 +22,9 @@ const BILLING_INTERVAL_MS = 300_000; // 5 minutes
 export function useBillingLoop() {
   const { address } = useAccount({ type: 'LightAccount' });
   const { chain } = useChain();
-  const { client } = useSmartAccountClient();
+  const { client } = useSmartAccountClient({ type: 'LightAccount' });
   const { intervalCostUsdc6 } = usePremiumMembership(address as `0x${string}` | undefined);
+  const { claim: claimFreeTier } = useFreeTier(address as `0x${string}` | undefined);
   const streamActive = useLiveSessionStore((s) => s.streamActive);
   const setStreamActive = useLiveSessionStore((s) => s.setStreamActive);
   const setBillingError = useLiveSessionStore((s) => s.setBillingError);
@@ -61,8 +63,16 @@ export function useBillingLoop() {
     const data = buildPayAiRenderCalldata(intervalCostUsdc6);
     if (!data) return;
 
-    const tick = () => {
+    const tick = async () => {
       if (isSendingUserOperation) return;
+      if (address) {
+        try {
+          const claim = await claimFreeTier(address as `0x${string}`);
+          if (claim.ok) return;
+        } catch {
+          // Free-tier server unreachable — fall through to on-chain charge.
+        }
+      }
       sendUserOperation({
         uo: {
           target: paymentContractAddress,
@@ -72,8 +82,8 @@ export function useBillingLoop() {
       });
     };
 
-    tick();
-    const id = setInterval(tick, BILLING_INTERVAL_MS);
+    void tick();
+    const id = setInterval(() => void tick(), BILLING_INTERVAL_MS);
     return () => clearInterval(id);
   }, [
     streamActive,
@@ -85,6 +95,8 @@ export function useBillingLoop() {
     isSendingUserOperation,
     setStreamActive,
     setBillingError,
+    address,
+    claimFreeTier,
   ]);
 
   return { setOnPause };

@@ -3,7 +3,11 @@ import {
   SessionKeyPermissionsBuilder,
 } from '@account-kit/smart-contracts';
 import { encodeFunctionData, parseAbi } from 'viem';
-import { getPaymentContractAddress, SESSION_CAP_USDC6 } from '@/config/billing';
+import {
+  DAILY_SPEND_LIMIT_USDC6,
+  SPEND_LIMIT_REFRESH_SECONDS,
+  getPaymentContractAddress,
+} from '@/config/billing';
 import { USDC_ADDRESS_BY_CHAIN_ID } from '@/config/chains';
 
 const PAY_AI_RENDER_ABI = parseAbi([
@@ -28,7 +32,7 @@ export function getPayAiRenderSelector(): `0x${string}` {
 /**
  * Builds session key permissions for "Pay AI Render" only:
  * - Allowlist the payment contract and payAiRender(uint256) selector.
- * - ERC-20 spend limit: 10 USDC (SESSION_CAP_USDC6) per session.
+ * - ERC-20 spend limit: 50 USDC rolling per day (DAILY_SPEND_LIMIT_USDC6).
  * Use the returned encoded permissions with addSessionKey / installSessionKeyPlugin
  * when using Modular Account V2. Same API key (VITE_ALCHEMY_API_KEY) must be used
  * for the client so Smart Account address is deterministic.
@@ -56,8 +60,8 @@ export function buildPayAiRenderSessionKeyPermissions(): `0x${string}`[] {
   });
   builder.addErc20TokenSpendLimit({
     tokenAddress: usdcAddress,
-    spendLimit: BigInt(SESSION_CAP_USDC6),
-    refreshInterval: 0, // per-session (no refresh during session)
+    spendLimit: BigInt(DAILY_SPEND_LIMIT_USDC6),
+    refreshInterval: SPEND_LIMIT_REFRESH_SECONDS,
   });
 
   return builder.encode() as `0x${string}`[];

@@ -10,9 +10,11 @@ import {
 } from '@account-kit/react';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect } from 'react';
-import { Copy, DollarSign, Wallet } from 'lucide-react';
+import { Copy, DollarSign, Settings2, Sparkles, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
 import { useBuyUsdcOnramp } from '@/hooks/use-buy-usdc-onramp';
+import { useUnlockCheckout } from '@/hooks/use-unlock-checkout';
+import { usePremiumMembership } from '@/features/live-ai/hooks/use-premium-membership';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -86,6 +88,14 @@ function WalletConnectButtonInner({
     address as `0x${string}` | undefined
   );
   const { openBuyUsdc, isLoading: isOnrampLoading, error: onrampError } = useBuyUsdcOnramp();
+  const {
+    openSubscribeCheckout,
+    openManageSubscription,
+    isConfigured: isUnlockConfigured,
+  } = useUnlockCheckout();
+  const { isPremiumMember, isPaidSubscriber } = usePremiumMembership(
+    address as `0x${string}` | undefined
+  );
 
   useEffect(() => {
     if (onrampError) {
@@ -167,6 +177,26 @@ function WalletConnectButtonInner({
           <DollarSign className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
           {isOnrampLoading ? 'Opening…' : 'Buy USDC'}
         </DropdownMenuItem>
+        {isUnlockConfigured && isPaidSubscriber && (
+          <DropdownMenuItem
+            onClick={openManageSubscription}
+            className="flex cursor-pointer items-center gap-2"
+            aria-label="Manage subscription"
+          >
+            <Settings2 className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+            Manage subscription
+          </DropdownMenuItem>
+        )}
+        {isUnlockConfigured && !isPremiumMember && (
+          <DropdownMenuItem
+            onClick={openSubscribeCheckout}
+            className="flex cursor-pointer items-center gap-2"
+            aria-label="Subscribe to Pixels Premium"
+          >
+            <Sparkles className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+            Subscribe $30/mo
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         <div className="px-2 py-1.5">
           <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
