@@ -9,12 +9,18 @@ import {
   useUser,
 } from '@account-kit/react';
 import { useNavigate } from '@tanstack/react-router';
-import { useEffect } from 'react';
-import { Copy, DollarSign, Settings2, Sparkles, Wallet } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Copy, DollarSign, Gift, Settings2, Sparkles, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
 import { useBuyUsdcOnramp } from '@/hooks/use-buy-usdc-onramp';
 import { useUnlockCheckout } from '@/hooks/use-unlock-checkout';
 import { usePremiumMembership } from '@/features/live-ai/hooks/use-premium-membership';
+import {
+  BuyCreditsModal,
+  CreditBalanceBadge,
+  RedeemPromoModal,
+  useCredits,
+} from '@/features/credits';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -96,6 +102,10 @@ function WalletConnectButtonInner({
   const { isPremiumMember, isPaidSubscriber } = usePremiumMembership(
     address as `0x${string}` | undefined
   );
+  const { balance, isLoading: creditsLoading } = useCredits();
+
+  const [buyCreditsOpen, setBuyCreditsOpen] = useState(false);
+  const [redeemOpen, setRedeemOpen] = useState(false);
 
   useEffect(() => {
     if (onrampError) {
@@ -147,27 +157,50 @@ function WalletConnectButtonInner({
   const displayText = address ? truncateAddress(address) : 'Connected';
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="outline" size={size} className={className} aria-label="Wallet">
-          <Wallet className="h-4 w-4 shrink-0" />
-          {!compact && <span className="hidden sm:inline">{displayText}</span>}
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-[12rem]">
-        {address && (
-          <DropdownMenuItem
-            onClick={handleCopyAddress}
-            className="flex cursor-pointer items-center justify-between gap-2 font-mono text-xs"
-            aria-label="Copy full address"
-          >
-            <span>{truncateAddress(address)}</span>
-            <Copy className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size={size} className={className} aria-label="Wallet">
+            <Wallet className="h-4 w-4 shrink-0" />
+            {!compact && (
+              <span className="hidden sm:inline-flex sm:items-center sm:gap-2">
+                <span>{displayText}</span>
+                <CreditBalanceBadge className="border-0 bg-transparent p-0 hover:bg-transparent" />
+              </span>
+            )}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-[12rem]">
+          {address && (
+            <DropdownMenuItem
+              onClick={handleCopyAddress}
+              className="flex cursor-pointer items-center justify-between gap-2 font-mono text-xs"
+              aria-label="Copy full address"
+            >
+              <span>{truncateAddress(address)}</span>
+              <Copy className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem disabled className="text-muted-foreground">
+            Credits: {isLoading ? '…' : `${balance} cr`}
           </DropdownMenuItem>
-        )}
-        <DropdownMenuItem disabled className="text-muted-foreground">
-          USDC: {usdcFormatted}
-        </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => setBuyCreditsOpen(true)}
+            className="flex cursor-pointer items-center gap-2"
+          >
+            <Sparkles className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+            Buy credits
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => setRedeemOpen(true)}
+            className="flex cursor-pointer items-center gap-2"
+          >
+            <Gift className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+            Redeem code
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled className="text-muted-foreground">
+            USDC: {usdcFormatted}
+          </DropdownMenuItem>
         <DropdownMenuItem
           onClick={handleBuyUsdc}
           disabled={isOnrampLoading}
@@ -226,5 +259,8 @@ function WalletConnectButtonInner({
         <DropdownMenuItem onClick={handleDisconnect}>Disconnect</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+      <BuyCreditsModal open={buyCreditsOpen} onOpenChange={setBuyCreditsOpen} />
+      <RedeemPromoModal open={redeemOpen} onOpenChange={setRedeemOpen} />
+    </>
   );
 }

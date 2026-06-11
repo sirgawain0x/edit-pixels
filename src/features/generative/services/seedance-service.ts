@@ -1,20 +1,21 @@
 import { createLogger } from '@/shared/logging/logger';
-import { evolinkPost, evolinkGet } from './evolink-client';
+import {
+  proxyGetTask,
+  proxySubmitVideo,
+  type SignedRequestParams,
+} from './generative-proxy-client';
 import type {
-  SeedanceRequest,
   SeedanceResponse,
   SeedanceSpeed,
   SeedanceQuality,
   SeedanceAspectRatio,
   EvolinkTaskDetail,
 } from '../types';
-import { seedanceModelId } from '../types';
 
 const log = createLogger('SeedanceService');
 
 export interface GenerateVideoParams {
   prompt: string;
-  /** Publicly accessible image URLs. 1 = first frame, 2 = first + last frame. */
   imageUrls: string[];
   speed?: SeedanceSpeed;
   duration?: number;
@@ -23,12 +24,9 @@ export interface GenerateVideoParams {
   generateAudio?: boolean;
 }
 
-/**
- * Submit a Seedance 2.0 image-to-video generation task.
- * Returns the initial task response (status will be 'pending').
- */
 export async function submitVideoGeneration(
   params: GenerateVideoParams,
+  auth: SignedRequestParams,
   signal?: AbortSignal,
 ): Promise<SeedanceResponse> {
   const {
@@ -45,26 +43,25 @@ export async function submitVideoGeneration(
     throw new Error('Seedance image-to-video requires 1 or 2 image URLs.');
   }
 
-  const body: SeedanceRequest = {
-    model: seedanceModelId(speed),
-    prompt,
-    image_urls: imageUrls,
-    duration,
-    quality,
-    aspect_ratio: aspectRatio,
-    generate_audio: generateAudio,
-  };
-
-  log.info('Submitting video generation', { model: body.model, duration, imageCount: imageUrls.length });
-  return evolinkPost<SeedanceResponse>('/videos/generations', body, signal);
+  log.info('Submitting video generation', { duration, quality, imageCount: imageUrls.length });
+  return proxySubmitVideo(
+    auth,
+    {
+      prompt,
+      image_urls: imageUrls,
+      duration,
+      quality,
+      speed,
+      aspect_ratio: aspectRatio,
+      generate_audio: generateAudio,
+    },
+    signal,
+  ) as Promise<SeedanceResponse>;
 }
 
-/**
- * Fetch the current status of a video generation task.
- */
 export async function getVideoTaskDetail(
   taskId: string,
   signal?: AbortSignal,
 ): Promise<EvolinkTaskDetail> {
-  return evolinkGet<EvolinkTaskDetail>(`/tasks/${taskId}`, signal);
+  return proxyGetTask(taskId, signal);
 }

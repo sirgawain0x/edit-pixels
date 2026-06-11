@@ -14,11 +14,11 @@ export interface LiveSessionState {
   permissionsGranted: boolean;
   recordedTakes: RecordedTake[];
   popoverPosition: { x: number; y: number };
-  /** True while broadcast is live (used for 5-minute billing). */
+  /** True while broadcast is live (Superfluid streaming billing). */
   streamActive: boolean;
   /** Current stream id (Daydream/Livepeer) when streamActive. */
   streamId: string | null;
-  /** Set when a billing tick fails; UI shows top-up or re-authorize. */
+  /** Set when Superfluid billing fails; UI shows top-up USDC. */
   billingError: 'insufficient_balance' | 'session_limit_exceeded' | 'rpc_or_unknown' | null;
 
   // Scope local server state

@@ -7,8 +7,7 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /**
- * Accepts USDC payments for Live AI render and forwards to treasury.
- * Called by Smart Account (Session Key) every 5 minutes while streaming.
+ * Accepts USDC payments for Live AI render and credit pack purchases.
  * Arbitrum One USDC: 0xaf88d065e77c8cC2239327C5EDb3A432268e5831
  *
  * Phase 2: payWithRoyalty splits the interval amount: cost to treasury, remainder to platform + creator.
@@ -17,12 +16,27 @@ import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.s
 contract PaymentContract is Ownable, ReentrancyGuard {
   using SafeERC20 for IERC20;
 
+  struct CreditPack {
+    uint256 usdc6;
+    uint256 credits;
+    bool active;
+  }
+
   address public immutable USDC;
   address public treasury;
   address public platform;
 
+  CreditPack[] private _creditPacks;
+
   event Paid(address indexed from_, uint256 amountUsdc6);
   event PaidWithRoyalty(address indexed from_, uint256 amountUsdc6, address indexed creator);
+  event CreditsPurchased(
+    address indexed buyer,
+    uint8 indexed packId,
+    uint256 credits,
+    uint256 usdcPaid
+  );
+  event CreditPackSet(uint8 indexed packId, uint256 usdc6, uint256 credits, bool active);
   event TreasurySet(address indexed treasury);
   event PlatformSet(address indexed platform);
 
@@ -30,11 +44,40 @@ contract PaymentContract is Ownable, ReentrancyGuard {
     USDC = usdc_;
     treasury = treasury_;
     platform = platform_;
+
+    // Pack 0: Starter $5 → 50 credits
+    _creditPacks.push(CreditPack({ usdc6: 5_000_000, credits: 50, active: true }));
+    // Pack 1: Pro $15 → 175 credits
+    _creditPacks.push(CreditPack({ usdc6: 15_000_000, credits: 175, active: true }));
+    // Pack 2: Studio $40 → 500 credits
+    _creditPacks.push(CreditPack({ usdc6: 40_000_000, credits: 500, active: true }));
+  }
+
+  function creditPackCount() external view returns (uint256) {
+    return _creditPacks.length;
+  }
+
+  function getCreditPack(uint8 packId) external view returns (uint256 usdc6, uint256 credits, bool active) {
+    require(packId < _creditPacks.length, "invalid pack");
+    CreditPack storage pack = _creditPacks[packId];
+    return (pack.usdc6, pack.credits, pack.active);
+  }
+
+  /**
+   * Purchase a credit pack with USDC. Credits are minted off-chain via CreditsPurchased event.
+   */
+  function buyCredits(uint8 packId) external nonReentrant {
+    require(packId < _creditPacks.length, "invalid pack");
+    CreditPack storage pack = _creditPacks[packId];
+    require(pack.active, "pack inactive");
+    require(pack.usdc6 > 0 && pack.credits > 0, "invalid pack config");
+    IERC20(USDC).safeTransferFrom(msg.sender, treasury, pack.usdc6);
+    emit CreditsPurchased(msg.sender, packId, pack.credits, pack.usdc6);
   }
 
   /**
    * Transfer amountUsdc6 USDC (6 decimals) from msg.sender to treasury.
-   * msg.sender must have approved this contract for at least amountUsdc6.
+   * Legacy interval billing; prefer buyCredits for new integrations.
    */
   function payAiRender(uint256 amountUsdc6) external nonReentrant {
     if (amountUsdc6 == 0) return;
@@ -66,5 +109,11 @@ contract PaymentContract is Ownable, ReentrancyGuard {
   function setPlatform(address platform_) external onlyOwner {
     platform = platform_;
     emit PlatformSet(platform_);
+  }
+
+  function setCreditPack(uint8 packId, uint256 usdc6, uint256 credits, bool active) external onlyOwner {
+    require(packId < _creditPacks.length, "invalid pack");
+    _creditPacks[packId] = CreditPack({ usdc6: usdc6, credits: credits, active: active });
+    emit CreditPackSet(packId, usdc6, credits, active);
   }
 }
