@@ -102,10 +102,38 @@ function WalletConnectButtonInner({
   const { isPremiumMember, isPaidSubscriber } = usePremiumMembership(
     address as `0x${string}` | undefined
   );
-  const { balance, isLoading: creditsLoading } = useCredits();
+  const { balance, isLoading: creditsLoading, claimMembershipCredits } = useCredits();
 
   const [buyCreditsOpen, setBuyCreditsOpen] = useState(false);
   const [redeemOpen, setRedeemOpen] = useState(false);
+  const [claimingMembership, setClaimingMembership] = useState(false);
+
+  const handleClaimMembershipCredits = async () => {
+    if (claimingMembership) return;
+    setClaimingMembership(true);
+    try {
+      const res = await claimMembershipCredits();
+      if (res.ok) {
+        toast.success('Membership credits claimed', {
+          description: `+${res.creditsGranted} credits added to your balance.`,
+        });
+      } else if (res.reason === 'already_claimed') {
+        toast.info('Already claimed this month', {
+          description: 'Your monthly membership credits were already claimed. Come back next month.',
+        });
+      } else if (res.reason === 'not_member') {
+        toast.error('No active membership', {
+          description: 'An active Pixels Premium subscription is required.',
+        });
+      } else {
+        toast.error('Claim failed', {
+          description: 'Could not claim membership credits. Try again later.',
+        });
+      }
+    } finally {
+      setClaimingMembership(false);
+    }
+  };
 
   useEffect(() => {
     if (onrampError) {
@@ -182,7 +210,7 @@ function WalletConnectButtonInner({
             </DropdownMenuItem>
           )}
           <DropdownMenuItem disabled className="text-muted-foreground">
-            Credits: {isLoading ? '…' : `${balance} cr`}
+            Credits: {creditsLoading ? '…' : `${balance} cr`}
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => setBuyCreditsOpen(true)}
@@ -210,6 +238,17 @@ function WalletConnectButtonInner({
           <DollarSign className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
           {isOnrampLoading ? 'Opening…' : 'Buy USDC'}
         </DropdownMenuItem>
+        {isUnlockConfigured && isPaidSubscriber && (
+          <DropdownMenuItem
+            onClick={() => void handleClaimMembershipCredits()}
+            disabled={claimingMembership}
+            className="flex cursor-pointer items-center gap-2"
+            aria-label="Claim monthly membership credits"
+          >
+            <Gift className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+            {claimingMembership ? 'Claiming…' : 'Claim monthly credits'}
+          </DropdownMenuItem>
+        )}
         {isUnlockConfigured && isPaidSubscriber && (
           <DropdownMenuItem
             onClick={openManageSubscription}

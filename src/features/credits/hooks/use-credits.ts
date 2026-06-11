@@ -50,6 +50,13 @@ interface SyncPurchaseResponse {
   reason?: string;
 }
 
+interface ClaimMembershipResponse {
+  ok: boolean;
+  creditsGranted: number;
+  balance: number;
+  reason?: string;
+}
+
 async function fetchBalance(address: `0x${string}`): Promise<BalanceResponse> {
   const url = new URL('/api/credits-balance', window.location.origin);
   url.searchParams.set('address', address);
@@ -71,6 +78,8 @@ export interface UseCreditsResult {
     idempotencyKey?: string
   ) => Promise<DebitResponse>;
   redeemPromo: (code: string) => Promise<RedeemResponse>;
+  /** Claims the monthly Pixels Premium credit allotment (members only, once per 30 days). */
+  claimMembershipCredits: () => Promise<ClaimMembershipResponse>;
 }
 
 export function useCredits(): UseCreditsResult {
@@ -235,6 +244,25 @@ export function useCredits(): UseCreditsResult {
     [refreshBalance, signAuth]
   );
 
+  const claimMembershipCredits = useCallback(
+    async (): Promise<ClaimMembershipResponse> => {
+      try {
+        const auth = await signAuth('claim-membership');
+        const res = await fetch('/api/credits-claim-membership', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(auth),
+        });
+        const body = (await res.json()) as ClaimMembershipResponse;
+        refreshBalance();
+        return body;
+      } catch {
+        return { ok: false, creditsGranted: 0, balance: 0, reason: 'network_error' };
+      }
+    },
+    [refreshBalance, signAuth]
+  );
+
   const balance = data?.balance ?? 0;
 
   return {
@@ -246,6 +274,7 @@ export function useCredits(): UseCreditsResult {
     purchasePack,
     debitCredits,
     redeemPromo,
+    claimMembershipCredits,
   };
 }
 
