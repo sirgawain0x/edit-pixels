@@ -38,7 +38,7 @@ export interface EvolinkTaskDetail {
 
 export type SeedanceSpeed = 'standard' | 'fast';
 
-export type SeedanceQuality = '480p' | '720p';
+export type SeedanceQuality = '480p' | '720p' | '1080p';
 
 export type SeedanceAspectRatio =
   | '16:9'

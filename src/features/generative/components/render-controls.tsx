@@ -1,4 +1,4 @@
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useMemo } from 'react';
 import { Clapperboard, Loader2, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -12,11 +12,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { quoteSeedanceCredits } from '@/config/credits';
+import { useCredits, InsufficientCreditsPaywall } from '../deps/credits';
 import { useGenerativeStore } from '../stores/generative-store';
+import { useGenerativeAuth } from '../hooks/use-generative-auth';
 import { useTaskPolling } from '../hooks/use-task-polling';
 import { submitVideoGeneration, getVideoTaskDetail } from '../services/seedance-service';
 import { ensurePublicUrl } from '../services/image-upload-service';
-import { isEvolinkConfigured } from '../services/evolink-client';
 import type { SeedanceSpeed, SeedanceQuality, SeedanceAspectRatio } from '../types';
 
 const ASPECT_OPTIONS: { value: SeedanceAspectRatio; label: string }[] = [
@@ -30,6 +32,9 @@ const ASPECT_OPTIONS: { value: SeedanceAspectRatio; label: string }[] = [
 ];
 
 export const RenderControls = memo(function RenderControls() {
+  const auth = useGenerativeAuth();
+  const { hasCredits, refreshBalance } = useCredits();
+
   const startImage = useGenerativeStore((s) => s.startImage);
   const endImage = useGenerativeStore((s) => s.endImage);
   const prompt = useGenerativeStore((s) => s.prompt);
@@ -51,14 +56,34 @@ export const RenderControls = memo(function RenderControls() {
 
   const { startPolling, cancel } = useTaskPolling(setVideoTask);
 
+  const creditCost = useMemo(
+    () =>
+      quoteSeedanceCredits({
+        duration,
+        quality,
+        speed: seedanceSpeed,
+        generateAudio,
+      }),
+    [duration, quality, seedanceSpeed, generateAudio],
+  );
+
   const isGenerating = videoTask.status === 'pending' || videoTask.status === 'processing';
-  const canGenerate = !!startImage && !!prompt.trim() && isEvolinkConfigured() && !isGenerating;
+  const canGenerate =
+    !!startImage &&
+    !!prompt.trim() &&
+    !!auth &&
+    hasCredits &&
+    !isGenerating &&
+    creditCost > 0;
 
   const handleGenerate = useCallback(async () => {
-    if (!startImage || !prompt.trim()) return;
+    if (!startImage || !prompt.trim() || !auth) return;
+    if (!hasCredits) {
+      toast.error('Buy credits or redeem a promo code first.');
+      return;
+    }
 
     try {
-      // Convert local images to public URLs
       const imageUrls: string[] = [];
       imageUrls.push(await ensurePublicUrl(startImage));
       if (endImage) {
@@ -67,15 +92,20 @@ export const RenderControls = memo(function RenderControls() {
 
       setResultVideoUrl(null);
 
-      const response = await submitVideoGeneration({
-        prompt: prompt.trim(),
-        imageUrls,
-        speed: seedanceSpeed,
-        duration,
-        quality,
-        aspectRatio,
-        generateAudio,
-      });
+      const response = await submitVideoGeneration(
+        {
+          prompt: prompt.trim(),
+          imageUrls,
+          speed: seedanceSpeed,
+          duration,
+          quality,
+          aspectRatio,
+          generateAudio,
+        },
+        auth,
+      );
+
+      refreshBalance();
 
       const resultUrl = await startPolling(response.id, (signal) =>
         getVideoTaskDetail(response.id, signal),
@@ -94,6 +124,8 @@ export const RenderControls = memo(function RenderControls() {
     startImage,
     endImage,
     prompt,
+    auth,
+    hasCredits,
     seedanceSpeed,
     duration,
     quality,
@@ -102,13 +134,16 @@ export const RenderControls = memo(function RenderControls() {
     startPolling,
     setResultVideoUrl,
     setVideoTask,
+    refreshBalance,
   ]);
 
   return (
     <div className="flex flex-col items-center gap-4">
-      {/* Settings row */}
+      {!hasCredits && (
+        <InsufficientCreditsPaywall message="Buy credits or redeem a promo code to generate videos." />
+      )}
+
       <div className="flex w-full flex-wrap items-end justify-center gap-3 px-2 sm:w-auto sm:px-0">
-        {/* Speed */}
         <div className="flex flex-col gap-1">
           <Label className="text-xs">Speed</Label>
           <Select
@@ -130,7 +165,6 @@ export const RenderControls = memo(function RenderControls() {
           </Select>
         </div>
 
-        {/* Duration */}
         <div className="flex flex-col gap-1">
           <Label className="text-xs">Duration: {duration}s</Label>
           <Slider
@@ -144,7 +178,6 @@ export const RenderControls = memo(function RenderControls() {
           />
         </div>
 
-        {/* Quality */}
         <div className="flex flex-col gap-1">
           <Label className="text-xs">Quality</Label>
           <Select
@@ -158,11 +191,11 @@ export const RenderControls = memo(function RenderControls() {
             <SelectContent>
               <SelectItem value="480p">480p</SelectItem>
               <SelectItem value="720p">720p</SelectItem>
+              <SelectItem value="1080p">1080p</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
-        {/* Aspect Ratio */}
         <div className="flex flex-col gap-1">
           <Label className="text-xs">Ratio</Label>
           <Select
@@ -183,7 +216,6 @@ export const RenderControls = memo(function RenderControls() {
           </Select>
         </div>
 
-        {/* Audio */}
         <div className="flex flex-col items-center gap-1">
           <Label className="text-xs">Audio</Label>
           <Switch
@@ -194,7 +226,10 @@ export const RenderControls = memo(function RenderControls() {
         </div>
       </div>
 
-      {/* Generate button */}
+      <p className="text-xs text-muted-foreground">
+        Cost: {creditCost} credits per generation
+      </p>
+
       <Button
         onClick={isGenerating ? cancel : handleGenerate}
         disabled={!isGenerating && !canGenerate}

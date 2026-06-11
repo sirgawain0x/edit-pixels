@@ -39,14 +39,16 @@ import {
   isSDXLTurboModel,
 } from '../config/curated-loras';
 import { InsufficientBalancePaywall } from './insufficient-balance-paywall';
+import { isSuperfluidConfigured } from '@/config/superfluid';
+import { useLiveAiFunding } from '../hooks/use-live-ai-funding';
+import { useSuperfluidBilling } from '../hooks/use-superfluid-billing';
 import { UsageMeter } from './usage-meter';
 import type { StreamData, LoraDict, IpAdapterConfig } from '../types';
 
+// Dreamshaper 8 and Open Journey v4 are temporarily hidden: they fail to cold-start reliably.
 const MODEL_OPTIONS = [
   { value: 'stabilityai/sd-turbo', label: 'SD 2.1 Turbo' },
   { value: 'stabilityai/sdxl-turbo', label: 'SDXL Turbo' },
-  { value: 'Lykon/dreamshaper-8', label: 'Dreamshaper 8' },
-  { value: 'prompthero/openjourney-v4', label: 'Open Journey v4' },
 ] as const;
 
 const LORA_SCALE_MIN = 0.1;
@@ -141,9 +143,63 @@ interface LiveAISessionCoreProps extends LiveAISessionWithBroadcastProps {
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- intentional no-op
 const noopSetOnPause = (_fn: (() => void) | null) => {};
 
+/** Imperative billing controls surfaced from useSuperfluidBilling to the panel. */
+interface BillingControls {
+  startFlow: () => Promise<boolean>;
+  stopFlow: () => Promise<boolean>;
+  setOnPause: (fn: (() => void) | null) => void;
+}
+
+/**
+ * Hosts useSuperfluidBilling (account-kit hooks) and publishes its controls to
+ * the panel so Start can require a confirmed payment flow before any session.
+ */
+function SuperfluidBillingBridge({
+  onControls,
+}: {
+  onControls: (controls: BillingControls | null) => void;
+}) {
+  const { startFlow, stopFlow, setOnPause } = useSuperfluidBilling();
+  useEffect(() => {
+    onControls({ startFlow, stopFlow, setOnPause });
+    return () => onControls(null);
+  }, [onControls, startFlow, stopFlow, setOnPause]);
+  return null;
+}
+
+/**
+ * Catches errors from useSmartAccountClient (e.g. context undefined) so the
+ * panel still renders. Billing is reported unavailable and Start stays blocked.
+ */
+class BillingBridgeBoundary extends Component<
+  { onUnavailable: () => void; children: React.ReactNode },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError(): { hasError: boolean } {
+    return { hasError: true };
+  }
+
+  componentDidCatch() {
+    this.props.onUnavailable();
+  }
+
+  render() {
+    return this.state.hasError ? null : this.props.children;
+  }
+}
+
 /** Shared panel body (consent, session, settings, footer). Used in sidebar and floating popover. */
 export function LiveAIPanelContent() {
   const { address } = useAccount({ type: 'LightAccount' });
+  const superfluidConfigured = isSuperfluidConfigured();
+  const {
+    hasFunding,
+    isLoading: fundingLoading,
+    hourlyUsdc,
+    isPremiumMember,
+  } = useLiveAiFunding(address as `0x${string}` | undefined);
   const setPermissionsGranted = useLiveSessionStore((s) => s.setPermissionsGranted);
   const includeTimelineAudio = useLiveSessionStore((s) => s.includeTimelineAudio);
   const setIncludeTimelineAudio = useLiveSessionStore((s) => s.setIncludeTimelineAudio);
@@ -159,6 +215,9 @@ export function LiveAIPanelContent() {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [previewView, setPreviewView] = useState<PreviewView>('ai');
   const [loading, setLoading] = useState(false);
+  const [startPhase, setStartPhase] = useState<'payment' | 'session' | null>(null);
+  const [billingControls, setBillingControls] = useState<BillingControls | null>(null);
+  const [billingUnavailable, setBillingUnavailable] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [consentRequested, setConsentRequested] = useState(false);
   const [permissionDenied, setPermissionDenied] = useState(false);
@@ -220,8 +279,26 @@ export function LiveAIPanelContent() {
     };
   }, []);
 
+  const handleBillingUnavailable = useCallback(() => {
+    setBillingUnavailable(true);
+  }, []);
+
   const handleStart = useCallback(async () => {
     if (!configured) return;
+    if (superfluidConfigured) {
+      if (!address) {
+        setError('Connect your wallet to start Live AI.');
+        return;
+      }
+      if (!hasFunding) {
+        setError('Top up USDC on Arbitrum to start Live AI streaming.');
+        return;
+      }
+      if (billingUnavailable || !billingControls) {
+        setError('Billing is unavailable. Reload the page and try again.');
+        return;
+      }
+    }
     if (daydreamConfigured) {
       const validationErr = validateLoraEntries(loraEntries);
       if (validationErr) {
@@ -233,7 +310,21 @@ export function LiveAIPanelContent() {
     setError(null);
     setPermissionDenied(false);
     setLoading(true);
+    let flowStarted = false;
     try {
+      // Payment first: the Superfluid USDC flow must be confirmed on-chain
+      // before any AI session exists, so rendering never runs unpaid.
+      if (superfluidConfigured && billingControls) {
+        setStartPhase('payment');
+        const flowOk = await billingControls.startFlow();
+        if (!flowOk) {
+          setError('Could not start the USDC payment stream. Live AI was not started.');
+          return;
+        }
+        flowStarted = true;
+      }
+
+      setStartPhase('session');
       let data: StreamData;
       if (selectedProvider === 'livepeer') {
         data = await createLiveVideoToVideoSession({
@@ -281,10 +372,18 @@ export function LiveAIPanelContent() {
       if (msg.toLowerCase().includes('permission') || msg.toLowerCase().includes('denied')) {
         setPermissionDenied(true);
       }
+      // Session failed after payment started: stop the flow so the user
+      // doesn't keep paying for a session that never came up.
+      if (flowStarted && billingControls) {
+        await billingControls.stopFlow();
+      }
+      setStreamData(null);
+      setStreamSource(null);
     } finally {
+      setStartPhase(null);
       setLoading(false);
     }
-  }, [configured, daydreamConfigured, livepeerConfigured, setPermissionsGranted, selectedModelId, prompt, loraEntries, faceIdEnabled, faceIdImageUrl]);
+  }, [configured, superfluidConfigured, hasFunding, address, billingControls, billingUnavailable, daydreamConfigured, livepeerConfigured, setPermissionsGranted, selectedModelId, prompt, loraEntries, faceIdEnabled, faceIdImageUrl, selectedProvider]);
 
   const handleApplyPrompt = useCallback(async () => {
     if (streamSource !== 'daydream' || !streamData?.id || !prompt.trim()) return;
@@ -376,6 +475,11 @@ export function LiveAIPanelContent() {
 
   return (
     <>
+      {superfluidConfigured && address && (
+        <BillingBridgeBoundary onUnavailable={handleBillingUnavailable}>
+          <SuperfluidBillingBridge onControls={setBillingControls} />
+        </BillingBridgeBoundary>
+      )}
       <div className="p-3 flex-1 min-h-0 overflow-auto border-b border-border">
         {!configured && (
           <p className="text-xs text-muted-foreground">
@@ -429,62 +533,72 @@ export function LiveAIPanelContent() {
             )}
             {!permissionDenied && !consentRequested && (
               <p className="text-xs text-muted-foreground mb-2">
-                Camera will be used for AI generation. Click Start to continue.
+                Camera will be used for AI generation. Live AI bills USDC per second via Superfluid
+                {hourlyUsdc > 0 && !fundingLoading
+                  ? ` (~$${hourlyUsdc.toFixed(2)}/hr${isPremiumMember ? ', premium rate' : ''}).`
+                  : '.'}{' '}
+                The payment stream is confirmed on-chain first; the AI session
+                starts only after that.
               </p>
             )}
             {error && !permissionDenied && (
               <p className="text-xs text-destructive mb-2">{error}</p>
             )}
+            {!superfluidConfigured && (
+              <p className="mb-2 text-xs text-amber-600 dark:text-amber-400">
+                Live AI billing is not configured (set VITE_SUPERFLUID_RECEIVER).
+              </p>
+            )}
+            {superfluidConfigured && !address && (
+              <p className="mb-2 text-xs text-muted-foreground">
+                Connect your wallet to start Live AI. A USDC payment stream must
+                be set up before the session can start.
+              </p>
+            )}
+            {superfluidConfigured && address && billingUnavailable && (
+              <p className="mb-2 text-xs text-destructive">
+                Billing is unavailable. Reload the page and try again.
+              </p>
+            )}
+            {superfluidConfigured && address && !hasFunding && !fundingLoading && (
+              <InsufficientBalancePaywall />
+            )}
             <Button
               onClick={handleStart}
-              disabled={loading}
+              disabled={
+                loading ||
+                !superfluidConfigured ||
+                !address ||
+                !hasFunding ||
+                billingUnavailable ||
+                !billingControls
+              }
               size="sm"
               className="w-full"
             >
-              {loading ? 'Starting…' : 'Start'}
+              {loading
+                ? startPhase === 'payment'
+                  ? 'Confirming payment stream…'
+                  : 'Starting…'
+                : 'Start'}
             </Button>
           </>
         )}
 
-        {showSession &&
-          (address ? (
-            <LiveAISessionBillingErrorBoundary
-              sessionProps={{
-                streamData,
-                whipUrl,
-                localStream,
-                onStreamStopped: handleStreamStopped,
-                previewView,
-                setPreviewView,
-                isDaydreamStream: streamSource === 'daydream',
-                selectedModelId,
-              }}
-            >
-              <LiveAISessionWithOptionalBilling
-                streamData={streamData}
-                whipUrl={whipUrl}
-                localStream={localStream}
-                onStreamStopped={handleStreamStopped}
-                previewView={previewView}
-                setPreviewView={setPreviewView}
-                isDaydreamStream={streamSource === 'daydream'}
-                selectedModelId={selectedModelId}
-              />
-            </LiveAISessionBillingErrorBoundary>
-          ) : (
-            <LiveAISessionWithBroadcastCore
-              streamData={streamData}
-              whipUrl={whipUrl}
-              localStream={localStream}
-              onStreamStopped={handleStreamStopped}
-              previewView={previewView}
-              setPreviewView={setPreviewView}
-              setOnPause={noopSetOnPause}
-              billingEnabled={false}
-              isDaydreamStream={streamSource === 'daydream'}
-              selectedModelId={selectedModelId}
-            />
-          ))}
+        {showSession && (
+          <LiveAISessionWithBroadcastCore
+            streamData={streamData}
+            whipUrl={whipUrl}
+            localStream={localStream}
+            onStreamStopped={handleStreamStopped}
+            previewView={previewView}
+            setPreviewView={setPreviewView}
+            setOnPause={billingControls?.setOnPause ?? noopSetOnPause}
+            billingEnabled={Boolean(superfluidConfigured && billingControls)}
+            isDaydreamStream={streamSource === 'daydream'}
+            selectedModelId={selectedModelId}
+          />
+        )}
       </div>
 
       {settingsOpen && (
@@ -1046,14 +1160,16 @@ function LiveAISessionWithBroadcastCore({
     <>
       {!billingEnabled && (
         <p className="mb-2 text-xs text-muted-foreground">
-          Connect your wallet to enable billing for this session.
+          Connect your wallet on Arbitrum to stream USDC for Live AI.
         </p>
       )}
       {billingEnabled && <UsageMeter />}
       {billingEnabled && billingError === 'insufficient_balance' && (
         <InsufficientBalancePaywall />
       )}
-      {billingEnabled && billingError && billingError !== 'insufficient_balance' && (
+      {billingEnabled &&
+        billingError &&
+        billingError !== 'insufficient_balance' && (
         <div className="mb-2 p-2 rounded-md bg-destructive/10 border border-destructive/20 text-xs">
           {billingError === 'session_limit_exceeded' && (
             <p>
@@ -1227,44 +1343,6 @@ function LiveAISessionWithBroadcastCore({
       </p>
     </>
   );
-}
-
-function LiveAISessionWithOptionalBilling(props: LiveAISessionWithBroadcastProps) {
-  // Billing loop is temporarily disabled for Live AI sessions because Account Kit
-  // context readiness can be transient and crash useSmartAccountClient on mount.
-  // Session streaming should continue even when billing cannot initialize.
-  return (
-    <LiveAISessionWithBroadcastCore
-      {...props}
-      setOnPause={noopSetOnPause}
-      billingEnabled={false}
-    />
-  );
-}
-
-/** Catches errors from useSmartAccountClient (e.g. context undefined) and falls back to session without billing. */
-class LiveAISessionBillingErrorBoundary extends Component<
-  { sessionProps: LiveAISessionWithBroadcastProps; children: React.ReactNode },
-  { hasError: boolean }
-> {
-  state = { hasError: false };
-
-  static getDerivedStateFromError(): { hasError: boolean } {
-    return { hasError: true };
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <LiveAISessionWithBroadcastCore
-          {...this.props.sessionProps}
-          setOnPause={noopSetOnPause}
-          billingEnabled={false}
-        />
-      );
-    }
-    return this.props.children;
-  }
 }
 
 export function LiveAIPopover() {

@@ -3,8 +3,7 @@ import { NodeStart } from './node-start';
 import { NodeBridge } from './node-bridge';
 import { NodeEnd } from './node-end';
 import { RenderControls } from './render-controls';
-import { ApiKeyInput } from './api-key-input';
-import { isEvolinkConfigured } from '../services/evolink-client';
+import { useGenerativeReady } from '../hooks/use-generative-auth';
 import { useGenerativeStore } from '../stores/generative-store';
 import { IDLE_TASK } from '../types';
 
@@ -16,24 +15,24 @@ import { IDLE_TASK } from '../types';
 export const FlowStage = memo(function FlowStage() {
   const setVideoTask = useGenerativeStore((s) => s.setVideoTask);
   const setResultVideoUrl = useGenerativeStore((s) => s.setResultVideoUrl);
+  const ready = useGenerativeReady();
 
   const handleCancelVideo = useCallback(() => {
     setVideoTask({ ...IDLE_TASK });
     setResultVideoUrl(null);
   }, [setVideoTask, setResultVideoUrl]);
 
-  const configured = isEvolinkConfigured();
-
   return (
     <div className="flex h-full w-full flex-col items-center justify-start gap-4 overflow-y-auto bg-background p-3 sm:justify-center sm:gap-6 sm:p-4">
-      {!configured && <ApiKeyInput />}
+      {!ready && (
+        <p className="text-xs text-muted-foreground">
+          Connect your wallet to use Flow generation.
+        </p>
+      )}
 
-      {/* Three-node layout: vertical on mobile, horizontal on desktop */}
       <div className="flex flex-col items-center gap-3 sm:flex-row sm:gap-4">
-        {/* Node A: Start Image */}
         <NodeStart />
 
-        {/* Connector: horizontal on desktop, vertical on mobile */}
         <svg width="40" height="2" className="hidden text-border sm:block" aria-hidden="true">
           <line x1="0" y1="1" x2="40" y2="1" stroke="currentColor" strokeWidth="2" strokeDasharray="4 4" />
         </svg>
@@ -41,10 +40,8 @@ export const FlowStage = memo(function FlowStage() {
           <line x1="1" y1="0" x2="1" y2="24" stroke="currentColor" strokeWidth="2" strokeDasharray="4 4" />
         </svg>
 
-        {/* Node B: Video Generation */}
         <NodeBridge onCancelVideo={handleCancelVideo} />
 
-        {/* Connector: horizontal on desktop, vertical on mobile */}
         <svg width="40" height="2" className="hidden text-border sm:block" aria-hidden="true">
           <line x1="0" y1="1" x2="40" y2="1" stroke="currentColor" strokeWidth="2" strokeDasharray="4 4" />
         </svg>
@@ -52,12 +49,10 @@ export const FlowStage = memo(function FlowStage() {
           <line x1="1" y1="0" x2="1" y2="24" stroke="currentColor" strokeWidth="2" strokeDasharray="4 4" />
         </svg>
 
-        {/* Node C: End Image (Optional) */}
         <NodeEnd />
       </div>
 
-      {/* Render controls */}
-      {configured && <RenderControls />}
+      {ready && <RenderControls />}
     </div>
   );
 });

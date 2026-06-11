@@ -1,4 +1,4 @@
-import { memo, useState, useCallback } from 'react';
+import { memo, useState, useCallback, useMemo } from 'react';
 import { Sparkles } from 'lucide-react';
 import {
   Dialog,
@@ -16,10 +16,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { toast } from 'sonner';
+import { quoteNanobananaCredits } from '@/config/credits';
+import { useCredits } from '../deps/credits';
 import { useGenerativeStore } from '../stores/generative-store';
+import { useGenerativeAuth } from '../hooks/use-generative-auth';
 import { useTaskPolling } from '../hooks/use-task-polling';
 import { submitImageGeneration, getImageTaskDetail } from '../services/nanobanana-service';
-import { isEvolinkConfigured } from '../services/evolink-client';
 import { GenerationProgress } from './generation-progress';
 import type { ImageSource, NanobananaSize, NanobananaQuality } from '../types';
 
@@ -52,6 +55,9 @@ export const ImageGenDialog = memo(function ImageGenDialog({
 }: ImageGenDialogProps) {
   const [open, setOpen] = useState(false);
   const [prompt, setPrompt] = useState('');
+  const auth = useGenerativeAuth();
+  const { hasCredits, refreshBalance } = useCredits();
+
   const imageSize = useGenerativeStore((s) => s.imageSize);
   const imageQuality = useGenerativeStore((s) => s.imageQuality);
   const setImageSize = useGenerativeStore((s) => s.setImageSize);
@@ -65,15 +71,29 @@ export const ImageGenDialog = memo(function ImageGenDialog({
 
   const { startPolling, cancel } = useTaskPolling(setTask);
 
+  const creditCost = useMemo(
+    () => quoteNanobananaCredits(imageQuality),
+    [imageQuality],
+  );
+
   const handleGenerate = useCallback(async () => {
-    if (!prompt.trim()) return;
+    if (!prompt.trim() || !auth) return;
+    if (!hasCredits) {
+      toast.error('Buy credits or redeem a promo code first.');
+      return;
+    }
 
     try {
-      const response = await submitImageGeneration({
-        prompt: prompt.trim(),
-        size: imageSize,
-        quality: imageQuality,
-      });
+      const response = await submitImageGeneration(
+        {
+          prompt: prompt.trim(),
+          size: imageSize,
+          quality: imageQuality,
+        },
+        auth,
+      );
+
+      refreshBalance();
 
       const resultUrl = await startPolling(response.id, (signal) =>
         getImageTaskDetail(response.id, signal),
@@ -88,10 +108,20 @@ export const ImageGenDialog = memo(function ImageGenDialog({
       const message = err instanceof Error ? err.message : 'Failed to generate image';
       setTask({ status: 'failed', error: message });
     }
-  }, [prompt, imageSize, imageQuality, startPolling, onImageGenerated, setTask]);
+  }, [
+    prompt,
+    auth,
+    hasCredits,
+    imageSize,
+    imageQuality,
+    startPolling,
+    onImageGenerated,
+    setTask,
+    refreshBalance,
+  ]);
 
   const isGenerating = task.status === 'pending' || task.status === 'processing';
-  const configured = isEvolinkConfigured();
+  const configured = auth !== null;
 
   return (
     <>
@@ -101,89 +131,93 @@ export const ImageGenDialog = memo(function ImageGenDialog({
         className="h-7 text-xs"
         disabled={!configured}
         onClick={() => setOpen(true)}
-        data-tooltip={configured ? 'Generate with AI' : 'Set API key in Settings first'}
+        data-tooltip={configured ? 'Generate with AI' : 'Connect wallet first'}
       >
         <Sparkles className="mr-1 h-3 w-3" />
         AI Generate
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Generate {node === 'start' ? 'Start' : 'End'} Image</DialogTitle>
-        </DialogHeader>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Generate {node === 'start' ? 'Start' : 'End'} Image</DialogTitle>
+          </DialogHeader>
 
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="img-prompt">Prompt</Label>
-            <Textarea
-              id="img-prompt"
-              placeholder="Describe the image you want to generate..."
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              disabled={isGenerating}
-              rows={3}
-            />
-          </div>
-
-          <div className="flex gap-4">
-            <div className="flex flex-1 flex-col gap-2">
-              <Label>Size</Label>
-              <Select
-                value={imageSize}
-                onValueChange={(v) => setImageSize(v as NanobananaSize)}
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="img-prompt">Prompt</Label>
+              <Textarea
+                id="img-prompt"
+                placeholder="Describe the image you want to generate..."
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
                 disabled={isGenerating}
-              >
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {SIZE_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                rows={3}
+              />
             </div>
 
-            <div className="flex flex-1 flex-col gap-2">
-              <Label>Quality</Label>
-              <Select
-                value={imageQuality}
-                onValueChange={(v) => setImageQuality(v as NanobananaQuality)}
-                disabled={isGenerating}
-              >
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {QUALITY_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="flex gap-4">
+              <div className="flex flex-1 flex-col gap-2">
+                <Label>Size</Label>
+                <Select
+                  value={imageSize}
+                  onValueChange={(v) => setImageSize(v as NanobananaSize)}
+                  disabled={isGenerating}
+                >
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SIZE_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex flex-1 flex-col gap-2">
+                <Label>Quality</Label>
+                <Select
+                  value={imageQuality}
+                  onValueChange={(v) => setImageQuality(v as NanobananaQuality)}
+                  disabled={isGenerating}
+                >
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {QUALITY_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
+
+            <p className="text-xs text-muted-foreground">
+              Cost: {creditCost} credits
+            </p>
+
+            {isGenerating ? (
+              <GenerationProgress task={task} label="Image" onCancel={cancel} />
+            ) : (
+              <Button
+                onClick={handleGenerate}
+                disabled={!prompt.trim() || isGenerating || !hasCredits}
+              >
+                <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                Generate Image
+              </Button>
+            )}
+
+            {task.status === 'failed' && task.error && (
+              <p className="text-xs text-destructive">{task.error}</p>
+            )}
           </div>
-
-          {isGenerating ? (
-            <GenerationProgress task={task} label="Image" onCancel={cancel} />
-          ) : (
-            <Button
-              onClick={handleGenerate}
-              disabled={!prompt.trim() || isGenerating}
-            >
-              <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-              Generate Image
-            </Button>
-          )}
-
-          {task.status === 'failed' && task.error && (
-            <p className="text-xs text-destructive">{task.error}</p>
-          )}
-        </div>
-      </DialogContent>
+        </DialogContent>
       </Dialog>
     </>
   );

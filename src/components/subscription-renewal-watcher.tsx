@@ -73,7 +73,7 @@ export function SubscriptionRenewalWatcher() {
       shownExpiredRef.current = true;
       toast.error('Pixels Premium expired', {
         description:
-          'Renew to restore the $1.50/hr rate and free-tier allowance.',
+          'Renew to restore the $1.50/hr rate and credit discounts.',
         action: { label: 'Renew', onClick: openSubscribeCheckout },
         duration: 12_000,
       });
