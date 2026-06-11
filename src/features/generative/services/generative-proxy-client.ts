@@ -6,7 +6,7 @@ import {
 import {
   buildCreditsAuthMessage,
   generateCreditsNonce,
-} from '@/features/credits/api/credits-auth-message';
+} from '../deps/credits';
 import type { EvolinkTaskDetail, NanobananaQuality, SeedanceQuality, SeedanceSpeed } from '../types';
 
 const log = createLogger('GenerativeProxy');

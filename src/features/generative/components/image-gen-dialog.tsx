@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { quoteNanobananaCredits } from '@/config/credits';
-import { useCredits } from '@/features/credits/hooks/use-credits';
+import { useCredits } from '../deps/credits';
 import { useGenerativeStore } from '../stores/generative-store';
 import { useGenerativeAuth } from '../hooks/use-generative-auth';
 import { useTaskPolling } from '../hooks/use-task-polling';

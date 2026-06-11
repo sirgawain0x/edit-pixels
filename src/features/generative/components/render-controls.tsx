@@ -13,8 +13,7 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { quoteSeedanceCredits } from '@/config/credits';
-import { useCredits } from '@/features/credits/hooks/use-credits';
-import { InsufficientCreditsPaywall } from '@/features/credits/components/insufficient-credits-paywall';
+import { useCredits, InsufficientCreditsPaywall } from '../deps/credits';
 import { useGenerativeStore } from '../stores/generative-store';
 import { useGenerativeAuth } from '../hooks/use-generative-auth';
 import { useTaskPolling } from '../hooks/use-task-polling';
