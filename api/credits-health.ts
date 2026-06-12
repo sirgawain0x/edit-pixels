@@ -30,13 +30,15 @@ export async function GET(): Promise<Response> {
     console.error('credits-health viem import failed', e);
   }
 
+  const ok = redisConnected || !redisConfigured ? viemOk : false;
+
   return Response.json(
     {
       redisConfigured,
       redisConnected,
       viemOk,
-      ok: redisConnected || !redisConfigured ? viemOk : false,
+      ok,
     },
-    { status: 200 }
+    { status: ok ? 200 : 503 }
   );
 }

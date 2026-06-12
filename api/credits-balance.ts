@@ -28,7 +28,7 @@ export async function GET(request: Request): Promise<Response> {
     console.error('credits-balance error', e);
     return Response.json(
       { balance: 0, configured: false, degraded: true },
-      { status: 200 }
+      { status: 503 }
     );
   }
 }

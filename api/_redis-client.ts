@@ -1,7 +1,6 @@
 type RedisClient = import('@upstash/redis').Redis;
 
 let redisClient: RedisClient | null = null;
-let redisInitAttempted = false;
 let redisInitPromise: Promise<RedisClient | null> | null = null;
 
 /**
@@ -46,11 +45,14 @@ export function isRedisConfigured(): boolean {
 
 /** Shared Redis client for credit ledger, promo codes, etc. Lazy-loads @upstash/redis. */
 export async function getRedis(): Promise<RedisClient | null> {
-  if (redisInitAttempted) return redisClient;
+  if (redisClient) return redisClient;
   if (!redisInitPromise) {
     redisInitPromise = initRedis().then((client) => {
-      redisInitAttempted = true;
-      redisClient = client;
+      if (client) {
+        redisClient = client;
+      } else {
+        redisInitPromise = null;
+      }
       return client;
     });
   }

@@ -44,24 +44,15 @@ export async function creditFromPurchase(
   }
 
   const txKey = processedTxKey(txHash);
-  const already = await redis.get<string>(txKey);
-  if (already) {
-    const balance = await getCreditBalance(address);
-    return { ok: true, creditsAdded: 0, balance, reason: 'already_processed' };
-  }
-
   const balKey = balanceKey(address);
-  const pipeline = redis.pipeline();
-  pipeline.setnx(txKey, '1');
-  pipeline.incrby(balKey, credits);
-  const results = await pipeline.exec();
 
-  const setOk = results[0] === 1;
+  const setOk = await redis.set(txKey, '1', { nx: true });
   if (!setOk) {
     const balance = await getCreditBalance(address);
     return { ok: true, creditsAdded: 0, balance, reason: 'already_processed' };
   }
 
+  await redis.incrby(balKey, credits);
   const balance = await getCreditBalance(address);
   return { ok: true, creditsAdded: credits, balance };
 }

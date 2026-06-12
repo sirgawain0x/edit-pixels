@@ -34,7 +34,7 @@ function hasEnoughUsdc(
   usdcBalance: string | null,
   pack: CreditPackDefinition
 ): boolean {
-  if (usdcBalance === null) return true;
+  if (usdcBalance === null) return false;
   return Number(usdcBalance) * 1_000_000 >= packUsdcRequiredUsdc6(pack);
 }
 
