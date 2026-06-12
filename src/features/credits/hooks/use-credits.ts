@@ -194,7 +194,7 @@ export function useCredits(): UseCreditsResult {
           return {
             ...syncResult,
             txHash,
-            syncPending: syncResult.syncPending ?? true,
+            syncPending: syncResult.syncPending === true,
           };
         }
         return { ok: true, txHash };

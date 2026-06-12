@@ -64,7 +64,6 @@ export function BuyCreditsModal({ open, onOpenChange }: BuyCreditsModalProps) {
 
   useEffect(() => {
     if (!open) {
-      setPendingSync(null);
       setRetryingSync(false);
     }
   }, [open]);
@@ -85,8 +84,13 @@ export function BuyCreditsModal({ open, onOpenChange }: BuyCreditsModalProps) {
         onOpenChange(false);
       } else {
         toast.error(result.error ?? 'Sync failed', {
-          description: 'Your USDC payment was received. Try syncing again.',
+          description: result.syncPending
+            ? 'Your USDC payment was received. Try syncing again.'
+            : 'A terminal error occurred. Please contact support.',
         });
+        if (!result.syncPending) {
+          setPendingSync(null);
+        }
       }
     } finally {
       setRetryingSync(false);
@@ -209,7 +213,11 @@ export function BuyCreditsModal({ open, onOpenChange }: BuyCreditsModalProps) {
                 variant="outline"
                 className="relative h-auto flex-col items-start gap-0.5 py-3 text-left"
                 disabled={
-                  purchasingId !== null || retryingSync || !onArbitrum || !affordable
+                  purchasingId !== null ||
+                  pendingSync !== null ||
+                  retryingSync ||
+                  !onArbitrum ||
+                  !affordable
                 }
                 onClick={() => void handleBuy(pack.id)}
               >

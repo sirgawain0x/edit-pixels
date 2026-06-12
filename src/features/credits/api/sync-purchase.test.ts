@@ -71,4 +71,21 @@ describe('syncPurchaseCredits', () => {
     expect(fetch).toHaveBeenCalledTimes(3);
     vi.useRealTimers();
   });
+
+  it('does not mark syncPending for terminal errors', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify({ ok: false, reason: 'pack_mismatch' }), {
+        status: 400,
+      })
+    );
+
+    const result = await syncPurchaseCredits(
+      '0x1234567890123456789012345678901234567890',
+      '0xabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd'
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.syncPending).toBe(false);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
 });

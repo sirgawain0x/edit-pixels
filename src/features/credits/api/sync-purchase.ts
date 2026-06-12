@@ -21,6 +21,35 @@ function isSyncSuccess(body: SyncPurchaseResponse): boolean {
   return body.ok || body.reason === 'already_processed';
 }
 
+/** Errors where retry will never succeed — do not show sync-pending UX. */
+const TERMINAL_SYNC_REASONS = new Set([
+  'buyer_mismatch',
+  'pack_mismatch',
+  'tx_failed',
+]);
+
+function isRetryableSyncFailure(
+  reason: string | undefined,
+  status: number
+): boolean {
+  if (reason && TERMINAL_SYNC_REASONS.has(reason)) return false;
+  return (
+    reason === 'error' ||
+    reason === 'disabled' ||
+    reason === 'event_not_found' ||
+    reason === 'network_error' ||
+    status >= 500
+  );
+}
+
+function shouldMarkSyncPending(
+  reason: string | undefined,
+  status: number
+): boolean {
+  if (reason && TERMINAL_SYNC_REASONS.has(reason)) return false;
+  return isRetryableSyncFailure(reason, status);
+}
+
 /**
  * Idempotently sync credits from an on-chain buyCredits tx. Retries transient failures.
  */
@@ -48,13 +77,13 @@ export async function syncPurchaseCredits(
         return { ...lastBody, ok: true };
       }
 
-      const retryable =
-        lastBody.reason === 'error' ||
-        lastBody.reason === 'disabled' ||
-        res.status >= 500;
+      const retryable = isRetryableSyncFailure(lastBody.reason, res.status);
 
       if (!retryable || attempt === SYNC_MAX_ATTEMPTS - 1) {
-        return { ...lastBody, syncPending: true };
+        return {
+          ...lastBody,
+          syncPending: shouldMarkSyncPending(lastBody.reason, res.status),
+        };
       }
     } catch {
       if (attempt === SYNC_MAX_ATTEMPTS - 1) {
@@ -71,5 +100,5 @@ export async function syncPurchaseCredits(
     await sleep(SYNC_BACKOFF_MS[attempt] ?? 4_000);
   }
 
-  return { ...lastBody, syncPending: true };
+  return { ...lastBody, syncPending: shouldMarkSyncPending(lastBody.reason, 0) };
 }
