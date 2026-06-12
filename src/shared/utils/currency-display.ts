@@ -31,8 +31,9 @@ function formatUsdNumber(
   amount: number,
   options?: { minimumFractionDigits?: number; maximumFractionDigits?: number }
 ): string {
-  return amount.toLocaleString(undefined, {
-    minimumFractionDigits: options?.minimumFractionDigits ?? 0,
+  return amount.toLocaleString('en-US', {
+    minimumFractionDigits:
+      options?.minimumFractionDigits ?? (Number.isInteger(amount) ? 0 : 2),
     maximumFractionDigits: options?.maximumFractionDigits ?? 2,
   });
 }

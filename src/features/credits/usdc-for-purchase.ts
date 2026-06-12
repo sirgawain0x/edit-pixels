@@ -21,8 +21,8 @@ export function canAffordAnyCreditPack(usdcBalance: string | null): boolean {
   return CREDIT_PACKS.some((pack) => hasEnoughUsdcForPack(usdcBalance, pack));
 }
 
-export function formatUsdcRequiredForPack(pack: CreditPackDefinition): string {
-  return (packUsdcRequiredUsdc6(pack) / 1_000_000).toFixed(2);
+export function getUsdcRequiredForPack(pack: CreditPackDefinition): number {
+  return packUsdcRequiredUsdc6(pack) / 1_000_000;
 }
 
 export function packUsdcAmount(pack: CreditPackDefinition): number {

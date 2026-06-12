@@ -41,6 +41,8 @@ import { canAffordAnyCreditPack } from '@/features/credits/usdc-for-purchase';
 import { formatSubscribeCta } from '@/shared/utils/currency-display';
 import { useUsdcBalance } from '@/hooks/use-usdc-balance';
 
+const ARBITRUM_ONE_CHAIN_ID = 42_161;
+
 function truncateAddress(address: string): string {
   if (address.length <= 10) return address;
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
@@ -185,7 +187,8 @@ function WalletConnectButtonInner({
   }
 
   const displayText = address ? truncateAddress(address) : 'Connected';
-  const canBuyCredits = canAffordAnyCreditPack(usdcBalance);
+  const onArbitrum = chain?.id === ARBITRUM_ONE_CHAIN_ID;
+  const canBuyCredits = !onArbitrum || canAffordAnyCreditPack(usdcBalance);
 
   return (
     <>

@@ -22,7 +22,7 @@ import {
 } from '@/shared/utils/currency-display';
 import {
   canAffordAnyCreditPack,
-  formatUsdcRequiredForPack,
+  getUsdcRequiredForPack,
   hasEnoughUsdcForPack,
   packUsdcAmount,
 } from '@/features/credits/usdc-for-purchase';
@@ -98,9 +98,9 @@ export function BuyCreditsModal({ open, onOpenChange }: BuyCreditsModalProps) {
     }
 
     if (!hasEnoughUsdcForPack(usdcBalance, pack)) {
-      const required = formatUsdcRequiredForPack(pack);
+      const required = getUsdcRequiredForPack(pack);
       toast.error('Insufficient USDC', {
-        description: `Need ${formatUsdcRequiredApprox(Number(required))} on Arbitrum (includes gas). Use Buy USDC first.`,
+        description: `Need ${formatUsdcRequiredApprox(required)} on Arbitrum (includes gas). Use Buy USDC first.`,
       });
       return;
     }
@@ -222,7 +222,7 @@ export function BuyCreditsModal({ open, onOpenChange }: BuyCreditsModalProps) {
                 </span>
                 {usdcBalance !== null && !affordable && onArbitrum && (
                   <span className="text-xs text-amber-600">
-                    Need {formatUsdcRequiredApprox(Number(formatUsdcRequiredForPack(pack)))}{' '}
+                    Need {formatUsdcRequiredApprox(getUsdcRequiredForPack(pack))}{' '}
                     total
                   </span>
                 )}
