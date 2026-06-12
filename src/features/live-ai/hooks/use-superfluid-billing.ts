@@ -2,10 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   useAccount,
   useChain,
-  useSendUserOperation,
   useSmartAccountClient,
 } from '@account-kit/react';
 import { arbitrum } from 'viem/chains';
+import { useSmartWalletOps } from '@/hooks/use-smart-wallet-ops';
 import {
   getSuperfluidReceiverAddress,
   intervalCostUsdc6ToFlowRate,
@@ -76,25 +76,7 @@ export function useSuperfluidBilling() {
   const flowRateRef = useRef(intervalCostUsdc6ToFlowRate(intervalCostUsdc6));
   flowRateRef.current = intervalCostUsdc6ToFlowRate(intervalCostUsdc6);
 
-  const pendingOpRef = useRef<{
-    resolve: () => void;
-    reject: (error: Error) => void;
-  } | null>(null);
-
-  const { sendUserOperation } = useSendUserOperation({
-    client,
-    waitForTxn: true,
-    onSuccess: () => {
-      pendingOpRef.current?.resolve();
-      pendingOpRef.current = null;
-    },
-    onError: (err) => {
-      pendingOpRef.current?.reject(
-        err instanceof Error ? err : new Error(String(err))
-      );
-      pendingOpRef.current = null;
-    },
-  });
+  const { sendOps } = useSmartWalletOps(client ?? undefined);
 
   const sendOpsRef = useRef<
     (
@@ -104,10 +86,7 @@ export function useSuperfluidBilling() {
 
   sendOpsRef.current = async (uo) => {
     if (!client) throw new Error('Wallet not ready');
-    await new Promise<void>((resolve, reject) => {
-      pendingOpRef.current = { resolve, reject };
-      sendUserOperation({ uo });
-    });
+    await sendOps(uo);
   };
 
   const ensureArbitrum = useCallback(async () => {
