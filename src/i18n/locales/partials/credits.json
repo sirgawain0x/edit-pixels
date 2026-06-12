@@ -2,7 +2,7 @@
   "en": {
     "credits": {
       "buyTitle": "Buy credits",
-      "buyDescription": "Pay with USDC on Arbitrum. Credits unlock Live AI and Flow generation.",
+      "buyDescription": "Pay with USDC on Arbitrum for Flow image and video generation. Live AI streams USDC separately — use Buy USDC or Subscribe for streaming.",
       "insufficientTitle": "Insufficient credits",
       "redeemTitle": "Redeem promo code",
       "redeemPlaceholder": "PIXELS-XXXX-XXXX",
@@ -12,7 +12,7 @@
   "es": {
     "credits": {
       "buyTitle": "Buy credits",
-      "buyDescription": "Pay with USDC on Arbitrum. Credits unlock Live AI and Flow generation.",
+      "buyDescription": "Pay with USDC on Arbitrum for Flow image and video generation. Live AI streams USDC separately — use Buy USDC or Subscribe for streaming.",
       "insufficientTitle": "Insufficient credits",
       "redeemTitle": "Redeem promo code",
       "redeemPlaceholder": "PIXELS-XXXX-XXXX",
@@ -22,7 +22,7 @@
   "fr": {
     "credits": {
       "buyTitle": "Buy credits",
-      "buyDescription": "Pay with USDC on Arbitrum. Credits unlock Live AI and Flow generation.",
+      "buyDescription": "Pay with USDC on Arbitrum for Flow image and video generation. Live AI streams USDC separately — use Buy USDC or Subscribe for streaming.",
       "insufficientTitle": "Insufficient credits",
       "redeemTitle": "Redeem promo code",
       "redeemPlaceholder": "PIXELS-XXXX-XXXX",
@@ -32,7 +32,7 @@
   "de": {
     "credits": {
       "buyTitle": "Buy credits",
-      "buyDescription": "Pay with USDC on Arbitrum. Credits unlock Live AI and Flow generation.",
+      "buyDescription": "Pay with USDC on Arbitrum for Flow image and video generation. Live AI streams USDC separately — use Buy USDC or Subscribe for streaming.",
       "insufficientTitle": "Insufficient credits",
       "redeemTitle": "Redeem promo code",
       "redeemPlaceholder": "PIXELS-XXXX-XXXX",
@@ -42,7 +42,7 @@
   "pt-BR": {
     "credits": {
       "buyTitle": "Buy credits",
-      "buyDescription": "Pay with USDC on Arbitrum. Credits unlock Live AI and Flow generation.",
+      "buyDescription": "Pay with USDC on Arbitrum for Flow image and video generation. Live AI streams USDC separately — use Buy USDC or Subscribe for streaming.",
       "insufficientTitle": "Insufficient credits",
       "redeemTitle": "Redeem promo code",
       "redeemPlaceholder": "PIXELS-XXXX-XXXX",
@@ -52,7 +52,7 @@
   "tr": {
     "credits": {
       "buyTitle": "Buy credits",
-      "buyDescription": "Pay with USDC on Arbitrum. Credits unlock Live AI and Flow generation.",
+      "buyDescription": "Pay with USDC on Arbitrum for Flow image and video generation. Live AI streams USDC separately — use Buy USDC or Subscribe for streaming.",
       "insufficientTitle": "Insufficient credits",
       "redeemTitle": "Redeem promo code",
       "redeemPlaceholder": "PIXELS-XXXX-XXXX",
@@ -62,7 +62,7 @@
   "ja": {
     "credits": {
       "buyTitle": "Buy credits",
-      "buyDescription": "Pay with USDC on Arbitrum. Credits unlock Live AI and Flow generation.",
+      "buyDescription": "Pay with USDC on Arbitrum for Flow image and video generation. Live AI streams USDC separately — use Buy USDC or Subscribe for streaming.",
       "insufficientTitle": "Insufficient credits",
       "redeemTitle": "Redeem promo code",
       "redeemPlaceholder": "PIXELS-XXXX-XXXX",
@@ -72,7 +72,7 @@
   "ko": {
     "credits": {
       "buyTitle": "Buy credits",
-      "buyDescription": "Pay with USDC on Arbitrum. Credits unlock Live AI and Flow generation.",
+      "buyDescription": "Pay with USDC on Arbitrum for Flow image and video generation. Live AI streams USDC separately — use Buy USDC or Subscribe for streaming.",
       "insufficientTitle": "Insufficient credits",
       "redeemTitle": "Redeem promo code",
       "redeemPlaceholder": "PIXELS-XXXX-XXXX",
@@ -82,7 +82,7 @@
   "zh": {
     "credits": {
       "buyTitle": "Buy credits",
-      "buyDescription": "Pay with USDC on Arbitrum. Credits unlock Live AI and Flow generation.",
+      "buyDescription": "Pay with USDC on Arbitrum for Flow image and video generation. Live AI streams USDC separately — use Buy USDC or Subscribe for streaming.",
       "insufficientTitle": "Insufficient credits",
       "redeemTitle": "Redeem promo code",
       "redeemPlaceholder": "PIXELS-XXXX-XXXX",

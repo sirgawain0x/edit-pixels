@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAccount, useChain } from '@account-kit/react';
-import { Coins, DollarSign, Loader2 } from 'lucide-react';
+import { Coins, DollarSign, Loader2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -18,29 +18,23 @@ import {
   useCredits,
 } from '@/features/credits/hooks/use-credits';
 import {
-  formatLiveAiTimeFromCredits,
-  type CreditPackDefinition,
-} from '@/config/credits';
-import { getPurchaseGasBufferUsdc6 } from '@/config/gas-sponsorship';
+  formatUsdcCheckout,
+  formatUsdcRequiredApprox,
+} from '@/shared/utils/currency-display';
+import {
+  canAffordAnyCreditPack,
+  getUsdcRequiredForPack,
+  hasEnoughUsdcForPack,
+  packUsdcAmount,
+} from '@/features/credits/usdc-for-purchase';
 import { useBuyUsdcOnramp } from '@/hooks/use-buy-usdc-onramp';
 import { useUsdcBalance } from '@/hooks/use-usdc-balance';
 
 const ARBITRUM_ONE_CHAIN_ID = 42_161;
 
-function packUsdcRequiredUsdc6(pack: CreditPackDefinition): number {
-  return pack.usdc6 + getPurchaseGasBufferUsdc6(ARBITRUM_ONE_CHAIN_ID);
-}
-
-function hasEnoughUsdc(
-  usdcBalance: string | null,
-  pack: CreditPackDefinition
-): boolean {
-  if (usdcBalance === null) return false;
-  return Number(usdcBalance) * 1_000_000 >= packUsdcRequiredUsdc6(pack);
-}
-
-function formatUsdcRequired(pack: CreditPackDefinition): string {
-  return (packUsdcRequiredUsdc6(pack) / 1_000_000).toFixed(2);
+interface PendingSync {
+  txHash: `0x${string}`;
+  credits: number;
 }
 
 interface BuyCreditsModalProps {
@@ -52,18 +46,49 @@ export function BuyCreditsModal({ open, onOpenChange }: BuyCreditsModalProps) {
   const { t } = useTranslation();
   const { address } = useAccount({ type: 'sca' });
   const { chain } = useChain();
-  const { purchasePack } = useCredits();
+  const { purchasePack, syncPurchase } = useCredits();
   const { balance: usdcBalance, formatted: usdcFormatted } = useUsdcBalance(
     chain,
     address as `0x${string}` | undefined
   );
   const { openBuyUsdc, isLoading: isOnrampLoading } = useBuyUsdcOnramp();
   const [purchasingId, setPurchasingId] = useState<number | null>(null);
+  const [pendingSync, setPendingSync] = useState<PendingSync | null>(null);
+  const [retryingSync, setRetryingSync] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      setRetryingSync(false);
+    }
+  }, [open]);
 
   const onArbitrum = chain?.id === ARBITRUM_ONE_CHAIN_ID;
   const anyPackUnaffordable =
-    usdcBalance !== null &&
-    CREDIT_PACKS.some((pack) => !hasEnoughUsdc(usdcBalance, pack));
+    usdcBalance !== null && !canAffordAnyCreditPack(usdcBalance);
+
+  const handleRetrySync = async () => {
+    if (!pendingSync) return;
+    setRetryingSync(true);
+    try {
+      const result = await syncPurchase(pendingSync.txHash);
+      if (result.ok) {
+        toast.success(`Added ${pendingSync.credits} credits`);
+        setPendingSync(null);
+        onOpenChange(false);
+      } else {
+        toast.error(result.error ?? 'Sync failed', {
+          description: result.syncPending
+            ? 'Your USDC payment was received. Try syncing again.'
+            : 'A terminal error occurred. Please contact support.',
+        });
+        if (!result.syncPending) {
+          setPendingSync(null);
+        }
+      }
+    } finally {
+      setRetryingSync(false);
+    }
+  };
 
   const handleBuy = async (packId: number) => {
     const pack = CREDIT_PACKS.find((p) => p.id === packId);
@@ -74,19 +99,26 @@ export function BuyCreditsModal({ open, onOpenChange }: BuyCreditsModalProps) {
       return;
     }
 
-    if (!hasEnoughUsdc(usdcBalance, pack)) {
+    if (!hasEnoughUsdcForPack(usdcBalance, pack)) {
+      const required = getUsdcRequiredForPack(pack);
       toast.error('Insufficient USDC', {
-        description: `Need ~$${formatUsdcRequired(pack)} USDC on Arbitrum (includes gas). Use Buy USDC first.`,
+        description: `Need ${formatUsdcRequiredApprox(required)} on Arbitrum (includes gas). Use Buy USDC first.`,
       });
       return;
     }
 
     setPurchasingId(packId);
+    setPendingSync(null);
     try {
       const result = await purchasePack(pack);
       if (result.ok) {
         toast.success(`Added ${pack.credits} credits`);
         onOpenChange(false);
+      } else if (result.syncPending && result.txHash) {
+        setPendingSync({ txHash: result.txHash, credits: pack.credits });
+        toast.warning('Payment received — syncing credits', {
+          description: 'Use Retry sync if credits do not appear shortly.',
+        });
       } else {
         toast.error(result.error ?? 'Purchase failed');
       }
@@ -116,6 +148,32 @@ export function BuyCreditsModal({ open, onOpenChange }: BuyCreditsModalProps) {
             )}
           </DialogDescription>
         </DialogHeader>
+        {pendingSync && (
+          <div className="flex flex-col gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs">
+            <p className="font-medium text-amber-800 dark:text-amber-200">
+              Payment received — credits syncing
+            </p>
+            <p className="text-muted-foreground">
+              Your purchase of {pendingSync.credits} credits is being applied.
+              This is safe to retry — you will not be charged twice.
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="w-fit text-xs"
+              disabled={retryingSync}
+              onClick={() => void handleRetrySync()}
+            >
+              {retryingSync ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+              )}
+              {retryingSync ? 'Syncing…' : 'Retry sync'}
+            </Button>
+          </div>
+        )}
         {!onArbitrum && (
           <p className="text-xs text-amber-600">
             Connect on Arbitrum One to purchase credit packs.
@@ -141,27 +199,32 @@ export function BuyCreditsModal({ open, onOpenChange }: BuyCreditsModalProps) {
         )}
         <div className="flex flex-col gap-2">
           {CREDIT_PACKS.map((pack) => {
-            const affordable = hasEnoughUsdc(usdcBalance, pack);
+            const affordable = hasEnoughUsdcForPack(usdcBalance, pack);
             return (
               <Button
                 key={pack.id}
                 variant="outline"
                 className="relative h-auto flex-col items-start gap-0.5 py-3 text-left"
                 disabled={
-                  purchasingId !== null || !onArbitrum || !affordable
+                  purchasingId !== null ||
+                  pendingSync !== null ||
+                  retryingSync ||
+                  !onArbitrum ||
+                  !affordable
                 }
                 onClick={() => void handleBuy(pack.id)}
               >
                 <span className="flex w-full items-center justify-between font-medium">
                   {pack.name}
-                  <span>${(pack.usdc6 / 1_000_000).toFixed(0)} USDC</span>
+                  <span>{formatUsdcCheckout(packUsdcAmount(pack))}</span>
                 </span>
                 <span className="text-xs text-muted-foreground">
                   {pack.credits} credits · {pack.description}
                 </span>
                 {usdcBalance !== null && !affordable && onArbitrum && (
                   <span className="text-xs text-amber-600">
-                    Need ~${formatUsdcRequired(pack)} USDC total
+                    Need {formatUsdcRequiredApprox(getUsdcRequiredForPack(pack))}{' '}
+                    total
                   </span>
                 )}
                 {purchasingId === pack.id && (
@@ -211,5 +274,5 @@ export function CreditBalanceBadge({ onClick, className }: CreditBalanceBadgePro
 }
 
 export function formatCreditsSummary(credits: number): string {
-  return `${credits} credits (${formatLiveAiTimeFromCredits(credits)} Live AI)`;
+  return `${credits} Flow credits`;
 }
