@@ -1,7 +1,7 @@
-import { Redis } from '@upstash/redis';
+type RedisClient = import('@upstash/redis').Redis;
 
-let redisClient: Redis | null = null;
-let redisInitAttempted = false;
+let redisClient: RedisClient | null = null;
+let redisInitPromise: Promise<RedisClient | null> | null = null;
 
 /**
  * Resolve Upstash/Vercel KV credentials.
@@ -21,25 +21,40 @@ function resolveRedisCredentials(): { url: string; token: string } | null {
   return { url, token };
 }
 
-/** Shared Redis client for credit ledger, promo codes, etc. */
-export function getRedis(): Redis | null {
-  if (redisInitAttempted) return redisClient;
-  redisInitAttempted = true;
-
+async function initRedis(): Promise<RedisClient | null> {
   const creds = resolveRedisCredentials();
-  if (!creds) {
-    redisClient = null;
-    return null;
-  }
+  if (!creds) return null;
 
   try {
-    redisClient = new Redis({ url: creds.url, token: creds.token });
-  } catch {
-    redisClient = null;
+    const { Redis } = await import('@upstash/redis');
+    try {
+      return Redis.fromEnv();
+    } catch {
+      return new Redis({ url: creds.url, token: creds.token });
+    }
+  } catch (e) {
+    console.error('redis init failed', e);
+    return null;
   }
-  return redisClient;
 }
 
+/** Whether Redis credentials are present (does not load @upstash/redis). */
 export function isRedisConfigured(): boolean {
-  return getRedis() !== null;
+  return resolveRedisCredentials() !== null;
+}
+
+/** Shared Redis client for credit ledger, promo codes, etc. Lazy-loads @upstash/redis. */
+export async function getRedis(): Promise<RedisClient | null> {
+  if (redisClient) return redisClient;
+  if (!redisInitPromise) {
+    redisInitPromise = initRedis().then((client) => {
+      if (client) {
+        redisClient = client;
+      } else {
+        redisInitPromise = null;
+      }
+      return client;
+    });
+  }
+  return redisInitPromise;
 }

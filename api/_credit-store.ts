@@ -13,7 +13,7 @@ function processedTxKey(txHash: string): string {
 }
 
 export async function getCreditBalance(address: string): Promise<number> {
-  const redis = getRedis();
+  const redis = await getRedis();
   if (!redis) return 0;
   const raw = await redis.get<number>(balanceKey(address));
   if (typeof raw !== 'number' || !Number.isFinite(raw)) return 0;
@@ -35,7 +35,7 @@ export async function creditFromPurchase(
   txHash: string,
   credits: number
 ): Promise<CreditPurchaseResult> {
-  const redis = getRedis();
+  const redis = await getRedis();
   if (!redis) {
     return { ok: false, creditsAdded: 0, balance: 0, reason: 'disabled' };
   }
@@ -44,24 +44,15 @@ export async function creditFromPurchase(
   }
 
   const txKey = processedTxKey(txHash);
-  const already = await redis.get<string>(txKey);
-  if (already) {
-    const balance = await getCreditBalance(address);
-    return { ok: true, creditsAdded: 0, balance, reason: 'already_processed' };
-  }
-
   const balKey = balanceKey(address);
-  const pipeline = redis.pipeline();
-  pipeline.setnx(txKey, '1');
-  pipeline.incrby(balKey, credits);
-  const results = await pipeline.exec();
 
-  const setOk = results[0] === 1;
+  const setOk = await redis.set(txKey, '1', { nx: true });
   if (!setOk) {
     const balance = await getCreditBalance(address);
     return { ok: true, creditsAdded: 0, balance, reason: 'already_processed' };
   }
 
+  await redis.incrby(balKey, credits);
   const balance = await getCreditBalance(address);
   return { ok: true, creditsAdded: credits, balance };
 }
@@ -77,7 +68,7 @@ export async function addCredits(
   address: string,
   credits: number
 ): Promise<number> {
-  const redis = getRedis();
+  const redis = await getRedis();
   if (!redis || credits <= 0) return await getCreditBalance(address);
   await redis.incrby(balanceKey(address), credits);
   return await getCreditBalance(address);
@@ -91,7 +82,7 @@ export async function debitCredits(
   amount: number,
   idempotencyKey?: string
 ): Promise<DebitResult> {
-  const redis = getRedis();
+  const redis = await getRedis();
   if (!redis) {
     return { ok: false, balance: 0, debited: 0, reason: 'disabled' };
   }

@@ -16,6 +16,7 @@ import {
 } from '@/config/credits';
 import {
   buildBuyCreditsCalldata,
+  classifyPayFailure,
 } from '@/features/credits/api/buy-credits';
 import {
   buildCreditsAuthMessage,
@@ -27,6 +28,7 @@ const ARBITRUM_ONE_CHAIN_ID = 42_161;
 interface BalanceResponse {
   balance: number;
   configured: boolean;
+  degraded?: boolean;
 }
 
 interface DebitResponse {
@@ -60,15 +62,33 @@ interface ClaimMembershipResponse {
 async function fetchBalance(address: `0x${string}`): Promise<BalanceResponse> {
   const url = new URL('/api/credits-balance', window.location.origin);
   url.searchParams.set('address', address);
-  const res = await fetch(url.toString());
-  if (!res.ok) return { balance: 0, configured: false };
-  return (await res.json()) as BalanceResponse;
+  try {
+    const res = await fetch(url.toString());
+    if (!res.ok) {
+      return { balance: 0, configured: false, degraded: true };
+    }
+    return (await res.json()) as BalanceResponse;
+  } catch {
+    return { balance: 0, configured: false, degraded: true };
+  }
+}
+
+function formatPurchaseError(error: unknown): string {
+  const reason = classifyPayFailure(error);
+  if (reason === 'insufficient_balance') {
+    return 'Insufficient USDC on Arbitrum. Use Buy USDC to top up first.';
+  }
+  if (reason === 'session_limit_exceeded') {
+    return 'Session spending limit exceeded. Try again later.';
+  }
+  return error instanceof Error ? error.message : 'Purchase failed';
 }
 
 export interface UseCreditsResult {
   balance: number;
   configured: boolean;
   isLoading: boolean;
+  isDegraded: boolean;
   hasCredits: boolean;
   refreshBalance: () => void;
   purchasePack: (pack: CreditPackDefinition) => Promise<{ ok: boolean; error?: string }>;
@@ -156,8 +176,7 @@ export function useCredits(): UseCreditsResult {
         }
         return { ok: true };
       } catch (e) {
-        const msg = e instanceof Error ? e.message : 'Purchase failed';
-        return { ok: false, error: msg };
+        return { ok: false, error: formatPurchaseError(e) };
       }
     },
     [
@@ -236,11 +255,13 @@ export function useCredits(): UseCreditsResult {
   );
 
   const balance = data?.balance ?? 0;
+  const isDegraded = data?.degraded === true;
 
   return {
     balance,
     configured: data?.configured ?? false,
     isLoading,
+    isDegraded,
     hasCredits: balance > 0,
     refreshBalance,
     purchasePack,
