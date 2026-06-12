@@ -1,12 +1,12 @@
-import { useCallback, useRef } from 'react';
+import { useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   useAccount,
   useChain,
-  useSendUserOperation,
   useSignMessage,
   useSmartAccountClient,
 } from '@account-kit/react';
+import { useSmartWalletOps } from '@/hooks/use-smart-wallet-ops';
 import { encodeFunctionData, erc20Abi, maxUint256 } from 'viem';
 import { getPaymentContractAddress } from '@/config/billing';
 import { USDC_ADDRESS_BY_CHAIN_ID } from '@/config/chains';
@@ -92,30 +92,7 @@ export function useCredits(): UseCreditsResult {
   const paymentContract = getPaymentContractAddress();
   const usdcAddress = USDC_ADDRESS_BY_CHAIN_ID[ARBITRUM_ONE_CHAIN_ID];
 
-  const pendingPurchaseRef = useRef<{
-    resolve: (hash: string) => void;
-    reject: (error: Error) => void;
-  } | null>(null);
-
-  const { sendUserOperation } = useSendUserOperation({
-    client,
-    waitForTxn: true,
-    onSuccess: (data) => {
-      const hash = data?.hash;
-      if (pendingPurchaseRef.current && hash) {
-        pendingPurchaseRef.current.resolve(hash);
-        pendingPurchaseRef.current = null;
-      }
-    },
-    onError: (err) => {
-      if (pendingPurchaseRef.current) {
-        pendingPurchaseRef.current.reject(
-          err instanceof Error ? err : new Error(String(err))
-        );
-        pendingPurchaseRef.current = null;
-      }
-    },
-  });
+  const { sendOps } = useSmartWalletOps(client ?? undefined);
 
   const { data, isLoading } = useQuery({
     queryKey: ['credits-balance', address],
@@ -162,15 +139,10 @@ export function useCredits(): UseCreditsResult {
           args: [paymentContract, maxUint256],
         });
 
-        const txHash = await new Promise<string>((resolve, reject) => {
-          pendingPurchaseRef.current = { resolve, reject };
-          sendUserOperation({
-            uo: [
-              { target: usdcAddress, data: approveData, value: 0n },
-              { target: paymentContract, data: buyData, value: 0n },
-            ],
-          });
-        });
+        const { txHash } = await sendOps([
+          { target: usdcAddress, data: approveData, value: 0n },
+          { target: paymentContract, data: buyData, value: 0n },
+        ]);
 
         const syncRes = await fetch('/api/credits-sync-purchase', {
           method: 'POST',
@@ -194,7 +166,7 @@ export function useCredits(): UseCreditsResult {
       client,
       paymentContract,
       refreshBalance,
-      sendUserOperation,
+      sendOps,
       usdcAddress,
     ]
   );
