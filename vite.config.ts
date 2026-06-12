@@ -48,6 +48,8 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
+    // Prevent duplicate React copies and keep a single module graph for hooks.
+    dedupe: ['react', 'react-dom', 'react/jsx-runtime', 'react/jsx-dev-runtime'],
   },
   server: {
     port: 5173,
@@ -141,6 +143,15 @@ export default defineConfig({
             return 'feature-prompt-engine';
           }
 
+          // i18n stack must live with React so shared CJS interop helpers are not hoisted
+          // into app chunks (avoids react-vendor <-> feature-generative circular imports).
+          if (
+            id.includes('node_modules/i18next') ||
+            id.includes('node_modules/react-i18next') ||
+            id.includes('node_modules/i18next-browser-languagedetector')
+          ) {
+            return 'react-vendor';
+          }
           // React must be in its own chunk, loaded first to ensure proper initialization
           // This prevents "Cannot set properties of undefined" errors with React 19.2 features
           if (id.includes('node_modules/react-dom')) {
@@ -148,6 +159,14 @@ export default defineConfig({
           }
           if (id.includes('node_modules/react/')) {
             return 'react-vendor';
+          }
+          // sonner is imported from main.tsx before the app tree mounts
+          if (id.includes('node_modules/sonner')) {
+            return 'react-vendor';
+          }
+          // Locale JSON and bootstrap — separate from entry to avoid bloating index chunk
+          if (id.includes('/src/i18n/')) {
+            return 'i18n-vendor';
           }
           // Router framework
           if (id.includes('@tanstack/react-router')) {

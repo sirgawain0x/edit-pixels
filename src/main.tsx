@@ -1,7 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { toast } from 'sonner';
-import '@/i18n';
 import { App } from './app';
 import { initializeDebugUtils } from '@/app/debug';
 import { createLogger } from '@/shared/logging/logger';
@@ -66,9 +65,12 @@ if (!rootElement) {
   throw new Error('Root element not found');
 }
 
-createRoot(rootElement).render(
-  <StrictMode>
-    <App />
-  </StrictMode>
-);
+// Load i18n after React vendor chunk is ready — avoids circular chunk init with UI libs.
+void import('@/i18n').then(() => {
+  createRoot(rootElement).render(
+    <StrictMode>
+      <App />
+    </StrictMode>
+  );
+});
 
