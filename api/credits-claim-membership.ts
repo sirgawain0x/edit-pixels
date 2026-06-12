@@ -29,6 +29,7 @@ const PIXELS_PREMIUM_LOCK_DEFAULT =
   '0xE91BD97247fdAd39B95221BC26795a4a4A01B332' as `0x${string}`;
 
 const CLAIM_WINDOW_SECONDS = 30 * 24 * 60 * 60;
+/** Subscriber bonus Flow credits per claim (not Daydream wholesale capacity). Override via MEMBERSHIP_MONTHLY_CREDITS. */
 const DEFAULT_MONTHLY_CREDITS = 100;
 
 function getLockAddress(): `0x${string}` {

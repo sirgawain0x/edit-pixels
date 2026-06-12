@@ -18,6 +18,7 @@ import {
   buildBuyCreditsCalldata,
   classifyPayFailure,
 } from '@/features/credits/api/buy-credits';
+import { syncPurchaseCredits } from '@/features/credits/api/sync-purchase';
 import {
   buildCreditsAuthMessage,
   generateCreditsNonce,
@@ -45,11 +46,11 @@ interface RedeemResponse {
   reason?: string;
 }
 
-interface SyncPurchaseResponse {
+export interface PurchasePackResult {
   ok: boolean;
-  creditsAdded: number;
-  balance: number;
-  reason?: string;
+  error?: string;
+  txHash?: `0x${string}`;
+  syncPending?: boolean;
 }
 
 interface ClaimMembershipResponse {
@@ -91,7 +92,9 @@ export interface UseCreditsResult {
   isDegraded: boolean;
   hasCredits: boolean;
   refreshBalance: () => void;
-  purchasePack: (pack: CreditPackDefinition) => Promise<{ ok: boolean; error?: string }>;
+  purchasePack: (pack: CreditPackDefinition) => Promise<PurchasePackResult>;
+  /** Re-sync credits from a completed on-chain buyCredits tx (idempotent). */
+  syncPurchase: (txHash: `0x${string}`) => Promise<PurchasePackResult>;
   debitCredits: (
     amount: number,
     reason: 'live_ai' | 'flow_video' | 'flow_image',
@@ -140,8 +143,30 @@ export function useCredits(): UseCreditsResult {
     [address, client, signMessageAsync]
   );
 
+  const syncPurchase = useCallback(
+    async (txHash: `0x${string}`): Promise<PurchasePackResult> => {
+      if (!address) {
+        return { ok: false, error: 'Connect wallet on Arbitrum' };
+      }
+      const syncBody = await syncPurchaseCredits(address, txHash);
+      refreshBalance();
+      if (syncBody.ok) {
+        return { ok: true, txHash };
+      }
+      return {
+        ok: false,
+        txHash,
+        syncPending: syncBody.syncPending,
+        error: syncBody.syncPending
+          ? 'Payment received — credits are still syncing. Retry in a moment.'
+          : (syncBody.reason ?? 'Sync failed'),
+      };
+    },
+    [address, refreshBalance]
+  );
+
   const purchasePack = useCallback(
-    async (pack: CreditPackDefinition): Promise<{ ok: boolean; error?: string }> => {
+    async (pack: CreditPackDefinition): Promise<PurchasePackResult> => {
       if (!client || !address || chain?.id !== ARBITRUM_ONE_CHAIN_ID) {
         return { ok: false, error: 'Connect wallet on Arbitrum' };
       }
@@ -164,17 +189,15 @@ export function useCredits(): UseCreditsResult {
           { target: paymentContract, data: buyData, value: 0n },
         ]);
 
-        const syncRes = await fetch('/api/credits-sync-purchase', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ address, txHash }),
-        });
-        const syncBody = (await syncRes.json()) as SyncPurchaseResponse;
-        refreshBalance();
-        if (!syncBody.ok) {
-          return { ok: false, error: syncBody.reason ?? 'Sync failed' };
+        const syncResult = await syncPurchase(txHash);
+        if (!syncResult.ok) {
+          return {
+            ...syncResult,
+            txHash,
+            syncPending: syncResult.syncPending ?? true,
+          };
         }
-        return { ok: true };
+        return { ok: true, txHash };
       } catch (e) {
         return { ok: false, error: formatPurchaseError(e) };
       }
@@ -184,8 +207,8 @@ export function useCredits(): UseCreditsResult {
       chain?.id,
       client,
       paymentContract,
-      refreshBalance,
       sendOps,
+      syncPurchase,
       usdcAddress,
     ]
   );
@@ -265,6 +288,7 @@ export function useCredits(): UseCreditsResult {
     hasCredits: balance > 0,
     refreshBalance,
     purchasePack,
+    syncPurchase,
     debitCredits,
     redeemPromo,
     claimMembershipCredits,
