@@ -33,7 +33,7 @@ export async function createPromoCode(
   code: string,
   meta: PromoCodeMeta
 ): Promise<boolean> {
-  const redis = getRedis();
+  const redis = await getRedis();
   if (!redis) return false;
   const normalized = code.toUpperCase();
   await redis.set(promoMetaKey(normalized), JSON.stringify(meta));
@@ -57,7 +57,7 @@ export async function redeemPromoCode(
   code: string,
   address: string
 ): Promise<RedeemPromoResult> {
-  const redis = getRedis();
+  const redis = await getRedis();
   if (!redis) {
     return { ok: false, creditsGranted: 0, balance: 0, reason: 'disabled' };
   }

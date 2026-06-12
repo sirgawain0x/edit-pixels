@@ -104,7 +104,7 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
-    const redis = getRedis();
+    const redis = await getRedis();
     if (!redis) {
       return Response.json({ ok: false, reason: 'disabled' }, { status: 503 });
     }

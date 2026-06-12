@@ -13,7 +13,7 @@ function processedTxKey(txHash: string): string {
 }
 
 export async function getCreditBalance(address: string): Promise<number> {
-  const redis = getRedis();
+  const redis = await getRedis();
   if (!redis) return 0;
   const raw = await redis.get<number>(balanceKey(address));
   if (typeof raw !== 'number' || !Number.isFinite(raw)) return 0;
@@ -35,7 +35,7 @@ export async function creditFromPurchase(
   txHash: string,
   credits: number
 ): Promise<CreditPurchaseResult> {
-  const redis = getRedis();
+  const redis = await getRedis();
   if (!redis) {
     return { ok: false, creditsAdded: 0, balance: 0, reason: 'disabled' };
   }
@@ -77,7 +77,7 @@ export async function addCredits(
   address: string,
   credits: number
 ): Promise<number> {
-  const redis = getRedis();
+  const redis = await getRedis();
   if (!redis || credits <= 0) return await getCreditBalance(address);
   await redis.incrby(balanceKey(address), credits);
   return await getCreditBalance(address);
@@ -91,7 +91,7 @@ export async function debitCredits(
   amount: number,
   idempotencyKey?: string
 ): Promise<DebitResult> {
-  const redis = getRedis();
+  const redis = await getRedis();
   if (!redis) {
     return { ok: false, balance: 0, debited: 0, reason: 'disabled' };
   }

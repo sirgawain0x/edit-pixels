@@ -18,12 +18,19 @@ const gasPolicyType = (
 )?.toLowerCase();
 
 /** Cap on USDC spent on gas per user operation (6 decimals). Default $1. */
-const DEFAULT_MAX_GAS_USDC6 = 1_000_000n;
+export const DEFAULT_MAX_GAS_USDC6 = 1_000_000;
 
 function getMaxGasUsdc6(): bigint {
   const raw = import.meta.env.VITE_ALCHEMY_GAS_MAX_USDC6 as string | undefined;
   if (raw && /^\d+$/.test(raw)) return BigInt(raw);
-  return DEFAULT_MAX_GAS_USDC6;
+  return BigInt(DEFAULT_MAX_GAS_USDC6);
+}
+
+/** Extra USDC (6 decimals) to reserve for ERC-20 gas when buying credit packs. */
+export function getPurchaseGasBufferUsdc6(chainId: number): number {
+  if (gasPolicyType !== 'erc20' || !policyId) return 0;
+  if (!(chainId in USDC_ADDRESS_BY_CHAIN_ID)) return 0;
+  return Number(getMaxGasUsdc6());
 }
 
 export interface Erc20PaymasterCapabilities {

@@ -1,9 +1,11 @@
-import { createPublicClient, http } from 'viem';
-import { arbitrum } from 'viem/chains';
+import type { PublicClient } from 'viem';
+import {
+  ADDRESS_REGEX,
+  HEX_SIG_REGEX,
+  MAX_SIG_AGE_MS,
+} from './_address';
 
-export const ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
-export const HEX_SIG_REGEX = /^0x[a-fA-F0-9]+$/;
-export const MAX_SIG_AGE_MS = 5 * 60 * 1000;
+export { ADDRESS_REGEX, HEX_SIG_REGEX, MAX_SIG_AGE_MS };
 
 function getArbitrumRpcUrl(): string {
   const apiKey =
@@ -12,10 +14,12 @@ function getArbitrumRpcUrl(): string {
   return 'https://arb1.arbitrum.io/rpc';
 }
 
-let publicClient: ReturnType<typeof createPublicClient> | null = null;
+let publicClient: PublicClient | null = null;
 
-function getPublicClient() {
+async function getPublicClient(): Promise<PublicClient> {
   if (!publicClient) {
+    const { createPublicClient, http } = await import('viem');
+    const { arbitrum } = await import('viem/chains');
     publicClient = createPublicClient({
       chain: arbitrum,
       transport: http(getArbitrumRpcUrl()),
@@ -52,7 +56,8 @@ export async function verifyWalletMessage(
   signature: string
 ): Promise<boolean> {
   try {
-    return await getPublicClient().verifyMessage({
+    const client = await getPublicClient();
+    return await client.verifyMessage({
       address: address as `0x${string}`,
       message,
       signature: signature as `0x${string}`,

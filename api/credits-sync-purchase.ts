@@ -6,7 +6,7 @@
 
 import { createPublicClient, decodeEventLog, http, parseAbiItem } from 'viem';
 import { arbitrum } from 'viem/chains';
-import { ADDRESS_REGEX } from './_wallet-auth';
+import { ADDRESS_REGEX } from './_address';
 import { creditFromPurchase, isCreditStoreConfigured } from './_credit-store';
 
 const CREDITS_PURCHASED = parseAbiItem(
