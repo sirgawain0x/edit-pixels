@@ -37,10 +37,20 @@ function getArbitrumRpcUrl(): string {
   return 'https://arb1.arbitrum.io/rpc';
 }
 
+type CreditsPurchasedLog = {
+  eventName: 'CreditsPurchased';
+  args: {
+    buyer: `0x${string}`;
+    packId: number;
+    credits: bigint;
+    usdcPaid: bigint;
+  };
+};
+
 function findCreditsPurchasedLog(
   logs: Log[],
   contractAddress: string
-): ReturnType<typeof decodeEventLog> | null {
+): CreditsPurchasedLog | null {
   const target = contractAddress.toLowerCase();
   for (const log of logs) {
     if (log.address.toLowerCase() !== target) continue;
@@ -51,7 +61,7 @@ function findCreditsPurchasedLog(
         topics: log.topics,
       });
       if (decoded.eventName === 'CreditsPurchased') {
-        return decoded;
+        return decoded as CreditsPurchasedLog;
       }
     } catch {
       continue;
@@ -117,7 +127,7 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
-    const buyer = (decoded.args.buyer as string).toLowerCase();
+    const buyer = decoded.args.buyer.toLowerCase();
     const packId = Number(decoded.args.packId);
     const credits = Number(decoded.args.credits);
     const usdcPaid = Number(decoded.args.usdcPaid);
