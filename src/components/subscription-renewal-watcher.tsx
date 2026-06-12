@@ -11,10 +11,15 @@ import {
 } from '@/infrastructure/unlock/membership';
 import { useUsdcBalance } from '@/hooks/use-usdc-balance';
 import { useUnlockCheckout } from '@/hooks/use-unlock-checkout';
+import {
+  formatUsdRate,
+  LIVE_AI_PREMIUM_HOURLY_USD,
+  PIXELS_PREMIUM_MONTHLY_USD,
+} from '@/shared/utils/currency-display';
 
 const DAY_SECONDS = 86_400;
 const RENEWAL_WINDOW_DAYS = 3;
-const LOW_BALANCE_THRESHOLD_USDC = 30;
+const LOW_BALANCE_THRESHOLD_USDC = PIXELS_PREMIUM_MONTHLY_USD;
 
 interface SubStatus {
   hasValidKey: boolean;
@@ -72,8 +77,7 @@ export function SubscriptionRenewalWatcher() {
     if (keyHadExpired && !shownExpiredRef.current) {
       shownExpiredRef.current = true;
       toast.error('Pixels Premium expired', {
-        description:
-          'Renew to restore the $1.50/hr rate and credit discounts.',
+        description: `Renew to restore the ${formatUsdRate(LIVE_AI_PREMIUM_HOURLY_USD, 'hr')} rate and credit discounts.`,
         action: { label: 'Renew', onClick: openSubscribeCheckout },
         duration: 12_000,
       });
