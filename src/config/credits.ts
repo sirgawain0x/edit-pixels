@@ -7,7 +7,7 @@ import type {
 /** Milli-credits (3 decimal places) for fractional Live AI debits. 1000 milli = 1 credit. */
 export const MILLI_CREDITS_PER_CREDIT = 1000;
 
-/** ~1.11 credits/min → 50 credits ≈ 45 min Live AI. */
+/** ~1.11 credits/min reference rate (legacy Live AI equivalence; Live AI bills USDC via Superfluid). */
 export const LIVE_AI_MILLI_CREDITS_PER_MINUTE = 1110;
 
 /** Debit interval while Live AI is streaming (ms). */
@@ -32,21 +32,21 @@ export const CREDIT_PACKS: readonly CreditPackDefinition[] = [
     name: 'Starter',
     usdc6: 5_000_000,
     credits: 50,
-    description: '~45 min Live AI',
+    description: '~10 Flow image gens',
   },
   {
     id: 1,
     name: 'Pro',
     usdc6: 15_000_000,
     credits: 175,
-    description: '~2.6 hr Live AI',
+    description: '~35 Flow image gens',
   },
   {
     id: 2,
     name: 'Studio',
     usdc6: 40_000_000,
     credits: 500,
-    description: '~7.5 hr Live AI',
+    description: '~100 Flow image gens',
   },
 ] as const;
 
@@ -54,7 +54,7 @@ export function getCreditPack(packId: number): CreditPackDefinition | undefined 
   return CREDIT_PACKS.find((p) => p.id === packId);
 }
 
-/** Estimated Live AI minutes remaining from credit balance. */
+/** Estimated minutes at legacy Live AI credit rate (informational only). */
 export function creditsToLiveAiMinutes(credits: number): number {
   if (credits <= 0) return 0;
   const milli = credits * MILLI_CREDITS_PER_CREDIT;

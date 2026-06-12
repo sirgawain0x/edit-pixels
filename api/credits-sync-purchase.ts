@@ -4,9 +4,16 @@
  * Body: { address, txHash }
  */
 
-import { createPublicClient, decodeEventLog, http, parseAbiItem } from 'viem';
+import {
+  createPublicClient,
+  decodeEventLog,
+  http,
+  parseAbiItem,
+  type Log,
+} from 'viem';
 import { arbitrum } from 'viem/chains';
 import { ADDRESS_REGEX } from './_address';
+import { validateCreditPurchaseEvent } from './_credit-packs';
 import { creditFromPurchase, isCreditStoreConfigured } from './_credit-store';
 
 const CREDITS_PURCHASED = parseAbiItem(
@@ -28,6 +35,29 @@ function getArbitrumRpcUrl(): string {
     process.env.ALCHEMY_API_KEY || process.env.VITE_ALCHEMY_API_KEY;
   if (apiKey) return `https://arb-mainnet.g.alchemy.com/v2/${apiKey}`;
   return 'https://arb1.arbitrum.io/rpc';
+}
+
+function findCreditsPurchasedLog(
+  logs: Log[],
+  contractAddress: string
+): ReturnType<typeof decodeEventLog> | null {
+  const target = contractAddress.toLowerCase();
+  for (const log of logs) {
+    if (log.address.toLowerCase() !== target) continue;
+    try {
+      const decoded = decodeEventLog({
+        abi: [CREDITS_PURCHASED],
+        data: log.data,
+        topics: log.topics,
+      });
+      if (decoded.eventName === 'CreditsPurchased') {
+        return decoded;
+      }
+    } catch {
+      continue;
+    }
+  }
+  return null;
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -79,23 +109,8 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json({ ok: false, reason: 'tx_failed' }, { status: 400 });
     }
 
-    const log = receipt.logs.find(
-      (l) => l.address.toLowerCase() === contractAddress.toLowerCase()
-    );
-    if (!log) {
-      return Response.json(
-        { ok: false, reason: 'event_not_found' },
-        { status: 400 }
-      );
-    }
-
-    const decoded = decodeEventLog({
-      abi: [CREDITS_PURCHASED],
-      data: log.data,
-      topics: log.topics,
-    });
-
-    if (decoded.eventName !== 'CreditsPurchased') {
+    const decoded = findCreditsPurchasedLog(receipt.logs, contractAddress);
+    if (!decoded || decoded.eventName !== 'CreditsPurchased') {
       return Response.json(
         { ok: false, reason: 'event_not_found' },
         { status: 400 }
@@ -103,11 +118,26 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     const buyer = (decoded.args.buyer as string).toLowerCase();
+    const packId = Number(decoded.args.packId);
     const credits = Number(decoded.args.credits);
+    const usdcPaid = Number(decoded.args.usdcPaid);
 
     if (buyer !== address.toLowerCase()) {
       return Response.json(
         { ok: false, reason: 'buyer_mismatch' },
+        { status: 400 }
+      );
+    }
+
+    if (!validateCreditPurchaseEvent(packId, credits, usdcPaid)) {
+      console.error('credits-sync-purchase pack mismatch', {
+        packId,
+        credits,
+        usdcPaid,
+        txHash,
+      });
+      return Response.json(
+        { ok: false, reason: 'pack_mismatch' },
         { status: 400 }
       );
     }
