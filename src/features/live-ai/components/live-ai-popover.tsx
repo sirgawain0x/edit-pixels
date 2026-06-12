@@ -43,6 +43,11 @@ import { isSuperfluidConfigured } from '@/config/superfluid';
 import { useLiveAiFunding } from '../hooks/use-live-ai-funding';
 import { useSuperfluidBilling } from '../hooks/use-superfluid-billing';
 import { UsageMeter } from './usage-meter';
+import {
+  formatUsdPrice,
+  formatUsdRate,
+  LIVE_AI_DAILY_SPEND_CAP_USD,
+} from '@/shared/utils/currency-display';
 import type { StreamData, LoraDict, IpAdapterConfig } from '../types';
 
 // Dreamshaper 8 and Open Journey v4 are temporarily hidden: they fail to cold-start reliably.
@@ -535,7 +540,7 @@ export function LiveAIPanelContent() {
               <p className="text-xs text-muted-foreground mb-2">
                 Camera will be used for AI generation. Live AI bills USDC per second via Superfluid
                 {hourlyUsdc > 0 && !fundingLoading
-                  ? ` (~$${hourlyUsdc.toFixed(2)}/hr${isPremiumMember ? ', premium rate' : ''}).`
+                  ? ` (~${formatUsdRate(hourlyUsdc, 'hr')}${isPremiumMember ? ', premium rate' : ''}).`
                   : '.'}{' '}
                 The payment stream is confirmed on-chain first; the AI session
                 starts only after that.
@@ -1173,8 +1178,8 @@ function LiveAISessionWithBroadcastCore({
         <div className="mb-2 p-2 rounded-md bg-destructive/10 border border-destructive/20 text-xs">
           {billingError === 'session_limit_exceeded' && (
             <p>
-              You&apos;ve hit the $50 daily spend cap. Re-authorize your session
-              key to continue, or wait until the cap resets.
+              You&apos;ve hit the {formatUsdPrice(LIVE_AI_DAILY_SPEND_CAP_USD)} daily spend
+              cap. Re-authorize your session key to continue, or wait until the cap resets.
             </p>
           )}
           {billingError === 'rpc_or_unknown' && (

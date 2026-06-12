@@ -5,6 +5,7 @@ import { Sparkles, Settings2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { usePremiumMembership } from '@/features/live-ai/hooks/use-premium-membership';
 import { useUnlockCheckout } from '@/hooks/use-unlock-checkout';
+import { formatSubscribeCta } from '@/shared/utils/currency-display';
 
 interface SubscribeButtonProps {
   variant?: 'default' | 'outline' | 'ghost' | 'secondary';
@@ -57,7 +58,7 @@ export function SubscribeButton({
       onClick={openSubscribeCheckout}
     >
       <Sparkles className="h-4 w-4 shrink-0" />
-      <span>Subscribe $30/mo</span>
+      <span>{formatSubscribeCta()}</span>
     </Button>
   );
 }

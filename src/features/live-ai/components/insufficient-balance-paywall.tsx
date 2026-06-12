@@ -5,6 +5,11 @@ import { DollarSign, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useBuyUsdcOnramp } from '@/hooks/use-buy-usdc-onramp';
 import { useUnlockCheckout } from '@/hooks/use-unlock-checkout';
+import {
+  formatSubscribeCta,
+  formatUsdRate,
+  LIVE_AI_PREMIUM_HOURLY_USD,
+} from '@/shared/utils/currency-display';
 import { usePremiumMembership } from '../hooks/use-premium-membership';
 
 /**
@@ -30,7 +35,8 @@ export function InsufficientBalancePaywall() {
       <p className="font-medium">Top up USDC on Arbitrum to continue.</p>
       {showSubscribe && (
         <p className="text-muted-foreground">
-          Or subscribe to lock in the $1.50/hr rate — 50% off retail.
+          Or subscribe to lock in the {formatUsdRate(LIVE_AI_PREMIUM_HOURLY_USD, 'hr')}{' '}
+          rate — 50% off retail.
         </p>
       )}
       <div className="flex flex-wrap gap-2">
@@ -51,7 +57,7 @@ export function InsufficientBalancePaywall() {
             onClick={openSubscribeCheckout}
           >
             <Sparkles className="h-3.5 w-3.5" aria-hidden />
-            Subscribe $30/mo
+            {formatSubscribeCta()}
           </Button>
         )}
       </div>

@@ -6,19 +6,16 @@ import { useLiveSessionStore } from '../stores/live-session-store';
 import { usePremiumMembership } from '../hooks/use-premium-membership';
 import { useAccount } from '@account-kit/react';
 import { hourlyUsdcFromInterval } from '@/config/superfluid';
+import {
+  formatUsdRate,
+  formatUsdStreamedInUsdc,
+} from '@/shared/utils/currency-display';
 
 function formatElapsed(ms: number): string {
   const totalSec = Math.floor(ms / 1000);
   const m = Math.floor(totalSec / 60);
   const s = totalSec % 60;
   return `${m}:${String(s).padStart(2, '0')}`;
-}
-
-function formatUsd(amount: number): string {
-  return amount.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
 }
 
 /**
@@ -61,12 +58,12 @@ export function UsageMeter() {
           <DollarSign className="h-3 w-3" aria-hidden />
           {isLoading
             ? '…'
-            : `$${formatUsd(hourlyRate)}/hr${isPremiumMember ? ' · premium' : ''}`}
+            : `${formatUsdRate(hourlyRate, 'hr')}${isPremiumMember ? ' · premium' : ''}`}
         </span>
       </div>
       {!isLoading && (
         <p className="text-muted-foreground">
-          ~${formatUsd(estimatedSpent)} streamed via Superfluid
+          {formatUsdStreamedInUsdc(estimatedSpent)}
         </p>
       )}
     </div>

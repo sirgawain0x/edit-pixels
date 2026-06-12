@@ -18,29 +18,21 @@ import {
 } from '@/features/credits/hooks/use-credits';
 import {
   formatLiveAiTimeFromCredits,
-  type CreditPackDefinition,
 } from '@/config/credits';
-import { getPurchaseGasBufferUsdc6 } from '@/config/gas-sponsorship';
+import {
+  formatUsdcCheckout,
+  formatUsdcRequiredApprox,
+} from '@/shared/utils/currency-display';
+import {
+  canAffordAnyCreditPack,
+  formatUsdcRequiredForPack,
+  hasEnoughUsdcForPack,
+  packUsdcAmount,
+} from '@/features/credits/usdc-for-purchase';
 import { useBuyUsdcOnramp } from '@/hooks/use-buy-usdc-onramp';
 import { useUsdcBalance } from '@/hooks/use-usdc-balance';
 
 const ARBITRUM_ONE_CHAIN_ID = 42_161;
-
-function packUsdcRequiredUsdc6(pack: CreditPackDefinition): number {
-  return pack.usdc6 + getPurchaseGasBufferUsdc6(ARBITRUM_ONE_CHAIN_ID);
-}
-
-function hasEnoughUsdc(
-  usdcBalance: string | null,
-  pack: CreditPackDefinition
-): boolean {
-  if (usdcBalance === null) return false;
-  return Number(usdcBalance) * 1_000_000 >= packUsdcRequiredUsdc6(pack);
-}
-
-function formatUsdcRequired(pack: CreditPackDefinition): string {
-  return (packUsdcRequiredUsdc6(pack) / 1_000_000).toFixed(2);
-}
 
 interface BuyCreditsModalProps {
   open: boolean;
@@ -60,8 +52,7 @@ export function BuyCreditsModal({ open, onOpenChange }: BuyCreditsModalProps) {
 
   const onArbitrum = chain?.id === ARBITRUM_ONE_CHAIN_ID;
   const anyPackUnaffordable =
-    usdcBalance !== null &&
-    CREDIT_PACKS.some((pack) => !hasEnoughUsdc(usdcBalance, pack));
+    usdcBalance !== null && !canAffordAnyCreditPack(usdcBalance);
 
   const handleBuy = async (packId: number) => {
     const pack = CREDIT_PACKS.find((p) => p.id === packId);
@@ -72,9 +63,10 @@ export function BuyCreditsModal({ open, onOpenChange }: BuyCreditsModalProps) {
       return;
     }
 
-    if (!hasEnoughUsdc(usdcBalance, pack)) {
+    if (!hasEnoughUsdcForPack(usdcBalance, pack)) {
+      const required = formatUsdcRequiredForPack(pack);
       toast.error('Insufficient USDC', {
-        description: `Need ~$${formatUsdcRequired(pack)} USDC on Arbitrum (includes gas). Use Buy USDC first.`,
+        description: `Need ${formatUsdcRequiredApprox(Number(required))} on Arbitrum (includes gas). Use Buy USDC first.`,
       });
       return;
     }
@@ -139,7 +131,7 @@ export function BuyCreditsModal({ open, onOpenChange }: BuyCreditsModalProps) {
         )}
         <div className="flex flex-col gap-2">
           {CREDIT_PACKS.map((pack) => {
-            const affordable = hasEnoughUsdc(usdcBalance, pack);
+            const affordable = hasEnoughUsdcForPack(usdcBalance, pack);
             return (
               <Button
                 key={pack.id}
@@ -152,14 +144,15 @@ export function BuyCreditsModal({ open, onOpenChange }: BuyCreditsModalProps) {
               >
                 <span className="flex w-full items-center justify-between font-medium">
                   {pack.name}
-                  <span>${(pack.usdc6 / 1_000_000).toFixed(0)} USDC</span>
+                  <span>{formatUsdcCheckout(packUsdcAmount(pack))}</span>
                 </span>
                 <span className="text-xs text-muted-foreground">
                   {pack.credits} credits · {pack.description}
                 </span>
                 {usdcBalance !== null && !affordable && onArbitrum && (
                   <span className="text-xs text-amber-600">
-                    Need ~${formatUsdcRequired(pack)} USDC total
+                    Need {formatUsdcRequiredApprox(Number(formatUsdcRequiredForPack(pack)))}{' '}
+                    total
                   </span>
                 )}
                 {purchasingId === pack.id && (

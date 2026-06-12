@@ -37,6 +37,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { alchemyConfig, SWITCHABLE_CHAINS } from '@/config/alchemy';
+import { canAffordAnyCreditPack } from '@/features/credits/usdc-for-purchase';
+import { formatSubscribeCta } from '@/shared/utils/currency-display';
 import { useUsdcBalance } from '@/hooks/use-usdc-balance';
 
 function truncateAddress(address: string): string {
@@ -89,7 +91,7 @@ function WalletConnectButtonInner({
   const { logout } = useLogout();
   const { address } = useAccount({ type: 'LightAccount' });
   const { chain, setChain, isSettingChain } = useChain();
-  const { formatted: usdcFormatted } = useUsdcBalance(
+  const { balance: usdcBalance, formatted: usdcFormatted } = useUsdcBalance(
     chain,
     address as `0x${string}` | undefined
   );
@@ -183,6 +185,7 @@ function WalletConnectButtonInner({
   }
 
   const displayText = address ? truncateAddress(address) : 'Connected';
+  const canBuyCredits = canAffordAnyCreditPack(usdcBalance);
 
   return (
     <>
@@ -210,10 +213,34 @@ function WalletConnectButtonInner({
             </DropdownMenuItem>
           )}
           <DropdownMenuItem disabled className="text-muted-foreground">
+            USDC: {usdcFormatted}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={handleBuyUsdc}
+            disabled={isOnrampLoading}
+            className="flex cursor-pointer items-center gap-2"
+            aria-label="Buy USDC"
+          >
+            <DollarSign className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+            {isOnrampLoading ? 'Opening…' : 'Buy USDC'}
+          </DropdownMenuItem>
+          {isUnlockConfigured && !isPremiumMember && (
+            <DropdownMenuItem
+              onClick={openSubscribeCheckout}
+              className="flex cursor-pointer items-center gap-2"
+              aria-label="Subscribe to Pixels Premium"
+            >
+              <Sparkles className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+              {formatSubscribeCta()}
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem disabled className="text-muted-foreground">
             Credits: {creditsLoading ? '…' : `${balance} cr`}
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => setBuyCreditsOpen(true)}
+            disabled={!canBuyCredits}
+            title={canBuyCredits ? undefined : 'Top up USDC on Arbitrum first'}
             className="flex cursor-pointer items-center gap-2"
           >
             <Sparkles className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
@@ -226,18 +253,6 @@ function WalletConnectButtonInner({
             <Gift className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
             Redeem code
           </DropdownMenuItem>
-          <DropdownMenuItem disabled className="text-muted-foreground">
-            USDC: {usdcFormatted}
-          </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={handleBuyUsdc}
-          disabled={isOnrampLoading}
-          className="flex cursor-pointer items-center gap-2"
-          aria-label="Buy USDC"
-        >
-          <DollarSign className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
-          {isOnrampLoading ? 'Opening…' : 'Buy USDC'}
-        </DropdownMenuItem>
         {isUnlockConfigured && isPaidSubscriber && (
           <DropdownMenuItem
             onClick={() => void handleClaimMembershipCredits()}
@@ -257,16 +272,6 @@ function WalletConnectButtonInner({
           >
             <Settings2 className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
             Manage subscription
-          </DropdownMenuItem>
-        )}
-        {isUnlockConfigured && !isPremiumMember && (
-          <DropdownMenuItem
-            onClick={openSubscribeCheckout}
-            className="flex cursor-pointer items-center gap-2"
-            aria-label="Subscribe to Pixels Premium"
-          >
-            <Sparkles className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
-            Subscribe $30/mo
           </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />
