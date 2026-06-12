@@ -16,7 +16,7 @@ import {
 import { resolveProxyUrl } from '../utils/media-resolver';
 import { usePlaybackStore } from '@/shared/state/playback';
 import { useMediaLibraryStore } from '@/features/preview/deps/media-library';
-import { FileAudio } from 'lucide-react';
+import { shouldSeekPlayingMedia } from '../utils/source-media-sync';
 
 interface SourceCompositionProps {
   mediaId?: string;
@@ -90,7 +90,6 @@ function VideoSource({ mediaId, src }: { mediaId?: string; src: string }) {
   const frameCacheOrderRef = useRef<number[]>([]);
   const { frame, playing, playbackRate } = useBridgedTimelineContext();
   const { fps } = useVideoConfig();
-  const lastFrameRef = useRef(frame);
   const playingRef = useRef(playing);
   const decoderItemId = `${mediaId ?? 'source-monitor'}:${decodeLaneRef.current}`;
   const [useLegacyPausedSeek, setUseLegacyPausedSeek] = useState(false);
@@ -328,8 +327,6 @@ function VideoSource({ mediaId, src }: { mediaId?: string; src: string }) {
     const video = videoRef.current;
     if (!video || !activeSrc) return;
 
-    const frameDelta = Math.abs(frame - lastFrameRef.current);
-    lastFrameRef.current = frame;
     latestTargetTimeRef.current = frame / fps;
 
     const canSeek = video.readyState >= 1;
@@ -340,9 +337,12 @@ function VideoSource({ mediaId, src }: { mediaId?: string; src: string }) {
     }
 
     if (playing) {
-      if (frameDelta <= 1) return;
+      const targetTime = frame / fps;
+      if (!shouldSeekPlayingMedia(video, targetTime, fps)) {
+        return;
+      }
       try {
-        video.currentTime = frame / fps;
+        video.currentTime = targetTime;
       } catch {
         // Ignore seek errors while media is loading
       }
@@ -434,13 +434,11 @@ function AudioSource({ src, fileName }: { src: string; fileName: string }) {
     const audio = audioRef.current;
     if (!audio || !src) return;
 
-    const frameDelta = Math.abs(frame - lastFrameRef.current);
-    lastFrameRef.current = frame;
-
+    const targetTime = frame / fps;
     const canSeek = audio.readyState >= 1;
-    if (canSeek && (!playing || frameDelta > 1)) {
+    if (canSeek && (!playing || shouldSeekPlayingMedia(audio, targetTime, fps))) {
       try {
-        audio.currentTime = frame / fps;
+        audio.currentTime = targetTime;
       } catch {
         // Ignore seek errors while media is loading
       }

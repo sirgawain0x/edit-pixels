@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { toast } from 'sonner';
+import '@/i18n';
 import { App } from './app';
 import { initializeDebugUtils } from '@/app/debug';
 import { createLogger } from '@/shared/logging/logger';

@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { createLogger } from '@/shared/logging/logger';
 
@@ -28,6 +29,7 @@ import type { Project } from '@/types/project';
 import type { ProjectFormData } from '@/features/projects/utils/validation';
 import type { ImportProgress } from '@/features/project-bundle/types/bundle';
 import { BUNDLE_EXTENSION } from '@/features/project-bundle/types/bundle';
+import { LanguageSwitcher } from '@/shared/ui/language-switcher';
 
 export const Route = createFileRoute('/projects/')({
   component: () => (
@@ -45,6 +47,7 @@ export const Route = createFileRoute('/projects/')({
 });
 
 function ProjectsIndex() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -253,6 +256,7 @@ function ProjectsIndex() {
               <PixelsLogo variant="full" size="md" className="hover:opacity-80 transition-opacity" />
             </Link>
             <div className="hidden flex-shrink-0 items-center gap-2 sm:gap-3 md:flex">
+              <LanguageSwitcher size="md" align="end" side="bottom" />
               <WalletConnectButton size="sm" compact className="h-10" />
               <Button
                 variant="outline"
@@ -276,21 +280,21 @@ function ProjectsIndex() {
                 size="lg"
                 className="gap-2 h-10 w-10 sm:w-auto sm:h-10"
                 onClick={handleImportClick}
-                aria-label="Import Project"
-                title="Import Project"
+                aria-label={t('projects.importProject')}
+                title={t('projects.importProject')}
               >
                 <Upload className="w-4 h-4 flex-shrink-0" />
-                <span className="hidden sm:inline">Import Project</span>
+                <span className="hidden sm:inline">{t('projects.importProject')}</span>
               </Button>
               <Link to="/projects/new">
                 <Button
                   size="lg"
                   className="gap-2 h-10 w-10 sm:w-auto sm:h-10"
-                  aria-label="New Project"
-                  title="New Project"
+                  aria-label={t('projects.newProject')}
+                  title={t('projects.newProject')}
                 >
                   <Plus className="w-4 h-4 flex-shrink-0" />
-                  <span className="hidden sm:inline">New Project</span>
+                  <span className="hidden sm:inline">{t('projects.newProject')}</span>
                 </Button>
               </Link>
             </div>

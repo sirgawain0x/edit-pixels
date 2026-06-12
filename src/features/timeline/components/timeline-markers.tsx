@@ -506,6 +506,9 @@ export const TimelineMarkers = memo(function TimelineMarkers({ duration, width }
     const renderTimeToPixels = (time: number) => time * qPPS;
     const markerConfig = calculateMarkerInterval(qPPS);
 
+    const tileKeyFor = (idx: number) =>
+      `${idx}-${ck}-${Math.round(Math.min(TILE_WIDTH, dw - idx * TILE_WIDTH))}`;
+
     for (let tileIndex = startTile; tileIndex <= endTile; tileIndex++) {
       visibleTileIndices.add(tileIndex);
 
@@ -523,7 +526,7 @@ export const TimelineMarkers = memo(function TimelineMarkers({ duration, width }
       }
       // Existing canvases keep their transform — tileIndex is stable per pool entry
 
-      const tileCacheKey = `${tileIndex}-${ck}`;
+      const tileCacheKey = tileKeyFor(tileIndex);
 
       // Skip redraw if this canvas already shows the correct content.
       // data-ck tracks the cache key used for the last successful paint.
@@ -567,14 +570,14 @@ export const TimelineMarkers = memo(function TimelineMarkers({ duration, width }
     // Pre-render adjacent tiles during idle
     const maxTile = Math.ceil(dw / TILE_WIDTH) - 1;
     const adjacentTiles = [startTile - 1, endTile + 1].filter(
-      (t) => t >= 0 && t <= maxTile && !tileCache.has(`${t}-${ck}`)
+      (t) => t >= 0 && t <= maxTile && !tileCache.has(tileKeyFor(t)),
     );
     if (adjacentTiles.length > 0) {
       requestIdleCallback(
         (deadline) => {
           for (const adj of adjacentTiles) {
             if (deadline.timeRemaining() < 10 || tileCacheRef.current !== tileCache) break;
-            const adjKey = `${adj}-${ck}`;
+            const adjKey = tileKeyFor(adj);
             if (tileCache.has(adjKey)) continue;
             const offscreen = document.createElement('canvas');
             drawTile(offscreen, adj, TILE_WIDTH, ch, markerConfig, renderTimeToPixels, dw);

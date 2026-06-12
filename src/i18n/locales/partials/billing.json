@@ -1,0 +1,19 @@
+{
+  "en": {
+    "billing": {
+      "premiumTitle": "Pixels Premium",
+      "subscribe": "Subscribe",
+      "monthlyClaim": "Claim monthly credits",
+      "superfluidFlow": "Streaming payment active",
+      "walletConnect": "Connect wallet"
+    }
+  },
+  "es": { "billing": { "premiumTitle": "Pixels Premium", "subscribe": "Subscribe", "monthlyClaim": "Claim monthly credits", "superfluidFlow": "Streaming payment active", "walletConnect": "Connect wallet" } },
+  "fr": { "billing": { "premiumTitle": "Pixels Premium", "subscribe": "Subscribe", "monthlyClaim": "Claim monthly credits", "superfluidFlow": "Streaming payment active", "walletConnect": "Connect wallet" } },
+  "de": { "billing": { "premiumTitle": "Pixels Premium", "subscribe": "Subscribe", "monthlyClaim": "Claim monthly credits", "superfluidFlow": "Streaming payment active", "walletConnect": "Connect wallet" } },
+  "pt-BR": { "billing": { "premiumTitle": "Pixels Premium", "subscribe": "Subscribe", "monthlyClaim": "Claim monthly credits", "superfluidFlow": "Streaming payment active", "walletConnect": "Connect wallet" } },
+  "tr": { "billing": { "premiumTitle": "Pixels Premium", "subscribe": "Subscribe", "monthlyClaim": "Claim monthly credits", "superfluidFlow": "Streaming payment active", "walletConnect": "Connect wallet" } },
+  "ja": { "billing": { "premiumTitle": "Pixels Premium", "subscribe": "Subscribe", "monthlyClaim": "Claim monthly credits", "superfluidFlow": "Streaming payment active", "walletConnect": "Connect wallet" } },
+  "ko": { "billing": { "premiumTitle": "Pixels Premium", "subscribe": "Subscribe", "monthlyClaim": "Claim monthly credits", "superfluidFlow": "Streaming payment active", "walletConnect": "Connect wallet" } },
+  "zh": { "billing": { "premiumTitle": "Pixels Premium", "subscribe": "Subscribe", "monthlyClaim": "Claim monthly credits", "superfluidFlow": "Streaming payment active", "walletConnect": "Connect wallet" } }
+}

@@ -26,6 +26,7 @@ import { LocalInferenceStatusPill } from './local-inference-status-pill';
 import { UnsavedChangesDialog } from './unsaved-changes-dialog';
 import { EDITOR_LAYOUT_CSS_VALUES } from '@/shared/ui/editor-layout';
 import { WalletConnectButton } from '@/components/wallet-connect-button';
+import { LanguageSwitcher } from '@/shared/ui/language-switcher';
 
 interface ToolbarProps {
   projectId: string;
@@ -138,6 +139,7 @@ export const Toolbar = memo(function Toolbar({
           <Keyboard className="h-4 w-4" />
         </Button>
         <WalletConnectButton size="sm" compact className="h-7 min-h-0" />
+        <LanguageSwitcher size="sm" align="end" side="bottom" />
         <Button
           variant="outline"
           size="icon"

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAccount, useChain } from '@account-kit/react';
 import { Coins, DollarSign, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -48,7 +49,8 @@ interface BuyCreditsModalProps {
 }
 
 export function BuyCreditsModal({ open, onOpenChange }: BuyCreditsModalProps) {
-  const { address } = useAccount({ type: 'LightAccount' });
+  const { t } = useTranslation();
+  const { address } = useAccount({ type: 'sca' });
   const { chain } = useChain();
   const { purchasePack } = useCredits();
   const { balance: usdcBalance, formatted: usdcFormatted } = useUsdcBalance(
@@ -103,10 +105,10 @@ export function BuyCreditsModal({ open, onOpenChange }: BuyCreditsModalProps) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Coins className="h-5 w-5" aria-hidden />
-            Buy credits
+            {t('credits.buyTitle')}
           </DialogTitle>
           <DialogDescription>
-            Pay with USDC on Arbitrum. Credits unlock Live AI and Flow generation.
+            {t('credits.buyDescription')}
             {usdcBalance !== null && (
               <span className="mt-1 block tabular-nums">
                 Wallet USDC: {usdcFormatted}

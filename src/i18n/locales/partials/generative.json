@@ -1,0 +1,19 @@
+{
+  "en": {
+    "generative": {
+      "flowTitle": "Flow",
+      "renderedClips": "Rendered Clips",
+      "generateImage": "Generate image",
+      "generateVideo": "Generate video",
+      "taskPolling": "Generating…"
+    }
+  },
+  "es": { "generative": { "flowTitle": "Flow", "renderedClips": "Rendered Clips", "generateImage": "Generate image", "generateVideo": "Generate video", "taskPolling": "Generating…" } },
+  "fr": { "generative": { "flowTitle": "Flow", "renderedClips": "Rendered Clips", "generateImage": "Generate image", "generateVideo": "Generate video", "taskPolling": "Generating…" } },
+  "de": { "generative": { "flowTitle": "Flow", "renderedClips": "Rendered Clips", "generateImage": "Generate image", "generateVideo": "Generate video", "taskPolling": "Generating…" } },
+  "pt-BR": { "generative": { "flowTitle": "Flow", "renderedClips": "Rendered Clips", "generateImage": "Generate image", "generateVideo": "Generate video", "taskPolling": "Generating…" } },
+  "tr": { "generative": { "flowTitle": "Flow", "renderedClips": "Rendered Clips", "generateImage": "Generate image", "generateVideo": "Generate video", "taskPolling": "Generating…" } },
+  "ja": { "generative": { "flowTitle": "Flow", "renderedClips": "Rendered Clips", "generateImage": "Generate image", "generateVideo": "Generate video", "taskPolling": "Generating…" } },
+  "ko": { "generative": { "flowTitle": "Flow", "renderedClips": "Rendered Clips", "generateImage": "Generate image", "generateVideo": "Generate video", "taskPolling": "Generating…" } },
+  "zh": { "generative": { "flowTitle": "Flow", "renderedClips": "Rendered Clips", "generateImage": "Generate image", "generateVideo": "Generate video", "taskPolling": "Generating…" } }
+}

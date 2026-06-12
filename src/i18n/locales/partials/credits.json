@@ -1,0 +1,92 @@
+{
+  "en": {
+    "credits": {
+      "buyTitle": "Buy credits",
+      "buyDescription": "Pay with USDC on Arbitrum. Credits unlock Live AI and Flow generation.",
+      "insufficientTitle": "Insufficient credits",
+      "redeemTitle": "Redeem promo code",
+      "redeemPlaceholder": "PIXELS-XXXX-XXXX",
+      "balanceLabel": "Credits balance"
+    }
+  },
+  "es": {
+    "credits": {
+      "buyTitle": "Buy credits",
+      "buyDescription": "Pay with USDC on Arbitrum. Credits unlock Live AI and Flow generation.",
+      "insufficientTitle": "Insufficient credits",
+      "redeemTitle": "Redeem promo code",
+      "redeemPlaceholder": "PIXELS-XXXX-XXXX",
+      "balanceLabel": "Credits balance"
+    }
+  },
+  "fr": {
+    "credits": {
+      "buyTitle": "Buy credits",
+      "buyDescription": "Pay with USDC on Arbitrum. Credits unlock Live AI and Flow generation.",
+      "insufficientTitle": "Insufficient credits",
+      "redeemTitle": "Redeem promo code",
+      "redeemPlaceholder": "PIXELS-XXXX-XXXX",
+      "balanceLabel": "Credits balance"
+    }
+  },
+  "de": {
+    "credits": {
+      "buyTitle": "Buy credits",
+      "buyDescription": "Pay with USDC on Arbitrum. Credits unlock Live AI and Flow generation.",
+      "insufficientTitle": "Insufficient credits",
+      "redeemTitle": "Redeem promo code",
+      "redeemPlaceholder": "PIXELS-XXXX-XXXX",
+      "balanceLabel": "Credits balance"
+    }
+  },
+  "pt-BR": {
+    "credits": {
+      "buyTitle": "Buy credits",
+      "buyDescription": "Pay with USDC on Arbitrum. Credits unlock Live AI and Flow generation.",
+      "insufficientTitle": "Insufficient credits",
+      "redeemTitle": "Redeem promo code",
+      "redeemPlaceholder": "PIXELS-XXXX-XXXX",
+      "balanceLabel": "Credits balance"
+    }
+  },
+  "tr": {
+    "credits": {
+      "buyTitle": "Buy credits",
+      "buyDescription": "Pay with USDC on Arbitrum. Credits unlock Live AI and Flow generation.",
+      "insufficientTitle": "Insufficient credits",
+      "redeemTitle": "Redeem promo code",
+      "redeemPlaceholder": "PIXELS-XXXX-XXXX",
+      "balanceLabel": "Credits balance"
+    }
+  },
+  "ja": {
+    "credits": {
+      "buyTitle": "Buy credits",
+      "buyDescription": "Pay with USDC on Arbitrum. Credits unlock Live AI and Flow generation.",
+      "insufficientTitle": "Insufficient credits",
+      "redeemTitle": "Redeem promo code",
+      "redeemPlaceholder": "PIXELS-XXXX-XXXX",
+      "balanceLabel": "Credits balance"
+    }
+  },
+  "ko": {
+    "credits": {
+      "buyTitle": "Buy credits",
+      "buyDescription": "Pay with USDC on Arbitrum. Credits unlock Live AI and Flow generation.",
+      "insufficientTitle": "Insufficient credits",
+      "redeemTitle": "Redeem promo code",
+      "redeemPlaceholder": "PIXELS-XXXX-XXXX",
+      "balanceLabel": "Credits balance"
+    }
+  },
+  "zh": {
+    "credits": {
+      "buyTitle": "Buy credits",
+      "buyDescription": "Pay with USDC on Arbitrum. Credits unlock Live AI and Flow generation.",
+      "insufficientTitle": "Insufficient credits",
+      "redeemTitle": "Redeem promo code",
+      "redeemPlaceholder": "PIXELS-XXXX-XXXX",
+      "balanceLabel": "Credits balance"
+    }
+  }
+}

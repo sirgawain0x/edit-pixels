@@ -1,0 +1,23 @@
+{
+  "en": {
+    "liveAi": {
+      "title": "Live AI",
+      "providerLabel": "Provider",
+      "providerPlaceholder": "Select provider",
+      "modelLabel": "Model (used when you start)",
+      "modelPlaceholder": "Select model",
+      "startSession": "Start session",
+      "stopSession": "Stop session",
+      "insufficientBalance": "Insufficient balance",
+      "usageMeter": "Usage"
+    }
+  },
+  "es": { "liveAi": { "title": "Live AI", "providerLabel": "Provider", "providerPlaceholder": "Select provider", "modelLabel": "Model (used when you start)", "modelPlaceholder": "Select model", "startSession": "Start session", "stopSession": "Stop session", "insufficientBalance": "Insufficient balance", "usageMeter": "Usage" } },
+  "fr": { "liveAi": { "title": "Live AI", "providerLabel": "Provider", "providerPlaceholder": "Select provider", "modelLabel": "Model (used when you start)", "modelPlaceholder": "Select model", "startSession": "Start session", "stopSession": "Stop session", "insufficientBalance": "Insufficient balance", "usageMeter": "Usage" } },
+  "de": { "liveAi": { "title": "Live AI", "providerLabel": "Provider", "providerPlaceholder": "Select provider", "modelLabel": "Model (used when you start)", "modelPlaceholder": "Select model", "startSession": "Start session", "stopSession": "Stop session", "insufficientBalance": "Insufficient balance", "usageMeter": "Usage" } },
+  "pt-BR": { "liveAi": { "title": "Live AI", "providerLabel": "Provider", "providerPlaceholder": "Select provider", "modelLabel": "Model (used when you start)", "modelPlaceholder": "Select model", "startSession": "Start session", "stopSession": "Stop session", "insufficientBalance": "Insufficient balance", "usageMeter": "Usage" } },
+  "tr": { "liveAi": { "title": "Live AI", "providerLabel": "Provider", "providerPlaceholder": "Select provider", "modelLabel": "Model (used when you start)", "modelPlaceholder": "Select model", "startSession": "Start session", "stopSession": "Stop session", "insufficientBalance": "Insufficient balance", "usageMeter": "Usage" } },
+  "ja": { "liveAi": { "title": "Live AI", "providerLabel": "Provider", "providerPlaceholder": "Select provider", "modelLabel": "Model (used when you start)", "modelPlaceholder": "Select model", "startSession": "Start session", "stopSession": "Stop session", "insufficientBalance": "Insufficient balance", "usageMeter": "Usage" } },
+  "ko": { "liveAi": { "title": "Live AI", "providerLabel": "Provider", "providerPlaceholder": "Select provider", "modelLabel": "Model (used when you start)", "modelPlaceholder": "Select model", "startSession": "Start session", "stopSession": "Stop session", "insufficientBalance": "Insufficient balance", "usageMeter": "Usage" } },
+  "zh": { "liveAi": { "title": "Live AI", "providerLabel": "Provider", "providerPlaceholder": "Select provider", "modelLabel": "Model (used when you start)", "modelPlaceholder": "Select model", "startSession": "Start session", "stopSession": "Stop session", "insufficientBalance": "Insufficient balance", "usageMeter": "Usage" } }
+}

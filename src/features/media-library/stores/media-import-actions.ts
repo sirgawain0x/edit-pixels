@@ -23,6 +23,22 @@ interface ImportTask {
   file: File;
 }
 
+function ensureImportedMediaVisible(set: Set, tempId: string, metadata: ImportedMetadata): boolean {
+  let wasAlreadyVisible = false;
+  set((state) => {
+    const withoutPlaceholder = state.mediaItems.filter((item) => item.id !== tempId);
+    wasAlreadyVisible = withoutPlaceholder.some((item) => item.id === metadata.id);
+
+    return {
+      mediaItems: wasAlreadyVisible
+        ? withoutPlaceholder.map((item) => (item.id === metadata.id ? metadata : item))
+        : [metadata, ...withoutPlaceholder],
+      importingIds: state.importingIds.filter((id) => id !== tempId),
+    };
+  });
+  return wasAlreadyVisible;
+}
+
 function processImportResults(
   importResults: PromiseSettledResult<{ metadata: ImportedMetadata; tempId: string; file: File; handle: FileSystemFileHandle }>[],
   importTasks: ImportTask[],
@@ -39,23 +55,14 @@ function processImportResults(
     if (result.status === 'fulfilled') {
       const { metadata, tempId, file, handle } = result.value;
 
-      if (metadata.isDuplicate) {
-        set((state) => ({
-          mediaItems: state.mediaItems.filter((item) => item.id !== tempId),
-          importingIds: state.importingIds.filter((id) => id !== tempId),
-        }));
+      const wasAlreadyVisible = ensureImportedMediaVisible(set, tempId, metadata);
+
+      if (metadata.isDuplicate && wasAlreadyVisible) {
         duplicateNames.push(file.name);
         if (options?.includeDuplicatesInResults) {
           results.push(metadata);
         }
       } else {
-        set((state) => ({
-          mediaItems: state.mediaItems.map((item) =>
-            item.id === tempId ? metadata : item
-          ),
-          importingIds: state.importingIds.filter((id) => id !== tempId),
-        }));
-
         if (metadata.mimeType.startsWith('video/')) {
           proxyService.setProxyKey(metadata.id, getSharedProxyKey(metadata));
         }
