@@ -76,7 +76,7 @@ export function useSuperfluidBilling() {
   const flowRateRef = useRef(intervalCostUsdc6ToFlowRate(intervalCostUsdc6));
   flowRateRef.current = intervalCostUsdc6ToFlowRate(intervalCostUsdc6);
 
-  const { sendOps } = useSmartWalletOps(client ?? undefined);
+  const { sendOps, ready: walletReady } = useSmartWalletOps(client ?? undefined);
 
   const sendOpsRef = useRef<
     (
@@ -138,6 +138,14 @@ export function useSuperfluidBilling() {
     if (!address || !receiver || !configured) return false;
     if (flowActiveRef.current) return true;
     if (startInFlightRef.current) return false;
+    if (!client || !walletReady) {
+      log.warn('Cannot start Superfluid flow: smart wallet not ready', {
+        hasClient: Boolean(client),
+        walletReady,
+      });
+      setBillingError('wallet_not_ready');
+      return false;
+    }
 
     startInFlightRef.current = true;
     setBillingError(null);
@@ -184,7 +192,16 @@ export function useSuperfluidBilling() {
     } finally {
       startInFlightRef.current = false;
     }
-  }, [address, configured, ensureArbitrum, markFlowActive, receiver, setBillingError]);
+  }, [
+    address,
+    client,
+    configured,
+    ensureArbitrum,
+    markFlowActive,
+    receiver,
+    setBillingError,
+    walletReady,
+  ]);
 
   // Stop the flow when the stream ends. If the flow is active but the stream
   // never goes live (broadcast failure), stop it after a grace period so the
@@ -253,5 +270,6 @@ export function useSuperfluidBilling() {
     startFlow,
     stopFlow,
     flowActive,
+    walletReady: Boolean(client && walletReady),
   };
 }
