@@ -19,7 +19,12 @@ export interface LiveSessionState {
   /** Current stream id (Daydream/Livepeer) when streamActive. */
   streamId: string | null;
   /** Set when Superfluid billing fails; UI shows top-up USDC. */
-  billingError: 'insufficient_balance' | 'session_limit_exceeded' | 'rpc_or_unknown' | null;
+  billingError:
+    | 'insufficient_balance'
+    | 'session_limit_exceeded'
+    | 'rpc_or_unknown'
+    | 'wallet_not_ready'
+    | null;
 
   // Scope local server state
   /** Whether Scope server is reachable on localhost. */

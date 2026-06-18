@@ -44,13 +44,14 @@ interface BuyCreditsModalProps {
 
 export function BuyCreditsModal({ open, onOpenChange }: BuyCreditsModalProps) {
   const { t } = useTranslation();
-  const { address } = useAccount({ type: 'sca' });
+  const { address } = useAccount({ type: 'LightAccount' });
   const { chain } = useChain();
   const { purchasePack, syncPurchase } = useCredits();
-  const { balance: usdcBalance, formatted: usdcFormatted } = useUsdcBalance(
-    chain,
-    address as `0x${string}` | undefined
-  );
+  const {
+    balance: usdcBalance,
+    formatted: usdcFormatted,
+    isLoading: isBalanceLoading,
+  } = useUsdcBalance(chain, address as `0x${string}` | undefined);
   const { openBuyUsdc, isLoading: isOnrampLoading } = useBuyUsdcOnramp();
   const [purchasingId, setPurchasingId] = useState<number | null>(null);
   const [pendingSync, setPendingSync] = useState<PendingSync | null>(null);
@@ -141,7 +142,13 @@ export function BuyCreditsModal({ open, onOpenChange }: BuyCreditsModalProps) {
           </DialogTitle>
           <DialogDescription>
             {t('credits.buyDescription')}
-            {usdcBalance !== null && (
+            {isBalanceLoading && (
+              <span className="mt-1 flex items-center gap-1.5 text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                Checking USDC balance…
+              </span>
+            )}
+            {!isBalanceLoading && usdcBalance !== null && (
               <span className="mt-1 block tabular-nums">
                 Wallet USDC: {usdcFormatted}
               </span>
@@ -210,6 +217,7 @@ export function BuyCreditsModal({ open, onOpenChange }: BuyCreditsModalProps) {
                   pendingSync !== null ||
                   retryingSync ||
                   !onArbitrum ||
+                  isBalanceLoading ||
                   !affordable
                 }
                 onClick={() => void handleBuy(pack.id)}

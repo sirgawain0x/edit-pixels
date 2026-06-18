@@ -49,6 +49,7 @@ import {
   LIVE_AI_DAILY_SPEND_CAP_USD,
 } from '@/shared/utils/currency-display';
 import type { StreamData, LoraDict, IpAdapterConfig } from '../types';
+import { getStartFlowErrorMessage } from '../lib/start-flow-error';
 
 // Dreamshaper 8 and Open Journey v4 are temporarily hidden: they fail to cold-start reliably.
 const MODEL_OPTIONS = [
@@ -153,6 +154,7 @@ interface BillingControls {
   startFlow: () => Promise<boolean>;
   stopFlow: () => Promise<boolean>;
   setOnPause: (fn: (() => void) | null) => void;
+  walletReady: boolean;
 }
 
 /**
@@ -164,11 +166,11 @@ function SuperfluidBillingBridge({
 }: {
   onControls: (controls: BillingControls | null) => void;
 }) {
-  const { startFlow, stopFlow, setOnPause } = useSuperfluidBilling();
+  const { startFlow, stopFlow, setOnPause, walletReady } = useSuperfluidBilling();
   useEffect(() => {
-    onControls({ startFlow, stopFlow, setOnPause });
+    onControls({ startFlow, stopFlow, setOnPause, walletReady });
     return () => onControls(null);
-  }, [onControls, startFlow, stopFlow, setOnPause]);
+  }, [onControls, startFlow, stopFlow, setOnPause, walletReady]);
   return null;
 }
 
@@ -303,6 +305,10 @@ export function LiveAIPanelContent() {
         setError('Billing is unavailable. Reload the page and try again.');
         return;
       }
+      if (!billingControls.walletReady) {
+        setError('Wallet initializing — try again in a moment.');
+        return;
+      }
     }
     if (daydreamConfigured) {
       const validationErr = validateLoraEntries(loraEntries);
@@ -323,7 +329,8 @@ export function LiveAIPanelContent() {
         setStartPhase('payment');
         const flowOk = await billingControls.startFlow();
         if (!flowOk) {
-          setError('Could not start the USDC payment stream. Live AI was not started.');
+          const billingError = useLiveSessionStore.getState().billingError;
+          setError(getStartFlowErrorMessage(billingError));
           return;
         }
         flowStarted = true;
@@ -560,6 +567,11 @@ export function LiveAIPanelContent() {
                 be set up before the session can start.
               </p>
             )}
+            {superfluidConfigured && address && billingControls && !billingControls.walletReady && (
+              <p className="mb-2 text-xs text-muted-foreground">
+                Wallet initializing — payment controls will be ready shortly.
+              </p>
+            )}
             {superfluidConfigured && address && billingUnavailable && (
               <p className="mb-2 text-xs text-destructive">
                 Billing is unavailable. Reload the page and try again.
@@ -576,7 +588,8 @@ export function LiveAIPanelContent() {
                 !address ||
                 !hasFunding ||
                 billingUnavailable ||
-                !billingControls
+                !billingControls ||
+                !billingControls.walletReady
               }
               size="sm"
               className="w-full"
@@ -1181,6 +1194,9 @@ function LiveAISessionWithBroadcastCore({
               You&apos;ve hit the {formatUsdPrice(LIVE_AI_DAILY_SPEND_CAP_USD)} daily spend
               cap. Re-authorize your session key to continue, or wait until the cap resets.
             </p>
+          )}
+          {billingError === 'wallet_not_ready' && (
+            <p>Wallet initializing — try again in a moment.</p>
           )}
           {billingError === 'rpc_or_unknown' && (
             <p>Billing failed. Check connection and try again.</p>

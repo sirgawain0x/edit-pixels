@@ -20,6 +20,7 @@
     "routes": "tsr generate",
     "test": "vitest",
     "test:run": "vitest run",
+    "check:billing-env": "node scripts/check-billing-env.mjs",
     "test:preview-sync": "vitest run src/features/preview/components/video-preview.sync.test.tsx",
     "test:preview-sync:stress": "node scripts/preview-sync-stress.mjs --runs 20",
     "test:coverage": "vitest run --coverage",
