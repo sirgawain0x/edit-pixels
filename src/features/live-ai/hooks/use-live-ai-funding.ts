@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { arbitrum } from 'viem/chains';
-import { wrapUsdc6ForOneHour } from '@/config/superfluid';
+import { getPurchaseGasBufferUsdc6 } from '@/config/gas-sponsorship';
+import { wrapUsdc6ForOneHour, SUPERFLUID_CHAIN_ID } from '@/config/superfluid';
 import { usePremiumMembership } from '@/features/live-ai/hooks/use-premium-membership';
 import { readUsdcBalanceArbitrum } from '../api/superfluid-flow';
 
@@ -23,8 +24,10 @@ export function useLiveAiFunding(
   const { intervalCostUsdc6, isPremiumMember, isLoading: tierLoading } =
     usePremiumMembership(address);
 
-  const minRequiredUsdc6 = Number(wrapUsdc6ForOneHour(intervalCostUsdc6));
-  const hourlyUsdc = minRequiredUsdc6 / 1_000_000;
+  const wrapUsdc6 = Number(wrapUsdc6ForOneHour(intervalCostUsdc6));
+  const minRequiredUsdc6 =
+    wrapUsdc6 + getPurchaseGasBufferUsdc6(SUPERFLUID_CHAIN_ID);
+  const hourlyUsdc = wrapUsdc6 / 1_000_000;
 
   const { data, isLoading: balanceLoading } = useQuery({
     queryKey: ['live-ai-usdc-arbitrum', address],

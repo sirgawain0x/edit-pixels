@@ -40,8 +40,9 @@ import {
 } from '../config/curated-loras';
 import { InsufficientBalancePaywall } from './insufficient-balance-paywall';
 import { isSuperfluidConfigured } from '@/config/superfluid';
+import { getLiveAiBillingConfigIssues } from '../config/billing-config';
 import { useLiveAiFunding } from '../hooks/use-live-ai-funding';
-import { useSuperfluidBilling } from '../hooks/use-superfluid-billing';
+import { useSuperfluidBilling, type StopFlowOptions } from '../hooks/use-superfluid-billing';
 import { UsageMeter } from './usage-meter';
 import {
   formatUsdPrice,
@@ -152,7 +153,7 @@ const noopSetOnPause = (_fn: (() => void) | null) => {};
 /** Imperative billing controls surfaced from useSuperfluidBilling to the panel. */
 interface BillingControls {
   startFlow: () => Promise<boolean>;
-  stopFlow: () => Promise<boolean>;
+  stopFlow: (options?: StopFlowOptions) => Promise<boolean>;
   setOnPause: (fn: (() => void) | null) => void;
   walletReady: boolean;
 }
@@ -208,6 +209,9 @@ export function LiveAIPanelContent() {
     isPremiumMember,
   } = useLiveAiFunding(address as `0x${string}` | undefined);
   const setPermissionsGranted = useLiveSessionStore((s) => s.setPermissionsGranted);
+  const clearBillingError = useLiveSessionStore((s) => s.clearBillingError);
+  const billingError = useLiveSessionStore((s) => s.billingError);
+  const billingErrorDetail = useLiveSessionStore((s) => s.billingErrorDetail);
   const includeTimelineAudio = useLiveSessionStore((s) => s.includeTimelineAudio);
   const setIncludeTimelineAudio = useLiveSessionStore((s) => s.setIncludeTimelineAudio);
   const isRecording = useLiveSessionStore((s) => s.isRecording);
@@ -244,6 +248,7 @@ export function LiveAIPanelContent() {
   const [faceIdError, setFaceIdError] = useState<string | null>(null);
 
   const daydreamConfigured = isDaydreamConfigured();
+  const billingConfigIssues = getLiveAiBillingConfigIssues();
   const livepeerConfigured = isLivepeerStudioConfigured();
   const configured = daydreamConfigured || livepeerConfigured;
   const hasBothProviders = daydreamConfigured && livepeerConfigured;
@@ -319,6 +324,7 @@ export function LiveAIPanelContent() {
     }
     setConsentRequested(true);
     setError(null);
+    clearBillingError();
     setPermissionDenied(false);
     setLoading(true);
     let flowStarted = false;
@@ -387,7 +393,12 @@ export function LiveAIPanelContent() {
       // Session failed after payment started: stop the flow so the user
       // doesn't keep paying for a session that never came up.
       if (flowStarted && billingControls) {
-        await billingControls.stopFlow();
+        const stopOk = await billingControls.stopFlow({ suppressBillingError: true });
+        if (!stopOk) {
+          setError(
+            `${msg} Could not stop the payment stream — it may still be active. Use Stop or contact support.`
+          );
+        }
       }
       setStreamData(null);
       setStreamSource(null);
@@ -395,7 +406,7 @@ export function LiveAIPanelContent() {
       setStartPhase(null);
       setLoading(false);
     }
-  }, [configured, superfluidConfigured, hasFunding, address, billingControls, billingUnavailable, daydreamConfigured, livepeerConfigured, setPermissionsGranted, selectedModelId, prompt, loraEntries, faceIdEnabled, faceIdImageUrl, selectedProvider]);
+  }, [configured, superfluidConfigured, hasFunding, address, billingControls, billingUnavailable, daydreamConfigured, livepeerConfigured, setPermissionsGranted, clearBillingError, selectedModelId, prompt, loraEntries, faceIdEnabled, faceIdImageUrl, selectedProvider]);
 
   const handleApplyPrompt = useCallback(async () => {
     if (streamSource !== 'daydream' || !streamData?.id || !prompt.trim()) return;
@@ -474,13 +485,14 @@ export function LiveAIPanelContent() {
   }, []);
 
   const handleStreamStopped = useCallback(() => {
+    clearBillingError();
     setLocalStream((prev) => {
       prev?.getTracks().forEach((t) => t.stop());
       return null;
     });
     setStreamData(null);
     setStreamSource(null);
-  }, []);
+  }, [clearBillingError]);
 
   const whipUrl = streamData ? streamData.whipUrl : '';
   const showSession = streamData && whipUrl;
@@ -556,10 +568,20 @@ export function LiveAIPanelContent() {
             {error && !permissionDenied && (
               <p className="text-xs text-destructive mb-2">{error}</p>
             )}
+            {!showSession && billingError === 'rpc_or_unknown' && billingErrorDetail && (
+              <p className="text-xs text-muted-foreground mb-2 break-words">{billingErrorDetail}</p>
+            )}
             {!superfluidConfigured && (
               <p className="mb-2 text-xs text-amber-600 dark:text-amber-400">
                 Live AI billing is not configured (set VITE_SUPERFLUID_RECEIVER).
               </p>
+            )}
+            {import.meta.env.DEV && billingConfigIssues.length > 0 && (
+              <ul className="mb-2 list-inside list-disc text-xs text-amber-600 dark:text-amber-400">
+                {billingConfigIssues.map((issue) => (
+                  <li key={issue.code}>{issue.message}</li>
+                ))}
+              </ul>
             )}
             {superfluidConfigured && !address && (
               <p className="mb-2 text-xs text-muted-foreground">
@@ -934,7 +956,8 @@ function LiveAISessionWithBroadcastCore({
   const setStreamActive = useLiveSessionStore((s) => s.setStreamActive);
   const setStreamId = useLiveSessionStore((s) => s.setStreamId);
   const billingError = useLiveSessionStore((s) => s.billingError);
-  const setBillingError = useLiveSessionStore((s) => s.setBillingError);
+  const billingErrorDetail = useLiveSessionStore((s) => s.billingErrorDetail);
+  const clearBillingError = useLiveSessionStore((s) => s.clearBillingError);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recordingStartRef = useRef<number>(0);
   const linkedTimelineStartRef = useRef<number>(0);
@@ -1170,9 +1193,9 @@ function LiveAISessionWithBroadcastCore({
     localStream?.getTracks().forEach((t) => t.stop());
     setStreamActive(false);
     setStreamId(null);
-    setBillingError(null);
+    clearBillingError();
     onStreamStopped();
-  }, [broadcast, localStream, onStreamStopped, setStreamActive, setStreamId, setBillingError]);
+  }, [broadcast, localStream, onStreamStopped, setStreamActive, setStreamId, clearBillingError]);
 
   return (
     <>
@@ -1199,7 +1222,12 @@ function LiveAISessionWithBroadcastCore({
             <p>Wallet initializing — try again in a moment.</p>
           )}
           {billingError === 'rpc_or_unknown' && (
-            <p>Billing failed. Check connection and try again.</p>
+            <>
+              <p>Billing failed. Check connection and try again.</p>
+              {billingErrorDetail && (
+                <p className="mt-1 text-muted-foreground break-words">{billingErrorDetail}</p>
+              )}
+            </>
           )}
         </div>
       )}

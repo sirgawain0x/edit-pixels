@@ -25,6 +25,8 @@ export interface LiveSessionState {
     | 'rpc_or_unknown'
     | 'wallet_not_ready'
     | null;
+  /** Underlying error detail for rpc_or_unknown (UserOp, RPC, tx failure). */
+  billingErrorDetail: string | null;
 
   // Scope local server state
   /** Whether Scope server is reachable on localhost. */
@@ -52,7 +54,11 @@ export interface LiveSessionActions {
   toggleOpen: () => void;
   setStreamActive: (active: boolean) => void;
   setStreamId: (id: string | null) => void;
-  setBillingError: (error: LiveSessionState['billingError']) => void;
+  setBillingError: (
+    error: LiveSessionState['billingError'],
+    detail?: string | null
+  ) => void;
+  clearBillingError: () => void;
 
   // Scope actions
   setScopeConnected: (connected: boolean) => void;
@@ -75,6 +81,7 @@ export const useLiveSessionStore = create<LiveSessionState & LiveSessionActions>
   streamActive: false,
   streamId: null,
   billingError: null,
+  billingErrorDetail: null,
 
   // Scope defaults
   scopeConnected: false,
@@ -95,7 +102,12 @@ export const useLiveSessionStore = create<LiveSessionState & LiveSessionActions>
   toggleOpen: () => set((state) => ({ isOpen: !state.isOpen })),
   setStreamActive: (active) => set({ streamActive: active }),
   setStreamId: (id) => set({ streamId: id }),
-  setBillingError: (error) => set({ billingError: error }),
+  setBillingError: (error, detail) =>
+    set({
+      billingError: error,
+      billingErrorDetail: error === null ? null : (detail ?? null),
+    }),
+  clearBillingError: () => set({ billingError: null, billingErrorDetail: null }),
 
   // Scope actions
   setScopeConnected: (connected) => set({ scopeConnected: connected }),
