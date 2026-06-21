@@ -44,7 +44,7 @@ interface BuyCreditsModalProps {
 
 export function BuyCreditsModal({ open, onOpenChange }: BuyCreditsModalProps) {
   const { t } = useTranslation();
-  const { address } = useAccount({ type: 'sca' });
+  const { address } = useAccount({ type: 'LightAccount' });
   const { chain } = useChain();
   const { purchasePack, syncPurchase } = useCredits();
   const { balance: usdcBalance, formatted: usdcFormatted } = useUsdcBalance(

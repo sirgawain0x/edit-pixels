@@ -134,7 +134,11 @@ export async function POST(request: Request): Promise<Response> {
 
     if (buyer !== address.toLowerCase()) {
       return Response.json(
-        { ok: false, reason: 'buyer_mismatch' },
+        {
+          ok: false,
+          reason: 'buyer_mismatch',
+          expectedBuyer: buyer,
+        },
         { status: 400 }
       );
     }
@@ -152,10 +156,22 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
-    const result = await creditFromPurchase(address, txHash, credits);
+    const result = await creditFromPurchase(buyer, txHash, credits);
+    if (!result.ok) {
+      const status = result.reason === 'disabled' ? 503 : 500;
+      return Response.json(
+        {
+          ok: false,
+          creditsAdded: 0,
+          balance: result.balance,
+          reason: result.reason ?? 'error',
+        },
+        { status }
+      );
+    }
     return Response.json(
       {
-        ok: result.ok,
+        ok: true,
         creditsAdded: result.creditsAdded,
         balance: result.balance,
         reason: result.reason,

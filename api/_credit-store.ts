@@ -12,12 +12,23 @@ function processedTxKey(txHash: string): string {
   return `credits:tx:${txHash.toLowerCase()}`;
 }
 
+/** Upstash INCRBY/GET may return numbers or numeric strings depending on client config. */
+export function parseRedisInteger(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.floor(value);
+  }
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return Math.floor(parsed);
+  }
+  return 0;
+}
+
 export async function getCreditBalance(address: string): Promise<number> {
   const redis = await getRedis();
   if (!redis) return 0;
-  const raw = await redis.get<number>(balanceKey(address));
-  if (typeof raw !== 'number' || !Number.isFinite(raw)) return 0;
-  return Math.max(0, Math.floor(raw));
+  const raw = await redis.get(balanceKey(address));
+  return Math.max(0, parseRedisInteger(raw));
 }
 
 export interface CreditPurchaseResult {
@@ -106,7 +117,7 @@ export async function debitCredits(
   }
 
   const newBalance = await redis.decrby(balKey, amount);
-  const balance = typeof newBalance === 'number' ? Math.max(0, newBalance) : 0;
+  const balance = Math.max(0, parseRedisInteger(newBalance));
 
   if (idempotencyKey) {
     await redis.set(`credits:debit:${idempotencyKey}`, '1', { ex: 86400 });

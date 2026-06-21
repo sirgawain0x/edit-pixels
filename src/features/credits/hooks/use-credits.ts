@@ -19,6 +19,7 @@ import {
   classifyPayFailure,
 } from '@/features/credits/api/buy-credits';
 import { syncPurchaseCredits } from '@/features/credits/api/sync-purchase';
+import { rankCreditsPurchaseTxHashes } from '@/features/credits/api/resolve-purchase-tx';
 import {
   buildCreditsAuthMessage,
   generateCreditsNonce,
@@ -184,20 +185,40 @@ export function useCredits(): UseCreditsResult {
           args: [paymentContract, maxUint256],
         });
 
-        const { txHash } = await sendOps([
+        const { txHash, txHashes } = await sendOps([
           { target: usdcAddress, data: approveData, value: 0n },
           { target: paymentContract, data: buyData, value: 0n },
         ]);
 
-        const syncResult = await syncPurchase(txHash);
-        if (!syncResult.ok) {
-          return {
+        const candidates = await rankCreditsPurchaseTxHashes(
+          txHashes.length > 0 ? txHashes : [txHash]
+        );
+
+        let lastResult: PurchasePackResult = {
+          ok: false,
+          error: 'Sync failed',
+          txHash: candidates[0] ?? txHash,
+        };
+
+        for (const candidate of candidates) {
+          const syncResult = await syncPurchase(candidate);
+          if (syncResult.ok) {
+            return { ok: true, txHash: candidate };
+          }
+          lastResult = {
             ...syncResult,
-            txHash,
+            txHash: candidate,
             syncPending: syncResult.syncPending === true,
           };
+          if (!syncResult.syncPending) {
+            return lastResult;
+          }
         }
-        return { ok: true, txHash };
+
+        return {
+          ...lastResult,
+          txHash: candidates[0] ?? txHash,
+        };
       } catch (e) {
         return { ok: false, error: formatPurchaseError(e) };
       }
