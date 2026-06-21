@@ -27,11 +27,8 @@ async function initRedis(): Promise<RedisClient | null> {
 
   try {
     const { Redis } = await import('@upstash/redis');
-    try {
-      return Redis.fromEnv();
-    } catch {
-      return new Redis({ url: creds.url, token: creds.token });
-    }
+    // Always use resolved credentials so KV_REST_* and UPSTASH_* stay in sync.
+    return new Redis({ url: creds.url, token: creds.token });
   } catch (e) {
     console.error('redis init failed', e);
     return null;

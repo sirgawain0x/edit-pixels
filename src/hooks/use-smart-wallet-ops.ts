@@ -16,6 +16,8 @@ export interface SmartWalletOp {
 export interface SendOpsResult {
   /** Mined transaction hash containing the user operation. */
   txHash: Hex;
+  /** All unique receipt tx hashes (batched calls may expose more than one). */
+  txHashes: Hex[];
 }
 
 interface ClientWithAccount {
@@ -99,9 +101,16 @@ export function useSmartWalletOps(client: ClientWithAccount | undefined) {
           `Transaction failed (status ${String(status.statusCode)})`
         );
       }
-      const txHash = status.receipts?.[0]?.transactionHash;
+      const txHashes = [
+        ...new Set(
+          (status.receipts ?? [])
+            .map((r) => r.transactionHash)
+            .filter((h): h is Hex => Boolean(h))
+        ),
+      ];
+      const txHash = txHashes[txHashes.length - 1];
       if (!txHash) throw new Error('Transaction confirmed without a receipt');
-      return { txHash };
+      return { txHash, txHashes };
     },
     [smartWalletClient]
   );
