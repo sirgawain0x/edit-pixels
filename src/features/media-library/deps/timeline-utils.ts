@@ -1,1 +1,1 @@
-export { autoMatchOrphanedClips } from './timeline-contract';
+export { autoMatchOrphanedClips, getTimelinePlacementErrorMessage } from './timeline-contract';

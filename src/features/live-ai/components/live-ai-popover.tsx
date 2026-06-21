@@ -14,9 +14,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useLiveSessionStore } from '../stores/live-session-store';
+import { useLiveSessionStore, type RecordedTake } from '../stores/live-session-store';
 import { usePlaybackStore } from '@/shared/state/playback';
 import { useTimelineStore, useProjectStore } from '../deps/editor';
+import { toast } from 'sonner';
+import { getInsertRecordedClipErrorMessage } from '../utils/commit-recorded-take';
 import { createStream, isDaydreamConfigured } from '../api/create-stream';
 import {
   createLiveVideoToVideoSession,
@@ -144,6 +146,8 @@ interface LiveAISessionWithBroadcastProps {
 interface LiveAISessionCoreProps extends LiveAISessionWithBroadcastProps {
   setOnPause: (fn: (() => void) | null) => void;
   billingEnabled: boolean;
+  /** Called after a recording is saved; used for auto-add to timeline. */
+  onRecordedTakeComplete?: (take: RecordedTake) => void | Promise<void>;
 }
 
 // No-op when wallet not connected; billing loop is not run.
@@ -214,12 +218,54 @@ export function LiveAIPanelContent() {
   const billingErrorDetail = useLiveSessionStore((s) => s.billingErrorDetail);
   const includeTimelineAudio = useLiveSessionStore((s) => s.includeTimelineAudio);
   const setIncludeTimelineAudio = useLiveSessionStore((s) => s.setIncludeTimelineAudio);
+  const autoAddToTimeline = useLiveSessionStore((s) => s.autoAddToTimeline);
+  const setAutoAddToTimeline = useLiveSessionStore((s) => s.setAutoAddToTimeline);
+  const removeLastRecordedTake = useLiveSessionStore((s) => s.removeLastRecordedTake);
   const isRecording = useLiveSessionStore((s) => s.isRecording);
   const setRecording = useLiveSessionStore((s) => s.setRecording);
   const recordedTakes = useLiveSessionStore((s) => s.recordedTakes);
   const insertRecordedClip = useTimelineStore((s) => s.insertRecordedClip);
   const currentProject = useProjectStore((s) => s.currentProject);
   const [committing, setCommitting] = useState(false);
+
+  const handleCommitTake = useCallback(
+    async (take: RecordedTake) => {
+      const projectId = currentProject?.id;
+      if (!projectId) {
+        toast.error(getInsertRecordedClipErrorMessage('no_project'));
+        return false;
+      }
+      setCommitting(true);
+      try {
+        const result = await insertRecordedClip({
+          blob: take.blob,
+          durationMs: take.durationMs,
+          linkedTimelineStart: take.linkedTimelineStart,
+          projectId,
+        });
+        if (result.ok) {
+          toast.success('Added to timeline');
+          removeLastRecordedTake();
+          return true;
+        }
+        toast.error(getInsertRecordedClipErrorMessage(result.reason));
+        return false;
+      } finally {
+        setCommitting(false);
+      }
+    },
+    [currentProject?.id, insertRecordedClip, removeLastRecordedTake],
+  );
+
+  const handleRecordedTakeComplete = useCallback(
+    async (take: RecordedTake) => {
+      if (!useLiveSessionStore.getState().autoAddToTimeline) {
+        return;
+      }
+      await handleCommitTake(take);
+    },
+    [handleCommitTake],
+  );
 
   const [streamData, setStreamData] = useState<StreamData | null>(null);
   const [streamSource, setStreamSource] = useState<'daydream' | 'livepeer' | null>(null);
@@ -637,6 +683,7 @@ export function LiveAIPanelContent() {
             billingEnabled={Boolean(superfluidConfigured && billingControls)}
             isDaydreamStream={streamSource === 'daydream'}
             selectedModelId={selectedModelId}
+            onRecordedTakeComplete={handleRecordedTakeComplete}
           />
         )}
       </div>
@@ -809,13 +856,27 @@ export function LiveAIPanelContent() {
           </Button>
         )}
         {recordedTakes.length > 0 && (
-          <>
+          <div className="flex items-center gap-2 shrink-0 flex-wrap">
             <Button
-              variant="ghost"
+              variant="default"
               size="sm"
-              className="shrink-0 text-xs"
+              className="text-xs"
+              disabled={!currentProject?.id || committing}
               onClick={() => {
                 const take = recordedTakes[recordedTakes.length - 1];
+                if (!take) return;
+                void handleCommitTake(take);
+              }}
+            >
+              {committing ? 'Adding…' : 'Add to Timeline'}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs"
+              onClick={() => {
+                const take = recordedTakes[recordedTakes.length - 1];
+                if (!take) return;
                 const url = URL.createObjectURL(take.blob);
                 const a = document.createElement('a');
                 a.href = url;
@@ -826,33 +887,19 @@ export function LiveAIPanelContent() {
             >
               Download
             </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              className="shrink-0 text-xs"
-              disabled={!currentProject?.id || committing}
-              onClick={async () => {
-                const take = recordedTakes[recordedTakes.length - 1];
-                const projectId = currentProject?.id;
-                if (!projectId) return;
-                setCommitting(true);
-                try {
-                  await insertRecordedClip({
-                    blob: take.blob,
-                    durationMs: take.durationMs,
-                    linkedTimelineStart: take.linkedTimelineStart,
-                    projectId,
-                  });
-                } finally {
-                  setCommitting(false);
-                }
-              }}
-            >
-              {committing ? 'Adding…' : 'Commit to timeline'}
-            </Button>
-          </>
+          </div>
         )}
-        <div className="flex items-center gap-2 flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-1 min-w-0 flex-wrap">
+          <Switch
+            id="live-ai-auto-add-timeline"
+            checked={autoAddToTimeline}
+            onCheckedChange={setAutoAddToTimeline}
+          />
+          <Label htmlFor="live-ai-auto-add-timeline" className="text-xs truncate cursor-pointer">
+            Auto-add to timeline
+          </Label>
+        </div>
+        <div className="flex items-center gap-2 flex-1 min-w-0 flex-wrap">
           <Switch
             id="live-ai-include-timeline-audio"
             checked={includeTimelineAudio}
@@ -895,6 +942,7 @@ function LiveAISessionWithBroadcastCore({
   whipUrl,
   localStream,
   onStreamStopped,
+  onRecordedTakeComplete,
   previewView,
   setPreviewView,
   setOnPause,
@@ -1165,12 +1213,14 @@ function LiveAISessionWithBroadcastCore({
         recorder.onstop = () => {
           const blob = new Blob(chunks, { type: recorder.mimeType });
           const durationMs = Date.now() - recordingStartRef.current;
-          addRecordedTake({
+          const take: RecordedTake = {
             blob,
             durationMs,
             linkedTimelineStart: linkedTimelineStartRef.current,
-          });
+          };
+          addRecordedTake(take);
           setRecording(false);
+          void onRecordedTakeComplete?.(take);
         };
         recorderRef.current = recorder;
         recordingStartRef.current = Date.now();
@@ -1186,7 +1236,7 @@ function LiveAISessionWithBroadcastCore({
       recorderRef.current.stop();
       recorderRef.current = null;
     }
-  }, [isRecording, addRecordedTake, setRecording]);
+  }, [isRecording, addRecordedTake, setRecording, onRecordedTakeComplete]);
 
   const handleStop = useCallback(() => {
     broadcast.stop();

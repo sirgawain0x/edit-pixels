@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Video, FileAudio, Image as ImageIcon, MoreVertical, Trash2, Loader2, Link2Off, RefreshCw, Zap, FileText } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Video, FileAudio, Image as ImageIcon, MoreVertical, Trash2, Loader2, Link2Off, RefreshCw, Zap, FileText, Plus } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,6 +20,10 @@ import {
   getTranscriptionOverallPercent,
   getTranscriptionStageLabel,
 } from '@/shared/utils/transcription-progress';
+import { useTimelineStore } from '@/features/media-library/deps/timeline-stores';
+import { useIsMobile } from '../hooks/use-is-mobile';
+import { toast } from 'sonner';
+import { getTimelinePlacementErrorMessage } from '@/features/media-library/deps/timeline-utils';
 
 interface MediaCardProps {
   media: MediaMetadata;
@@ -34,6 +38,9 @@ interface MediaCardProps {
 
 export function MediaCard({ media, selected = false, isBroken = false, onSelect, onDoubleClick, onDelete, onRelink, viewMode = 'grid' }: MediaCardProps) {
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+  const [addingToTimeline, setAddingToTimeline] = useState(false);
+  const isMobile = useIsMobile();
+  const addMediaToTimeline = useTimelineStore((s) => s.addMediaToTimeline);
   const selectedMediaIds = useMediaLibraryStore((s) => s.selectedMediaIds);
   const mediaItems = useMediaLibraryStore((s) => s.mediaItems);
   const importingIds = useMediaLibraryStore((s) => s.importingIds);
@@ -204,6 +211,26 @@ export function MediaCard({ media, selected = false, isBroken = false, onSelect,
     onSelect?.(e);
   };
 
+  const handleAddToTimeline = useCallback(async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (addingToTimeline || isBroken || isImporting) return;
+
+    setAddingToTimeline(true);
+    try {
+      const result = await addMediaToTimeline(media.id);
+      if (result.ok) {
+        toast.success('Added to timeline');
+      } else {
+        toast.error(getTimelinePlacementErrorMessage(result.reason));
+      }
+    } finally {
+      setAddingToTimeline(false);
+    }
+  }, [addMediaToTimeline, addingToTimeline, isBroken, isImporting, media.id]);
+
+  const showAddToTimeline = isMobile && !isBroken && !isImporting;
+
   const transcriptProgressLabel = transcriptProgress
     ? `${getTranscriptionStageLabel(transcriptProgress.stage)} (${Math.round(getTranscriptionOverallPercent(transcriptProgress))}%)`
     : 'Transcribing...';
@@ -310,18 +337,41 @@ export function MediaCard({ media, selected = false, isBroken = false, onSelect,
 
         {/* Actions - hidden during upload */}
         {!isImporting && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {showAddToTimeline && (
               <Button
-                variant="ghost"
+                variant="secondary"
                 size="icon"
-                className="h-6 w-6 transition-all hover:bg-primary/20 hover:text-primary flex-shrink-0"
+                className="h-6 w-6"
+                aria-label="Add to timeline"
+                disabled={addingToTimeline}
+                onClick={handleAddToTimeline}
               >
-                <MoreVertical className="w-3 h-3" />
+                {addingToTimeline ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <Plus className="w-3 h-3" />
+                )}
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" onClick={(e) => e.stopPropagation()}>
-              {isBroken && onRelink && (
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 transition-all hover:bg-primary/20 hover:text-primary flex-shrink-0"
+                >
+                  <MoreVertical className="w-3 h-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" onClick={(e) => e.stopPropagation()}>
+                {showAddToTimeline && (
+                  <DropdownMenuItem onClick={handleAddToTimeline} disabled={addingToTimeline}>
+                    <Plus className="w-3 h-3 mr-2" />
+                    {addingToTimeline ? 'Adding…' : 'Add to Timeline'}
+                  </DropdownMenuItem>
+                )}
+                {isBroken && onRelink && (
                 <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onRelink(); }} className="text-primary focus:text-primary">
                   <RefreshCw className="w-3 h-3 mr-2" />
                   Relink File...
@@ -363,6 +413,7 @@ export function MediaCard({ media, selected = false, isBroken = false, onSelect,
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          </div>
         )}
       </div>
     );
@@ -470,18 +521,41 @@ export function MediaCard({ media, selected = false, isBroken = false, onSelect,
 
           {/* Actions dropdown - hidden during upload */}
           {!isImporting && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-0.5 flex-shrink-0">
+              {showAddToTimeline && (
                 <Button
-                  variant="ghost"
+                  variant="secondary"
                   size="icon"
-                  className="h-5 w-5 transition-all hover:bg-primary/20 hover:text-primary flex-shrink-0"
+                  className="h-5 w-5"
+                  aria-label="Add to timeline"
+                  disabled={addingToTimeline}
+                  onClick={handleAddToTimeline}
                 >
-                  <MoreVertical className="w-2.5 h-2.5" />
+                  {addingToTimeline ? (
+                    <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                  ) : (
+                    <Plus className="w-2.5 h-2.5" />
+                  )}
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" onClick={(e) => e.stopPropagation()}>
-                {isBroken && onRelink && (
+              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-5 w-5 transition-all hover:bg-primary/20 hover:text-primary flex-shrink-0"
+                  >
+                    <MoreVertical className="w-2.5 h-2.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" onClick={(e) => e.stopPropagation()}>
+                  {showAddToTimeline && (
+                    <DropdownMenuItem onClick={handleAddToTimeline} disabled={addingToTimeline}>
+                      <Plus className="w-3 h-3 mr-2" />
+                      {addingToTimeline ? 'Adding…' : 'Add to Timeline'}
+                    </DropdownMenuItem>
+                  )}
+                  {isBroken && onRelink && (
                   <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onRelink(); }} className="text-primary focus:text-primary">
                     <RefreshCw className="w-3 h-3 mr-2" />
                     Relink File...
@@ -523,6 +597,7 @@ export function MediaCard({ media, selected = false, isBroken = false, onSelect,
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            </div>
           )}
         </div>
       </div>

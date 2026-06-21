@@ -2,7 +2,11 @@
  * Recorded Clip Actions - Import AI-recorded video blobs to media library and timeline.
  */
 
-import type { InsertRecordedClipParams } from '../../types';
+import type {
+  AddMediaToTimelineResult,
+  InsertRecordedClipParams,
+  InsertRecordedClipResult,
+} from '../../types';
 import { useItemsStore } from '../items-store';
 import { useTimelineSettingsStore } from '../timeline-settings-store';
 import { useProjectStore } from '@/features/timeline/deps/projects';
@@ -13,6 +17,7 @@ import { findNearestAvailableSpace } from '../../utils/collision-utils';
 import { buildTimelineBaseItem, buildTypedTimelineItem } from '../../utils/build-timeline-item-from-media';
 import { logger } from './shared';
 import { addItem } from './item-actions';
+import { usePlaybackStore } from '@/shared/state/playback';
 
 /**
  * Insert a recorded Live AI clip (blob) onto the timeline.
@@ -20,24 +25,36 @@ import { addItem } from './item-actions';
  * 2. Resolves blob URL and thumbnail
  * 3. Creates a video timeline item at the given position
  */
-export async function insertRecordedClip(params: InsertRecordedClipParams): Promise<void> {
+export async function insertRecordedClip(
+  params: InsertRecordedClipParams,
+): Promise<InsertRecordedClipResult> {
   const { blob, durationMs, linkedTimelineStart, projectId } = params;
 
+  if (!projectId) {
+    return { ok: false, reason: 'no_project' };
+  }
+
+  const tracks = useItemsStore.getState().tracks;
+  const droppableTrack = tracks.find((t) => !t.isGroup && t.visible && !t.locked);
+  if (!droppableTrack) {
+    logger.warn('No droppable track available for recorded clip');
+    return { ok: false, reason: 'no_track' };
+  }
+
   try {
-    const file = new File([blob], `ai-recording-${Date.now()}.webm`, { type: blob.type || 'video/webm' });
+    const file = new File([blob], `ai-recording-${Date.now()}.webm`, {
+      type: blob.type || 'video/webm',
+    });
     const media = await mediaLibraryService.importMediaWithFile(file, projectId);
 
-    // Refresh the media library store so the clip shows in the sidebar
     await useMediaLibraryStore.getState().loadMediaItems();
 
-    // Resolve blob URL for playback
     const blobUrl = await resolveMediaUrl(media.id);
     if (!blobUrl || blobUrl === '') {
       logger.error('Failed to resolve blob URL for recorded clip', { mediaId: media.id });
-      return;
+      return { ok: false, reason: 'resolve_failed' };
     }
 
-    // Resolve thumbnail
     let thumbnailUrl: string | null = null;
     if (media.thumbnailId) {
       try {
@@ -47,25 +64,14 @@ export async function insertRecordedClip(params: InsertRecordedClipParams): Prom
       }
     }
 
-    // Get timeline settings
-    const tracks = useItemsStore.getState().tracks;
     const items = useItemsStore.getState().items;
     const fps = useTimelineSettingsStore.getState().fps;
     const project = useProjectStore.getState().currentProject;
     const canvasWidth = project?.metadata.width ?? 1920;
     const canvasHeight = project?.metadata.height ?? 1080;
 
-    // Find a droppable track (prefer first non-group, visible, unlocked track)
-    const droppableTrack = tracks.find((t) => !t.isGroup && t.visible && !t.locked);
-    if (!droppableTrack) {
-      logger.warn('No droppable track available for recorded clip');
-      return;
-    }
-
-    // Calculate duration in frames
     const durationInFrames = Math.max(1, Math.round((durationMs / 1000) * fps));
 
-    // Find collision-free position
     const proposedPosition = Math.max(0, linkedTimelineStart);
     const trackItems = items.filter((i) => i.trackId === droppableTrack.id);
     const finalPosition = findNearestAvailableSpace(
@@ -77,10 +83,9 @@ export async function insertRecordedClip(params: InsertRecordedClipParams): Prom
 
     if (finalPosition === null) {
       logger.warn('No available space on track for recorded clip');
-      return;
+      return { ok: false, reason: 'no_space' };
     }
 
-    // Build timeline item
     const baseItem = buildTimelineBaseItem({
       media,
       mediaId: media.id,
@@ -103,7 +108,7 @@ export async function insertRecordedClip(params: InsertRecordedClipParams): Prom
 
     if (!timelineItem) {
       logger.error('Failed to build timeline item for recorded clip');
-      return;
+      return { ok: false, reason: 'build_failed' };
     }
 
     addItem(timelineItem);
@@ -113,8 +118,17 @@ export async function insertRecordedClip(params: InsertRecordedClipParams): Prom
       from: finalPosition,
       durationInFrames,
     });
+
+    return {
+      ok: true,
+      mediaId: media.id,
+      itemId: timelineItem.id,
+      from: finalPosition,
+      trackId: droppableTrack.id,
+    };
   } catch (error) {
     logger.error('Failed to insert recorded clip', error);
+    return { ok: false, reason: 'import_failed' };
   }
 }
 
@@ -122,75 +136,115 @@ export async function insertRecordedClip(params: InsertRecordedClipParams): Prom
  * Add existing media to the timeline at the playhead position.
  * Mobile-friendly alternative to drag-drop.
  */
-export async function addMediaToTimeline(mediaId: string): Promise<void> {
+export async function addMediaToTimeline(mediaId: string): Promise<AddMediaToTimelineResult> {
+  const project = useProjectStore.getState().currentProject;
+  if (!project?.id) {
+    return { ok: false, reason: 'no_project' };
+  }
+
   const media = useMediaLibraryStore.getState().mediaItems.find((m) => m.id === mediaId);
   if (!media) {
     logger.error('Media not found for addMediaToTimeline', { mediaId });
-    return;
+    return { ok: false, reason: 'media_not_found' };
   }
-
-  const fps = useTimelineSettingsStore.getState().fps;
-  const project = useProjectStore.getState().currentProject;
-  const canvasWidth = project?.metadata.width ?? 1920;
-  const canvasHeight = project?.metadata.height ?? 1080;
-
-  const blobUrl = await resolveMediaUrl(mediaId);
-  if (!blobUrl || blobUrl === '') {
-    logger.error('Failed to resolve blob URL', { mediaId });
-    return;
-  }
-
-  let thumbnailUrl: string | null = null;
-  if (media.thumbnailId) {
-    try {
-      thumbnailUrl = await mediaLibraryService.getThumbnailBlobUrl(mediaId);
-    } catch {
-      // Optional
-    }
-  }
-
-  const tracks = useItemsStore.getState().tracks;
-  const items = useItemsStore.getState().items;
-  const droppableTrack = tracks.find((t) => !t.isGroup && t.visible && !t.locked);
-  if (!droppableTrack) return;
-
-  // Calculate duration: use media duration or default 5s for images
-  const mediaDurationSec = media.duration > 0 ? media.duration : 5;
-  const durationInFrames = Math.max(1, Math.round(mediaDurationSec * fps));
-
-  // Place at frame 0 (playhead would be better but keeping it simple)
-  const trackItems = items.filter((i) => i.trackId === droppableTrack.id);
-  const finalPosition = findNearestAvailableSpace(0, durationInFrames, droppableTrack.id, trackItems);
-  if (finalPosition === null) return;
 
   const mimeType = media.mimeType || '';
   const mediaType = mimeType.startsWith('video/')
     ? 'video'
     : mimeType.startsWith('audio/')
       ? 'audio'
-      : 'image';
+      : mimeType.startsWith('image/')
+        ? 'image'
+        : null;
 
-  const baseItem = buildTimelineBaseItem({
-    media,
-    mediaId,
-    label: media.fileName,
-    trackId: droppableTrack.id,
-    from: finalPosition,
-    durationInFrames,
-    timelineFps: fps,
-  });
+  if (!mediaType) {
+    return { ok: false, reason: 'unsupported_type' };
+  }
 
-  const timelineItem = buildTypedTimelineItem({
-    baseItem,
-    mediaType,
-    blobUrl,
-    thumbnailUrl,
-    media,
-    canvasWidth,
-    canvasHeight,
-  });
+  const tracks = useItemsStore.getState().tracks;
+  const droppableTrack = tracks.find((t) => !t.isGroup && t.visible && !t.locked);
+  if (!droppableTrack) {
+    logger.warn('No droppable track available for media add');
+    return { ok: false, reason: 'no_track' };
+  }
 
-  if (timelineItem) {
+  try {
+    const fps = useTimelineSettingsStore.getState().fps;
+    const canvasWidth = project.metadata.width ?? 1920;
+    const canvasHeight = project.metadata.height ?? 1080;
+
+    const blobUrl = await resolveMediaUrl(mediaId);
+    if (!blobUrl || blobUrl === '') {
+      logger.error('Failed to resolve blob URL', { mediaId });
+      return { ok: false, reason: 'resolve_failed' };
+    }
+
+    let thumbnailUrl: string | null = null;
+    if (media.thumbnailId) {
+      try {
+        thumbnailUrl = await mediaLibraryService.getThumbnailBlobUrl(mediaId);
+      } catch {
+        // Optional
+      }
+    }
+
+    const items = useItemsStore.getState().items;
+    const mediaDurationSec = media.duration > 0 ? media.duration : 5;
+    const durationInFrames = Math.max(1, Math.round(mediaDurationSec * fps));
+    const playheadFrame = usePlaybackStore.getState().currentFrame;
+
+    const trackItems = items.filter((i) => i.trackId === droppableTrack.id);
+    const finalPosition = findNearestAvailableSpace(
+      Math.max(0, playheadFrame),
+      durationInFrames,
+      droppableTrack.id,
+      trackItems,
+    );
+    if (finalPosition === null) {
+      return { ok: false, reason: 'no_space' };
+    }
+
+    const baseItem = buildTimelineBaseItem({
+      media,
+      mediaId,
+      label: media.fileName,
+      trackId: droppableTrack.id,
+      from: finalPosition,
+      durationInFrames,
+      timelineFps: fps,
+    });
+
+    const timelineItem = buildTypedTimelineItem({
+      baseItem,
+      mediaType,
+      blobUrl,
+      thumbnailUrl,
+      media,
+      canvasWidth,
+      canvasHeight,
+    });
+
+    if (!timelineItem) {
+      return { ok: false, reason: 'build_failed' };
+    }
+
     addItem(timelineItem);
+    logger.info('Added media to timeline', {
+      mediaId,
+      trackId: droppableTrack.id,
+      from: finalPosition,
+      durationInFrames,
+    });
+
+    return {
+      ok: true,
+      mediaId,
+      itemId: timelineItem.id,
+      from: finalPosition,
+      trackId: droppableTrack.id,
+    };
+  } catch (error) {
+    logger.error('Failed to add media to timeline', error);
+    return { ok: false, reason: 'import_failed' };
   }
 }

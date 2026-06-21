@@ -119,9 +119,9 @@ export interface TimelineActions {
   markDirty: () => void;
   markClean: () => void;
   /** Add media to timeline at playhead (mobile-friendly, no drag required) */
-  addMediaToTimeline: (mediaId: string) => Promise<void>;
+  addMediaToTimeline: (mediaId: string) => Promise<AddMediaToTimelineResult>;
   /** Insert a recorded Live AI clip (blob) at the given timeline position */
-  insertRecordedClip: (params: InsertRecordedClipParams) => Promise<void>;
+  insertRecordedClip: (params: InsertRecordedClipParams) => Promise<InsertRecordedClipResult>;
 }
 
 export interface InsertRecordedClipParams {
@@ -130,3 +130,41 @@ export interface InsertRecordedClipParams {
   linkedTimelineStart: number;
   projectId: string;
 }
+
+export type TimelinePlacementFailureReason =
+  | 'no_project'
+  | 'media_not_found'
+  | 'unsupported_type'
+  | 'import_failed'
+  | 'resolve_failed'
+  | 'no_track'
+  | 'no_space'
+  | 'build_failed';
+
+export type InsertRecordedClipFailureReason = TimelinePlacementFailureReason;
+
+export type InsertRecordedClipResult =
+  | {
+      ok: true;
+      mediaId: string;
+      itemId: string;
+      from: number;
+      trackId: string;
+    }
+  | {
+      ok: false;
+      reason: InsertRecordedClipFailureReason;
+    };
+
+export type AddMediaToTimelineResult =
+  | {
+      ok: true;
+      mediaId: string;
+      itemId: string;
+      from: number;
+      trackId: string;
+    }
+  | {
+      ok: false;
+      reason: TimelinePlacementFailureReason;
+    };

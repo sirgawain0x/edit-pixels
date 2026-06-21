@@ -20,3 +20,4 @@ export {
 
 export { autoMatchOrphanedClips } from '../utils/media-validation';
 export { gifFrameCache } from '../services/gif-frame-cache';
+export { getTimelinePlacementErrorMessage } from '../utils/timeline-placement-errors';
