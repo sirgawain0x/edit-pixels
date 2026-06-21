@@ -60,24 +60,22 @@ export async function rankCreditsPurchaseTxHashes(
     transport: http(getArbitrumRpcUrl()),
   });
 
-  const withEvent: Hex[] = [];
-  const withoutEvent: Hex[] = [];
-
-  for (const hash of unique) {
-    try {
-      const receipt = await client.getTransactionReceipt({ hash });
-      if (
-        receipt.status === 'success' &&
-        findCreditsPurchasedLog(receipt.logs, paymentContract)
-      ) {
-        withEvent.push(hash);
-      } else {
-        withoutEvent.push(hash);
+  const ranked = await Promise.all(
+    unique.map(async (hash) => {
+      try {
+        const receipt = await client.getTransactionReceipt({ hash });
+        const hasEvent =
+          receipt.status === 'success' &&
+          findCreditsPurchasedLog(receipt.logs, paymentContract);
+        return { hash, hasEvent };
+      } catch {
+        return { hash, hasEvent: false };
       }
-    } catch {
-      withoutEvent.push(hash);
-    }
-  }
+    })
+  );
+
+  const withEvent = ranked.filter((r) => r.hasEvent).map((r) => r.hash);
+  const withoutEvent = ranked.filter((r) => !r.hasEvent).map((r) => r.hash);
 
   return [...withEvent, ...withoutEvent];
 }

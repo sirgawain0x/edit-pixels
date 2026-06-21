@@ -210,9 +210,6 @@ export function useCredits(): UseCreditsResult {
             txHash: candidate,
             syncPending: syncResult.syncPending === true,
           };
-          if (!syncResult.syncPending) {
-            return lastResult;
-          }
         }
 
         return {
