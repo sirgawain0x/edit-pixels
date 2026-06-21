@@ -1,7 +1,14 @@
 import type { Hex } from 'viem';
 import { arbitrum } from 'viem/chains';
 
-const ARBISCAN_TX_BASE = `${arbitrum.blockExplorers.default.url}/tx/`;
+const ARBISCAN_TX_BASE = `${arbitrum.blockExplorers?.default?.url ?? 'https://arbiscan.io'}/tx/`;
+
+/** Extract a transaction hash from common Viem / RPC error shapes. */
+export function extractTxHashFromError(error: unknown): Hex | undefined {
+  if (!error || typeof error !== 'object') return undefined;
+  const record = error as { txHash?: Hex; transactionHash?: Hex; hash?: Hex };
+  return record.txHash ?? record.transactionHash ?? record.hash;
+}
 
 /**
  * Maps raw wallet / RPC errors to user-facing billing detail text.

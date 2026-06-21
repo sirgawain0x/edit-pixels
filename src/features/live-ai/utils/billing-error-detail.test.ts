@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { formatBillingErrorDetail } from './billing-error-detail';
+import { formatBillingErrorDetail, extractTxHashFromError } from './billing-error-detail';
 
 describe('formatBillingErrorDetail', () => {
   it('maps wallet not ready', () => {
@@ -20,6 +20,12 @@ describe('formatBillingErrorDetail', () => {
       '0xabc123'
     );
     expect(detail).toContain('arbiscan.io/tx/0xabc123');
+  });
+
+  it('extracts tx hash from alternative error property names', () => {
+    expect(extractTxHashFromError({ transactionHash: '0xabc' })).toBe('0xabc');
+    expect(extractTxHashFromError({ hash: '0xdef' })).toBe('0xdef');
+    expect(extractTxHashFromError({ txHash: '0x111' })).toBe('0x111');
   });
 
   it('truncates very long messages', () => {

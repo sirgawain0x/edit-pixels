@@ -16,7 +16,7 @@ import {
 } from '@/config/superfluid';
 import { createLogger, createOperationId } from '@/shared/logging/logger';
 import { usePremiumMembership } from '@/features/live-ai/hooks/use-premium-membership';
-import { formatBillingErrorDetail } from '../utils/billing-error-detail';
+import { formatBillingErrorDetail, extractTxHashFromError } from '../utils/billing-error-detail';
 import { useLiveSessionStore } from '../stores/live-session-store';
 import {
   buildDeleteFlowUserOperation,
@@ -217,10 +217,7 @@ export function useSuperfluidBilling() {
     } catch (e) {
       log.warn('Failed to start Superfluid flow', { error: e });
       const msg = e instanceof Error ? e.message.toLowerCase() : '';
-      const txHash =
-        e && typeof e === 'object' && 'txHash' in e
-          ? (e as { txHash?: Hex }).txHash
-          : undefined;
+      const txHash = extractTxHashFromError(e);
       const detail = formatBillingErrorDetail(e, txHash);
       if (
         msg.includes('insufficient') ||
