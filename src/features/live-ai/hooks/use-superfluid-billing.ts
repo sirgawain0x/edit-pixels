@@ -5,6 +5,7 @@ import {
   useSmartAccountClient,
 } from '@account-kit/react';
 import { arbitrum } from 'viem/chains';
+import type { Hex } from 'viem';
 import { useSmartWalletOps } from '@/hooks/use-smart-wallet-ops';
 import {
   getSuperfluidReceiverAddress,
@@ -13,8 +14,9 @@ import {
   SUPERFLUID_CHAIN_ID,
   wrapUsdc6ForOneHour,
 } from '@/config/superfluid';
-import { createLogger } from '@/shared/logging/logger';
+import { createLogger, createOperationId } from '@/shared/logging/logger';
 import { usePremiumMembership } from '@/features/live-ai/hooks/use-premium-membership';
+import { formatBillingErrorDetail, extractTxHashFromError } from '../utils/billing-error-detail';
 import { useLiveSessionStore } from '../stores/live-session-store';
 import {
   buildDeleteFlowUserOperation,
@@ -33,6 +35,11 @@ const MIN_RUNWAY_SECONDS = 120;
 const FLOW_WITHOUT_STREAM_GRACE_MS = 90_000;
 const STOP_FLOW_MAX_ATTEMPTS = 3;
 const STOP_FLOW_RETRY_DELAY_MS = 2_000;
+
+export interface StopFlowOptions {
+  /** When true, do not set billingError in global store (e.g. session rollback). */
+  suppressBillingError?: boolean;
+}
 
 /**
  * Manages Superfluid USDCx streaming for Live AI.
@@ -64,6 +71,7 @@ export function useSuperfluidBilling() {
   const startInFlightRef = useRef(false);
   const stopInFlightRef = useRef(false);
   const wasLiveRef = useRef(false);
+  const lastStopErrorRef = useRef<unknown>(null);
 
   const markFlowActive = useCallback((value: boolean) => {
     flowActiveRef.current = value;
@@ -81,12 +89,13 @@ export function useSuperfluidBilling() {
   const sendOpsRef = useRef<
     (
       uo: Array<{ target: `0x${string}`; data: `0x${string}`; value: bigint }>
-    ) => Promise<void>
+    ) => Promise<{ txHash: Hex }>
   >(() => Promise.reject(new Error('Wallet not ready')));
 
   sendOpsRef.current = async (uo) => {
     if (!client) throw new Error('Wallet not ready');
-    await sendOps(uo);
+    const result = await sendOps(uo);
+    return { txHash: result.txHash };
   };
 
   const ensureArbitrum = useCallback(async () => {
@@ -99,35 +108,51 @@ export function useSuperfluidBilling() {
    * flow stays marked active so a later call can retry; a billing error is
    * surfaced instead of silently leaving the stream paying.
    */
-  const stopFlow = useCallback(async (): Promise<boolean> => {
-    if (!address || !receiver) return true;
-    if (!flowActiveRef.current) return true;
-    if (stopInFlightRef.current) return false;
+  const stopFlow = useCallback(
+    async (options?: StopFlowOptions): Promise<boolean> => {
+      if (!address || !receiver) return true;
+      if (!flowActiveRef.current) return true;
+      if (stopInFlightRef.current) return false;
 
-    stopInFlightRef.current = true;
-    try {
-      for (let attempt = 1; attempt <= STOP_FLOW_MAX_ATTEMPTS; attempt++) {
-        try {
-          const existing = await readExistingFlowRate(address, receiver);
-          if (existing > 0n) {
-            const op = buildDeleteFlowUserOperation(address, receiver);
-            await sendOpsRef.current([op]);
-          }
-          markFlowActive(false);
-          return true;
-        } catch (e) {
-          log.warn('Failed to delete Superfluid flow', { attempt, error: e });
-          if (attempt < STOP_FLOW_MAX_ATTEMPTS) {
-            await new Promise((r) => setTimeout(r, STOP_FLOW_RETRY_DELAY_MS));
+      stopInFlightRef.current = true;
+      lastStopErrorRef.current = null;
+      const opId = createOperationId();
+      const event = log.startEvent('superfluid_stop_flow', opId);
+      event.merge({ address, receiver });
+
+      try {
+        for (let attempt = 1; attempt <= STOP_FLOW_MAX_ATTEMPTS; attempt++) {
+          try {
+            const existing = await readExistingFlowRate(address, receiver);
+            if (existing > 0n) {
+              const op = buildDeleteFlowUserOperation(address, receiver);
+              const { txHash } = await sendOpsRef.current([op]);
+              event.set('txHash', txHash);
+            }
+            markFlowActive(false);
+            event.success({ attempt });
+            return true;
+          } catch (e) {
+            lastStopErrorRef.current = e;
+            log.warn('Failed to delete Superfluid flow', { attempt, error: e });
+            event.set('lastAttempt', attempt);
+            if (attempt < STOP_FLOW_MAX_ATTEMPTS) {
+              await new Promise((r) => setTimeout(r, STOP_FLOW_RETRY_DELAY_MS));
+            }
           }
         }
+        const detail = formatBillingErrorDetail(lastStopErrorRef.current);
+        if (!options?.suppressBillingError) {
+          setBillingError('rpc_or_unknown', detail);
+        }
+        event.failure(lastStopErrorRef.current, { suppressBillingError: options?.suppressBillingError });
+        return false;
+      } finally {
+        stopInFlightRef.current = false;
       }
-      setBillingError('rpc_or_unknown');
-      return false;
-    } finally {
-      stopInFlightRef.current = false;
-    }
-  }, [address, receiver, markFlowActive, setBillingError]);
+    },
+    [address, receiver, markFlowActive, setBillingError]
+  );
 
   /**
    * Wraps USDC and creates/updates the flow, resolving true only after the
@@ -150,16 +175,27 @@ export function useSuperfluidBilling() {
     startInFlightRef.current = true;
     setBillingError(null);
 
+    const opId = createOperationId();
+    const event = log.startEvent('superfluid_start_flow', opId);
+    event.merge({ address, receiver });
+
     try {
       await ensureArbitrum();
 
       const cost = intervalCostRef.current;
       const rate = flowRateRef.current;
       const wrapUsdc6 = wrapUsdc6ForOneHour(cost);
+      event.merge({
+        intervalCostUsdc6: cost,
+        flowRate: rate.toString(),
+        wrapUsdc6: wrapUsdc6.toString(),
+      });
 
       const usdcBalance = await readUsdcBalanceArbitrum(address);
+      event.set('usdcBalance6', usdcBalance.toString());
       if (usdcBalance < wrapUsdc6) {
         setBillingError('insufficient_balance');
+        event.failure(new Error('Insufficient USDC for wrap amount'));
         return false;
       }
 
@@ -172,22 +208,27 @@ export function useSuperfluidBilling() {
         existingFlowRate,
       });
 
-      await sendOpsRef.current(ops);
+      const { txHash } = await sendOpsRef.current(ops);
+      event.set('txHash', txHash);
       markFlowActive(true);
       setBillingError(null);
+      event.success();
       return true;
     } catch (e) {
       log.warn('Failed to start Superfluid flow', { error: e });
       const msg = e instanceof Error ? e.message.toLowerCase() : '';
+      const txHash = extractTxHashFromError(e);
+      const detail = formatBillingErrorDetail(e, txHash);
       if (
         msg.includes('insufficient') ||
         msg.includes('balance') ||
         msg.includes('allowance')
       ) {
-        setBillingError('insufficient_balance');
+        setBillingError('insufficient_balance', detail);
       } else {
-        setBillingError('rpc_or_unknown');
+        setBillingError('rpc_or_unknown', detail);
       }
+      event.failure(e);
       return false;
     } finally {
       startInFlightRef.current = false;
@@ -265,6 +306,7 @@ export function useSuperfluidBilling() {
 
   return {
     configured,
+    walletReady,
     setOnPause,
     intervalCostUsdc6,
     startFlow,
