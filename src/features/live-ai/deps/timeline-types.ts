@@ -1,1 +1,1 @@
-export type { InsertRecordedClipFailureReason } from '@/features/timeline/contracts/live-ai';
+export type { InsertRecordedClipFailureReason } from './timeline-contract';
