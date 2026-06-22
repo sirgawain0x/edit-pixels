@@ -714,12 +714,15 @@ export const TimelineTrack = memo(function TimelineTrack({ track }: TimelineTrac
         const clip = useGenerativeStore.getState().getClipById(generativeClipId);
         if (clip && currentProject?.id) {
           const { insertRecordedClip } = await import('../stores/actions/recorded-clip-actions');
-          await insertRecordedClip({
+          const result = await insertRecordedClip({
             blob: clip.blob,
             durationMs: clip.durationMs,
             linkedTimelineStart: dropFrame,
             projectId: currentProject.id,
           });
+          if (!result.ok) {
+            toast.error('Failed to add AI clip to timeline');
+          }
         } else {
           logger.warn('Generative clip not found or no project', { generativeClipId });
         }
