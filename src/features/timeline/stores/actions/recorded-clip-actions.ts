@@ -7,6 +7,8 @@ import type {
   InsertRecordedClipParams,
   InsertRecordedClipResult,
 } from '../../types';
+import type { TimelineItem, TimelineTrack } from '@/types/timeline';
+import type { DroppableMediaType } from '../../utils/dropped-media';
 import { useItemsStore } from '../items-store';
 import { useTimelineSettingsStore } from '../timeline-settings-store';
 import { useProjectStore } from '@/features/timeline/deps/projects';
@@ -18,6 +20,35 @@ import { buildTimelineBaseItem, buildTypedTimelineItem } from '../../utils/build
 import { logger } from './shared';
 import { addItem } from './item-actions';
 import { usePlaybackStore } from '@/shared/state/playback';
+
+function trackAcceptsMediaType(
+  track: TimelineTrack,
+  mediaType: DroppableMediaType,
+  items: readonly TimelineItem[],
+): boolean {
+  if (track.isGroup || !track.visible || track.locked) {
+    return false;
+  }
+
+  const trackItems = items.filter((item) => item.trackId === track.id);
+  if (trackItems.length === 0) {
+    return true;
+  }
+
+  if (mediaType === 'audio') {
+    return trackItems.every((item) => item.type === 'audio');
+  }
+
+  return trackItems.every((item) => item.type !== 'audio');
+}
+
+function findDroppableTrack(
+  tracks: TimelineTrack[],
+  items: readonly TimelineItem[],
+  mediaType: DroppableMediaType,
+): TimelineTrack | undefined {
+  return tracks.find((track) => trackAcceptsMediaType(track, mediaType, items));
+}
 
 /**
  * Insert a recorded Live AI clip (blob) onto the timeline.
@@ -35,9 +66,10 @@ export async function insertRecordedClip(
   }
 
   const tracks = useItemsStore.getState().tracks;
-  const droppableTrack = tracks.find((t) => !t.isGroup && t.visible && !t.locked);
+  const items = useItemsStore.getState().items;
+  const droppableTrack = findDroppableTrack(tracks, items, 'video');
   if (!droppableTrack) {
-    logger.warn('No droppable track available for recorded clip');
+    logger.warn('No droppable video track available for recorded clip');
     return { ok: false, reason: 'no_track' };
   }
 
@@ -64,7 +96,6 @@ export async function insertRecordedClip(
       }
     }
 
-    const items = useItemsStore.getState().items;
     const fps = useTimelineSettingsStore.getState().fps;
     const project = useProjectStore.getState().currentProject;
     const canvasWidth = project?.metadata.width ?? 1920;
@@ -162,9 +193,10 @@ export async function addMediaToTimeline(mediaId: string): Promise<AddMediaToTim
   }
 
   const tracks = useItemsStore.getState().tracks;
-  const droppableTrack = tracks.find((t) => !t.isGroup && t.visible && !t.locked);
+  const items = useItemsStore.getState().items;
+  const droppableTrack = findDroppableTrack(tracks, items, mediaType);
   if (!droppableTrack) {
-    logger.warn('No droppable track available for media add');
+    logger.warn(`No droppable track available for media type: ${mediaType}`);
     return { ok: false, reason: 'no_track' };
   }
 
@@ -188,7 +220,6 @@ export async function addMediaToTimeline(mediaId: string): Promise<AddMediaToTim
       }
     }
 
-    const items = useItemsStore.getState().items;
     const mediaDurationSec = media.duration > 0 ? media.duration : 5;
     const durationInFrames = Math.max(1, Math.round(mediaDurationSec * fps));
     const playheadFrame = usePlaybackStore.getState().currentFrame;

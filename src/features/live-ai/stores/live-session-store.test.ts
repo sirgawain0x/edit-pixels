@@ -19,20 +19,22 @@ describe('useLiveSessionStore', () => {
     expect(useLiveSessionStore.getState().autoAddToTimeline).toBe(false);
   });
 
-  it('removeLastRecordedTake drops the most recent take', () => {
+  it('removeRecordedTake drops the specified take', () => {
     const blob = new Blob(['x'], { type: 'video/webm' });
-    useLiveSessionStore.getState().addRecordedTake({
+    const take1 = {
       blob,
       durationMs: 500,
       linkedTimelineStart: 0,
-    });
-    useLiveSessionStore.getState().addRecordedTake({
+    };
+    const take2 = {
       blob,
       durationMs: 1000,
       linkedTimelineStart: 30,
-    });
+    };
+    useLiveSessionStore.getState().addRecordedTake(take1);
+    useLiveSessionStore.getState().addRecordedTake(take2);
 
-    useLiveSessionStore.getState().removeLastRecordedTake();
+    useLiveSessionStore.getState().removeRecordedTake(take2);
 
     const takes = useLiveSessionStore.getState().recordedTakes;
     expect(takes).toHaveLength(1);

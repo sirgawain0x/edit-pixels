@@ -53,7 +53,7 @@ export interface LiveSessionActions {
   setAutoAddToTimeline: (enabled: boolean) => void;
   setPermissionsGranted: (granted: boolean) => void;
   addRecordedTake: (take: RecordedTake) => void;
-  removeLastRecordedTake: () => void;
+  removeRecordedTake: (take: RecordedTake) => void;
   clearRecordedTakes: () => void;
   setPopoverPosition: (position: { x: number; y: number }) => void;
   toggleOpen: () => void;
@@ -106,12 +106,9 @@ export const useLiveSessionStore = create<LiveSessionState & LiveSessionActions>
       setPermissionsGranted: (granted) => set({ permissionsGranted: granted }),
       addRecordedTake: (take) =>
         set((state) => ({ recordedTakes: [...state.recordedTakes, take] })),
-      removeLastRecordedTake: () =>
+      removeRecordedTake: (take) =>
         set((state) => ({
-          recordedTakes:
-            state.recordedTakes.length > 0
-              ? state.recordedTakes.slice(0, -1)
-              : state.recordedTakes,
+          recordedTakes: state.recordedTakes.filter((t) => t !== take),
         })),
       clearRecordedTakes: () => set({ recordedTakes: [] }),
       setPopoverPosition: (position) => set({ popoverPosition: position }),

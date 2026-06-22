@@ -220,7 +220,7 @@ export function LiveAIPanelContent() {
   const setIncludeTimelineAudio = useLiveSessionStore((s) => s.setIncludeTimelineAudio);
   const autoAddToTimeline = useLiveSessionStore((s) => s.autoAddToTimeline);
   const setAutoAddToTimeline = useLiveSessionStore((s) => s.setAutoAddToTimeline);
-  const removeLastRecordedTake = useLiveSessionStore((s) => s.removeLastRecordedTake);
+  const removeRecordedTake = useLiveSessionStore((s) => s.removeRecordedTake);
   const isRecording = useLiveSessionStore((s) => s.isRecording);
   const setRecording = useLiveSessionStore((s) => s.setRecording);
   const recordedTakes = useLiveSessionStore((s) => s.recordedTakes);
@@ -245,7 +245,7 @@ export function LiveAIPanelContent() {
         });
         if (result.ok) {
           toast.success('Added to timeline');
-          removeLastRecordedTake();
+          removeRecordedTake(take);
           return true;
         }
         toast.error(getInsertRecordedClipErrorMessage(result.reason));
@@ -254,7 +254,7 @@ export function LiveAIPanelContent() {
         setCommitting(false);
       }
     },
-    [currentProject?.id, insertRecordedClip, removeLastRecordedTake],
+    [currentProject?.id, insertRecordedClip, removeRecordedTake],
   );
 
   const handleRecordedTakeComplete = useCallback(

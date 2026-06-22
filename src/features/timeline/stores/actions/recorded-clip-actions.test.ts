@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { TimelineTrack } from '@/types/timeline';
+import type { TimelineItem, TimelineTrack } from '@/types/timeline';
 import { useItemsStore } from '../items-store';
 import { useTimelineSettingsStore } from '../timeline-settings-store';
 import { insertRecordedClip, addMediaToTimeline } from './recorded-clip-actions';
@@ -65,13 +65,38 @@ function makeTrack(overrides: Partial<TimelineTrack> = {}): TimelineTrack {
   return {
     id: 'track-1',
     name: 'Track 1',
-    type: 'video',
+    height: 60,
     order: 0,
     visible: true,
     locked: false,
     muted: false,
-    isGroup: false,
+    solo: false,
+    items: [],
     ...overrides,
+  };
+}
+
+function makeAudioItem(trackId: string): TimelineItem {
+  return {
+    id: 'audio-item-1',
+    trackId,
+    from: 0,
+    durationInFrames: 30,
+    label: 'Audio',
+    type: 'audio',
+    src: 'blob:audio',
+  };
+}
+
+function makeVideoItem(trackId: string): TimelineItem {
+  return {
+    id: 'video-item-1',
+    trackId,
+    from: 0,
+    durationInFrames: 30,
+    label: 'Video',
+    type: 'video',
+    src: 'blob:video',
   };
 }
 
@@ -141,6 +166,23 @@ describe('insertRecordedClip', () => {
     expect(addItem).toHaveBeenCalledOnce();
     expect(mediaLibraryMocks.loadMediaItems).toHaveBeenCalledOnce();
   });
+
+  it('returns no_track when only audio tracks are available', async () => {
+    useItemsStore.getState().setTracks([
+      makeTrack({ id: 'audio-track', name: 'Audio 1', order: 0 }),
+    ]);
+    useItemsStore.getState().setItems([makeAudioItem('audio-track')]);
+
+    const result = await insertRecordedClip({
+      blob: new Blob(['x'], { type: 'video/webm' }),
+      durationMs: 1000,
+      linkedTimelineStart: 0,
+      projectId: 'project-1',
+    });
+
+    expect(result).toEqual({ ok: false, reason: 'no_track' });
+    expect(mediaLibraryMocks.importMediaWithFile).not.toHaveBeenCalled();
+  });
 });
 
 describe('addMediaToTimeline', () => {
@@ -176,6 +218,35 @@ describe('addMediaToTimeline', () => {
     if (result.ok) {
       expect(result.from).toBe(45);
       expect(result.mediaId).toBe('media-1');
+    }
+    expect(addItem).toHaveBeenCalledOnce();
+  });
+
+  it('places audio media on an audio track instead of a video track', async () => {
+    useItemsStore.getState().setTracks([
+      makeTrack({ id: 'video-track', name: 'Video 1', order: 0 }),
+      makeTrack({ id: 'audio-track', name: 'Audio 1', order: 1 }),
+    ]);
+    useItemsStore.getState().setItems([
+      makeVideoItem('video-track'),
+      makeAudioItem('audio-track'),
+    ]);
+    mediaLibraryMocks.mediaItems = [
+      {
+        id: 'media-audio',
+        fileName: 'voice.wav',
+        mimeType: 'audio/wav',
+        duration: 2,
+        thumbnailId: null,
+      },
+    ];
+    vi.mocked(resolveMediaUrl).mockResolvedValue('blob:voice');
+
+    const result = await addMediaToTimeline('media-audio');
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.trackId).toBe('audio-track');
     }
     expect(addItem).toHaveBeenCalledOnce();
   });
