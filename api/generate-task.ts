@@ -3,7 +3,7 @@
  * Poll Evolink task status (no additional credit charge).
  */
 
-import { evolinkServerGet, isEvolinkServerConfigured } from './_evolink-server';
+import { evolinkServerGet, isEvolinkServerConfigured } from './_evolink-server.js';
 
 export async function GET(request: Request): Promise<Response> {
   if (!isEvolinkServerConfigured()) {

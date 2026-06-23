@@ -3,7 +3,7 @@
  * Diagnostic probe for credits API dependencies (Redis + viem).
  */
 
-import { isRedisConfigured, getRedis } from './_redis-client';
+import { isRedisConfigured, getRedis } from './_redis-client.js';
 
 export async function GET(): Promise<Response> {
   const redisConfigured = isRedisConfigured();

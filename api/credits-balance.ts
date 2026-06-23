@@ -3,8 +3,8 @@
  * Returns credit balance for a wallet.
  */
 
-import { ADDRESS_REGEX } from './_address';
-import { getCreditBalance, isCreditStoreConfigured } from './_credit-store';
+import { ADDRESS_REGEX } from './_address.js';
+import { getCreditBalance, isCreditStoreConfigured } from './_credit-store.js';
 
 export async function GET(request: Request): Promise<Response> {
   try {

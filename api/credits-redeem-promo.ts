@@ -8,8 +8,8 @@ import {
   buildCreditsAuthMessage,
   parseWalletAuthBody,
   verifyWalletMessage,
-} from './_wallet-auth';
-import { isPromoStoreConfigured, redeemPromoCode } from './_promo-store';
+} from './_wallet-auth.js';
+import { isPromoStoreConfigured, redeemPromoCode } from './_promo-store.js';
 
 const REDEEM_RATE_WINDOW_MS = 60_000;
 const REDEEM_RATE_MAX = 5;

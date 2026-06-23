@@ -4,23 +4,15 @@
  * Body: { address, txHash }
  */
 
-import {
-  createPublicClient,
-  decodeEventLog,
-  http,
-  parseAbiItem,
-  type Log,
-} from 'viem';
-import { arbitrum } from 'viem/chains';
-import { ADDRESS_REGEX } from './_address';
-import { validateCreditPurchaseEvent } from './_credit-packs';
-import { creditFromPurchase, isCreditStoreConfigured } from './_credit-store';
-
-const CREDITS_PURCHASED = parseAbiItem(
-  'event CreditsPurchased(address indexed buyer, uint8 indexed packId, uint256 credits, uint256 usdcPaid)'
-);
+import type { Log } from 'viem';
+import { ADDRESS_REGEX } from './_address.js';
+import { validateCreditPurchaseEvent } from './_credit-packs.js';
+import { creditFromPurchase, isCreditStoreConfigured } from './_credit-store.js';
 
 const TX_HASH_REGEX = /^0x[a-fA-F0-9]{64}$/;
+
+const CREDITS_PURCHASED_EVENT =
+  'event CreditsPurchased(address indexed buyer, uint8 indexed packId, uint256 credits, uint256 usdcPaid)';
 
 function getPaymentContract(): `0x${string}` | null {
   const v =
@@ -47,16 +39,18 @@ type CreditsPurchasedLog = {
   };
 };
 
-function findCreditsPurchasedLog(
+async function findCreditsPurchasedLog(
   logs: Log[],
   contractAddress: string
-): CreditsPurchasedLog | null {
+): Promise<CreditsPurchasedLog | null> {
+  const { decodeEventLog, parseAbiItem } = await import('viem');
+  const creditsPurchased = parseAbiItem(CREDITS_PURCHASED_EVENT);
   const target = contractAddress.toLowerCase();
   for (const log of logs) {
     if (log.address.toLowerCase() !== target) continue;
     try {
       const decoded = decodeEventLog({
-        abi: [CREDITS_PURCHASED],
+        abi: [creditsPurchased],
         data: log.data,
         topics: log.topics,
       });
@@ -107,6 +101,8 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
+    const { createPublicClient, http } = await import('viem');
+    const { arbitrum } = await import('viem/chains');
     const client = createPublicClient({
       chain: arbitrum,
       transport: http(getArbitrumRpcUrl()),
@@ -119,7 +115,7 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json({ ok: false, reason: 'tx_failed' }, { status: 400 });
     }
 
-    const decoded = findCreditsPurchasedLog(receipt.logs, contractAddress);
+    const decoded = await findCreditsPurchasedLog(receipt.logs, contractAddress);
     if (!decoded || decoded.eventName !== 'CreditsPurchased') {
       return Response.json(
         { ok: false, reason: 'event_not_found' },

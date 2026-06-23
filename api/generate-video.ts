@@ -6,9 +6,9 @@ import {
   buildCreditsAuthMessage,
   parseWalletAuthBody,
   verifyWalletMessage,
-} from './_wallet-auth';
-import { debitCredits, isCreditStoreConfigured } from './_credit-store';
-import { evolinkServerPost, isEvolinkServerConfigured } from './_evolink-server';
+} from './_wallet-auth.js';
+import { debitCredits, isCreditStoreConfigured } from './_credit-store.js';
+import { evolinkServerPost, isEvolinkServerConfigured } from './_evolink-server.js';
 
 function quoteSeedanceCredits(body: Record<string, unknown>): number {
   const duration = typeof body.duration === 'number' ? body.duration : 5;

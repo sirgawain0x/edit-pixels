@@ -1,5 +1,5 @@
-import { addCredits } from './_credit-store';
-import { getRedis, isRedisConfigured } from './_redis-client';
+import { addCredits } from './_credit-store.js';
+import { getRedis, isRedisConfigured } from './_redis-client.js';
 
 export function isPromoStoreConfigured(): boolean {
   return isRedisConfigured();
