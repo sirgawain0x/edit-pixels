@@ -10,7 +10,15 @@ import {
 } from '@account-kit/react';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
-import { Copy, DollarSign, Gift, Settings2, Sparkles, Wallet } from 'lucide-react';
+import {
+  Copy,
+  DollarSign,
+  Gift,
+  Send,
+  Settings2,
+  Sparkles,
+  Wallet,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { useBuyUsdcOnramp } from '@/hooks/use-buy-usdc-onramp';
 import { useUnlockCheckout } from '@/hooks/use-unlock-checkout';
@@ -39,6 +47,7 @@ import {
 import { alchemyConfig, SWITCHABLE_CHAINS } from '@/config/alchemy';
 import { canAffordAnyCreditPack } from '@/features/credits/usdc-for-purchase';
 import { formatSubscribeCta } from '@/shared/utils/currency-display';
+import { SendUsdcModal } from '@/components/send-usdc-modal';
 import { useUsdcBalance } from '@/hooks/use-usdc-balance';
 
 const ARBITRUM_ONE_CHAIN_ID = 42_161;
@@ -109,6 +118,7 @@ function WalletConnectButtonInner({
   const { balance, isLoading: creditsLoading, claimMembershipCredits } = useCredits();
 
   const [buyCreditsOpen, setBuyCreditsOpen] = useState(false);
+  const [sendUsdcOpen, setSendUsdcOpen] = useState(false);
   const [redeemOpen, setRedeemOpen] = useState(false);
   const [claimingMembership, setClaimingMembership] = useState(false);
 
@@ -227,6 +237,14 @@ function WalletConnectButtonInner({
             <DollarSign className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
             {isOnrampLoading ? 'Opening…' : 'Buy USDC'}
           </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => setSendUsdcOpen(true)}
+            className="flex cursor-pointer items-center gap-2"
+            aria-label="Send USDC"
+          >
+            <Send className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+            Send USDC
+          </DropdownMenuItem>
           {isUnlockConfigured && !isPremiumMember && (
             <DropdownMenuItem
               onClick={openSubscribeCheckout}
@@ -307,6 +325,7 @@ function WalletConnectButtonInner({
       </DropdownMenuContent>
     </DropdownMenu>
       <BuyCreditsModal open={buyCreditsOpen} onOpenChange={setBuyCreditsOpen} />
+      <SendUsdcModal open={sendUsdcOpen} onOpenChange={setSendUsdcOpen} />
       <RedeemPromoModal open={redeemOpen} onOpenChange={setRedeemOpen} />
     </>
   );
