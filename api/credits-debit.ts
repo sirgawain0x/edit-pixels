@@ -8,8 +8,8 @@ import {
   buildCreditsAuthMessage,
   parseWalletAuthBody,
   verifyWalletMessage,
-} from './_wallet-auth';
-import { debitCredits, isCreditStoreConfigured } from './_credit-store';
+} from './_wallet-auth.js';
+import { debitCredits, isCreditStoreConfigured } from './_credit-store.js';
 
 const VALID_REASONS = new Set(['live_ai', 'flow_video', 'flow_image']);
 

@@ -88,4 +88,31 @@ describe('syncPurchaseCredits', () => {
     expect(result.syncPending).toBe(false);
     expect(fetch).toHaveBeenCalledTimes(1);
   });
+
+  it('retries on receipt_not_found then succeeds', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: false, reason: 'receipt_not_found' }), {
+          status: 404,
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ ok: true, creditsAdded: 50, balance: 50 }),
+          { status: 200 }
+        )
+      );
+
+    const promise = syncPurchaseCredits(
+      '0x1234567890123456789012345678901234567890',
+      '0xabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd'
+    );
+    await vi.runAllTimersAsync();
+    const result = await promise;
+
+    expect(result.ok).toBe(true);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
 });

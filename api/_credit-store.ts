@@ -1,4 +1,4 @@
-import { getRedis, isRedisConfigured } from './_redis-client';
+import { getRedis, isRedisConfigured } from './_redis-client.js';
 
 export function isCreditStoreConfigured(): boolean {
   return isRedisConfigured();

@@ -6,23 +6,17 @@
  * Body: { address, timestamp, nonce, signature }
  */
 
-import { createPublicClient, http, parseAbi } from 'viem';
-import { arbitrum } from 'viem/chains';
 import {
   buildCreditsAuthMessage,
   parseWalletAuthBody,
   verifyWalletMessage,
-} from './_wallet-auth';
+} from './_wallet-auth.js';
 import {
   addCredits,
   getCreditBalance,
   isCreditStoreConfigured,
-} from './_credit-store';
-import { getRedis } from './_redis-client';
-
-const UNLOCK_HAS_VALID_KEY_ABI = parseAbi([
-  'function getHasValidKey(address) view returns (bool)',
-]);
+} from './_credit-store.js';
+import { getRedis } from './_redis-client.js';
 
 /** Pixels Premium Unlock lock on Arbitrum ($30/mo). Keep in sync with src/infrastructure/unlock/membership.ts */
 const PIXELS_PREMIUM_LOCK_DEFAULT =
@@ -86,6 +80,12 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
+    const { createPublicClient, http, parseAbi } = await import('viem');
+    const { arbitrum } = await import('viem/chains');
+    const unlockHasValidKeyAbi = parseAbi([
+      'function getHasValidKey(address) view returns (bool)',
+    ]);
+
     const client = createPublicClient({
       chain: arbitrum,
       transport: http(getArbitrumRpcUrl()),
@@ -93,7 +93,7 @@ export async function POST(request: Request): Promise<Response> {
 
     const hasKey = await client.readContract({
       address: getLockAddress(),
-      abi: UNLOCK_HAS_VALID_KEY_ABI,
+      abi: unlockHasValidKeyAbi,
       functionName: 'getHasValidKey',
       args: [auth.address as `0x${string}`],
     });

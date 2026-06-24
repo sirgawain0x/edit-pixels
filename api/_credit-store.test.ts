@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseRedisInteger } from './_credit-store';
+import { parseRedisInteger } from './_credit-store.js';
 
 describe('parseRedisInteger', () => {
   it('parses numbers', () => {

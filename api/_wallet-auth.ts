@@ -3,7 +3,7 @@ import {
   ADDRESS_REGEX,
   HEX_SIG_REGEX,
   MAX_SIG_AGE_MS,
-} from './_address';
+} from './_address.js';
 
 export { ADDRESS_REGEX, HEX_SIG_REGEX, MAX_SIG_AGE_MS };
 

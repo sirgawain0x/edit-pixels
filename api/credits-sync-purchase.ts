@@ -4,23 +4,15 @@
  * Body: { address, txHash }
  */
 
-import {
-  createPublicClient,
-  decodeEventLog,
-  http,
-  parseAbiItem,
-  type Log,
-} from 'viem';
-import { arbitrum } from 'viem/chains';
-import { ADDRESS_REGEX } from './_address';
-import { validateCreditPurchaseEvent } from './_credit-packs';
-import { creditFromPurchase, isCreditStoreConfigured } from './_credit-store';
-
-const CREDITS_PURCHASED = parseAbiItem(
-  'event CreditsPurchased(address indexed buyer, uint8 indexed packId, uint256 credits, uint256 usdcPaid)'
-);
+import type { Log } from 'viem';
+import { ADDRESS_REGEX } from './_address.js';
+import { validateCreditPurchaseEvent } from './_credit-packs.js';
+import { creditFromPurchase, isCreditStoreConfigured } from './_credit-store.js';
 
 const TX_HASH_REGEX = /^0x[a-fA-F0-9]{64}$/;
+
+const CREDITS_PURCHASED_EVENT =
+  'event CreditsPurchased(address indexed buyer, uint8 indexed packId, uint256 credits, uint256 usdcPaid)';
 
 function getPaymentContract(): `0x${string}` | null {
   const v =
@@ -47,16 +39,18 @@ type CreditsPurchasedLog = {
   };
 };
 
-function findCreditsPurchasedLog(
+async function findCreditsPurchasedLog(
   logs: Log[],
   contractAddress: string
-): CreditsPurchasedLog | null {
+): Promise<CreditsPurchasedLog | null> {
+  const { decodeEventLog, parseAbiItem } = await import('viem');
+  const creditsPurchased = parseAbiItem(CREDITS_PURCHASED_EVENT);
   const target = contractAddress.toLowerCase();
   for (const log of logs) {
     if (log.address.toLowerCase() !== target) continue;
     try {
       const decoded = decodeEventLog({
-        abi: [CREDITS_PURCHASED],
+        abi: [creditsPurchased],
         data: log.data,
         topics: log.topics,
       });
@@ -68,6 +62,42 @@ function findCreditsPurchasedLog(
     }
   }
   return null;
+}
+
+function classifyReceiptFetchError(e: unknown): {
+  reason: string;
+  status: number;
+} {
+  const message =
+    e instanceof Error ? e.message.toLowerCase() : String(e).toLowerCase();
+  const name =
+    e && typeof e === 'object' && 'name' in e ? String(e.name) : '';
+
+  if (
+    name === 'TransactionReceiptNotFoundError' ||
+    (message.includes('receipt') && message.includes('not found'))
+  ) {
+    return { reason: 'receipt_not_found', status: 404 };
+  }
+
+  if (
+    name === 'TransactionNotFoundError' ||
+    name === 'InvalidParamsRpcError'
+  ) {
+    return { reason: 'tx_not_found', status: 400 };
+  }
+
+  if (
+    name === 'HttpRequestError' ||
+    name === 'TimeoutError' ||
+    name === 'RpcRequestError' ||
+    message.includes('timeout') ||
+    message.includes('fetch failed')
+  ) {
+    return { reason: 'rpc_error', status: 503 };
+  }
+
+  return { reason: 'error', status: 500 };
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -107,19 +137,36 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
+    const { createPublicClient, http } = await import('viem');
+    const { arbitrum } = await import('viem/chains');
     const client = createPublicClient({
       chain: arbitrum,
       transport: http(getArbitrumRpcUrl()),
     });
 
-    const receipt = await client.getTransactionReceipt({
-      hash: txHash as `0x${string}`,
-    });
+    let receipt;
+    try {
+      receipt = await client.getTransactionReceipt({
+        hash: txHash as `0x${string}`,
+      });
+    } catch (e) {
+      const classified = classifyReceiptFetchError(e);
+      console.error('credits-sync-purchase receipt fetch failed', {
+        txHash,
+        reason: classified.reason,
+        error: e,
+      });
+      return Response.json(
+        { ok: false, reason: classified.reason },
+        { status: classified.status }
+      );
+    }
+
     if (receipt.status !== 'success') {
       return Response.json({ ok: false, reason: 'tx_failed' }, { status: 400 });
     }
 
-    const decoded = findCreditsPurchasedLog(receipt.logs, contractAddress);
+    const decoded = await findCreditsPurchasedLog(receipt.logs, contractAddress);
     if (!decoded || decoded.eventName !== 'CreditsPurchased') {
       return Response.json(
         { ok: false, reason: 'event_not_found' },
