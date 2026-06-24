@@ -1,4 +1,5 @@
-import { encodeFunctionData, erc20Abi, isAddress, parseUnits } from 'viem';
+import { encodeFunctionData, erc20Abi, formatUnits, isAddress, parseUnits } from 'viem';
+import { getPurchaseGasBufferUsdc6 } from '@/config/gas-sponsorship';
 
 export const USDC_DECIMALS = 6;
 
@@ -6,11 +7,32 @@ export type UsdcSendValidation =
   | { ok: true; recipient: `0x${string}`; amountUsdc6: bigint }
   | { ok: false; error: string };
 
+export function getUsdcGasReserveUsdc6(chainId: number): number {
+  return getPurchaseGasBufferUsdc6(chainId);
+}
+
+/** Spendable USDC after reserving ERC-20 gas, or null when balance is too low. */
+export function getMaxSendableUsdc(
+  balance: string | null,
+  chainId: number
+): string | null {
+  if (balance === null) return null;
+  try {
+    const balanceUsdc6 = parseUnits(balance, USDC_DECIMALS);
+    const reserveUsdc6 = BigInt(getPurchaseGasBufferUsdc6(chainId));
+    if (balanceUsdc6 <= reserveUsdc6) return null;
+    return formatUnits(balanceUsdc6 - reserveUsdc6, USDC_DECIMALS);
+  } catch {
+    return null;
+  }
+}
+
 export function validateUsdcSend(params: {
   recipient: string;
   amount: string;
   balance: string | null;
   senderAddress?: string;
+  gasReserveUsdc6?: number;
 }): UsdcSendValidation {
   const trimmedRecipient = params.recipient.trim();
   if (!trimmedRecipient) {
@@ -31,7 +53,7 @@ export function validateUsdcSend(params: {
   if (!trimmedAmount) {
     return { ok: false, error: 'Enter an amount' };
   }
-  if (!/^\d+(\.\d+)?$/.test(trimmedAmount)) {
+  if (!/^(?:\d+\.?\d*|\.\d+)$/.test(trimmedAmount)) {
     return { ok: false, error: 'Enter a valid amount' };
   }
   const decimalPart = trimmedAmount.split('.')[1];
@@ -58,6 +80,13 @@ export function validateUsdcSend(params: {
     }
     if (amountUsdc6 > balanceUsdc6) {
       return { ok: false, error: 'Insufficient USDC balance' };
+    }
+    const gasReserveUsdc6 = BigInt(params.gasReserveUsdc6 ?? 0);
+    if (gasReserveUsdc6 > 0n && amountUsdc6 + gasReserveUsdc6 > balanceUsdc6) {
+      return {
+        ok: false,
+        error: 'Insufficient USDC after reserving gas fees',
+      };
     }
   }
 

@@ -18,7 +18,11 @@ import { Label } from '@/components/ui/label';
 import { USDC_ADDRESS_BY_CHAIN_ID } from '@/config/chains';
 import { useSendUsdc } from '@/hooks/use-send-usdc';
 import { useUsdcBalance } from '@/hooks/use-usdc-balance';
-import { validateUsdcSend } from '@/shared/utils/usdc-transfer';
+import {
+  getMaxSendableUsdc,
+  getUsdcGasReserveUsdc6,
+  validateUsdcSend,
+} from '@/shared/utils/usdc-transfer';
 
 interface SendUsdcModalProps {
   open: boolean;
@@ -32,6 +36,7 @@ export function SendUsdcModal({ open, onOpenChange }: SendUsdcModalProps) {
     balance: usdcBalance,
     formatted: usdcFormatted,
     isLoading: isBalanceLoading,
+    isError: isBalanceError,
   } = useUsdcBalance(chain, address as `0x${string}` | undefined);
   const { sendUsdc, ready } = useSendUsdc();
 
@@ -49,6 +54,11 @@ export function SendUsdcModal({ open, onOpenChange }: SendUsdcModalProps) {
     }
   }, [open]);
 
+  const gasReserveUsdc6 = chain ? getUsdcGasReserveUsdc6(chain.id) : 0;
+  const maxSendableUsdc = chain
+    ? getMaxSendableUsdc(usdcBalance, chain.id)
+    : null;
+
   const validation = useMemo(
     () =>
       validateUsdcSend({
@@ -56,20 +66,24 @@ export function SendUsdcModal({ open, onOpenChange }: SendUsdcModalProps) {
         amount,
         balance: usdcBalance,
         senderAddress: address,
+        gasReserveUsdc6,
       }),
-    [address, amount, recipient, usdcBalance]
+    [address, amount, gasReserveUsdc6, recipient, usdcBalance]
   );
 
   const canSend =
     ready &&
     !isBalanceLoading &&
+    !isBalanceError &&
     validation.ok &&
     !isSending &&
     Boolean(chain && usdcBalance !== null);
 
+  const hasPositiveBalance = maxSendableUsdc !== null && Number(maxSendableUsdc) > 0;
+
   const handleMax = () => {
-    if (usdcBalance) {
-      setAmount(usdcBalance);
+    if (maxSendableUsdc) {
+      setAmount(maxSendableUsdc);
       setError(null);
     }
   };
@@ -99,9 +113,32 @@ export function SendUsdcModal({ open, onOpenChange }: SendUsdcModalProps) {
   const hasUsdc = chain ? chain.id in USDC_ADDRESS_BY_CHAIN_ID : false;
   const unsupportedNetwork = Boolean(chain && !hasUsdc);
 
+  const balanceStatusText = (() => {
+    if (isBalanceLoading) return 'Checking USDC balance…';
+    if (unsupportedNetwork) return 'USDC is not available on this network.';
+    if (isBalanceError || usdcBalance === null) {
+      return 'Failed to load USDC balance.';
+    }
+    return `Available: ${usdcFormatted} USDC`;
+  })();
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen && isSending) return;
+    onOpenChange(nextOpen);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent
+        className="sm:max-w-md"
+        hideCloseButton={isSending}
+        onEscapeKeyDown={(event) => {
+          if (isSending) event.preventDefault();
+        }}
+        onPointerDownOutside={(event) => {
+          if (isSending) event.preventDefault();
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Send USDC</DialogTitle>
           <DialogDescription>
@@ -111,13 +148,7 @@ export function SendUsdcModal({ open, onOpenChange }: SendUsdcModalProps) {
         </DialogHeader>
 
         <div className="grid gap-4 py-2">
-          <div className="text-muted-foreground text-sm">
-            {isBalanceLoading
-              ? 'Checking USDC balance…'
-              : unsupportedNetwork
-                ? 'USDC is not available on this network.'
-                : `Available: ${usdcFormatted} USDC`}
-          </div>
+          <div className="text-muted-foreground text-sm">{balanceStatusText}</div>
 
           <div className="grid gap-2">
             <Label htmlFor="send-usdc-recipient">Recipient address</Label>
@@ -144,7 +175,9 @@ export function SendUsdcModal({ open, onOpenChange }: SendUsdcModalProps) {
                 size="sm"
                 className="h-auto px-2 py-1 text-xs"
                 onClick={handleMax}
-                disabled={!usdcBalance || isSending || unsupportedNetwork}
+                disabled={
+                  !hasPositiveBalance || isSending || unsupportedNetwork
+                }
               >
                 Max
               </Button>
@@ -173,7 +206,7 @@ export function SendUsdcModal({ open, onOpenChange }: SendUsdcModalProps) {
         <DialogFooter>
           <Button
             variant="outline"
-            onClick={() => onOpenChange(false)}
+            onClick={() => handleOpenChange(false)}
             disabled={isSending}
           >
             Cancel

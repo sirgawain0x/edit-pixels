@@ -10,6 +10,7 @@ import { USDC_ADDRESS_BY_CHAIN_ID } from '@/config/chains';
 import { useSmartWalletOps } from '@/hooks/use-smart-wallet-ops';
 import {
   buildUsdcTransferCalldata,
+  getUsdcGasReserveUsdc6,
   validateUsdcSend,
 } from '@/shared/utils/usdc-transfer';
 
@@ -46,6 +47,7 @@ export function useSendUsdc() {
         amount,
         balance,
         senderAddress: address,
+        gasReserveUsdc6: getUsdcGasReserveUsdc6(chain.id),
       });
       if (!validation.ok) {
         return { ok: false, error: validation.error };
