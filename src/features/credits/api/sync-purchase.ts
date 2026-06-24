@@ -26,6 +26,7 @@ const TERMINAL_SYNC_REASONS = new Set([
   'buyer_mismatch',
   'pack_mismatch',
   'tx_failed',
+  'tx_not_found',
 ]);
 
 function isRetryableSyncFailure(
@@ -37,6 +38,8 @@ function isRetryableSyncFailure(
     reason === 'error' ||
     reason === 'disabled' ||
     reason === 'event_not_found' ||
+    reason === 'receipt_not_found' ||
+    reason === 'rpc_error' ||
     reason === 'network_error' ||
     status >= 500
   );

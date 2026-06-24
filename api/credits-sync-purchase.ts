@@ -64,6 +64,42 @@ async function findCreditsPurchasedLog(
   return null;
 }
 
+function classifyReceiptFetchError(e: unknown): {
+  reason: string;
+  status: number;
+} {
+  const message =
+    e instanceof Error ? e.message.toLowerCase() : String(e).toLowerCase();
+  const name =
+    e && typeof e === 'object' && 'name' in e ? String(e.name) : '';
+
+  if (
+    name === 'TransactionReceiptNotFoundError' ||
+    (message.includes('receipt') && message.includes('not found'))
+  ) {
+    return { reason: 'receipt_not_found', status: 404 };
+  }
+
+  if (
+    name === 'TransactionNotFoundError' ||
+    name === 'InvalidParamsRpcError'
+  ) {
+    return { reason: 'tx_not_found', status: 400 };
+  }
+
+  if (
+    name === 'HttpRequestError' ||
+    name === 'TimeoutError' ||
+    name === 'RpcRequestError' ||
+    message.includes('timeout') ||
+    message.includes('fetch failed')
+  ) {
+    return { reason: 'rpc_error', status: 503 };
+  }
+
+  return { reason: 'error', status: 500 };
+}
+
 export async function POST(request: Request): Promise<Response> {
   if (!isCreditStoreConfigured()) {
     return Response.json(
@@ -108,9 +144,24 @@ export async function POST(request: Request): Promise<Response> {
       transport: http(getArbitrumRpcUrl()),
     });
 
-    const receipt = await client.getTransactionReceipt({
-      hash: txHash as `0x${string}`,
-    });
+    let receipt;
+    try {
+      receipt = await client.getTransactionReceipt({
+        hash: txHash as `0x${string}`,
+      });
+    } catch (e) {
+      const classified = classifyReceiptFetchError(e);
+      console.error('credits-sync-purchase receipt fetch failed', {
+        txHash,
+        reason: classified.reason,
+        error: e,
+      });
+      return Response.json(
+        { ok: false, reason: classified.reason },
+        { status: classified.status }
+      );
+    }
+
     if (receipt.status !== 'success') {
       return Response.json({ ok: false, reason: 'tx_failed' }, { status: 400 });
     }
