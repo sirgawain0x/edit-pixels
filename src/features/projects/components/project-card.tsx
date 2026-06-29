@@ -31,6 +31,12 @@ interface ProjectCardProps {
   onEdit?: (project: Project) => void;
 }
 
+/**
+ * Renders a project card with thumbnail, metadata, actions, and a hover-to-play video preview.
+ *
+ * The preview loads the first video in the project timeline, supports scrubbing via drag,
+ * and restores the thumbnail when the video ends or the mouse leaves.
+ */
 export function ProjectCard({ project, onEdit }: ProjectCardProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
@@ -48,6 +54,7 @@ export function ProjectCard({ project, onEdit }: ProjectCardProps) {
   const dragMoveRef = useRef<((e: MouseEvent) => void) | null>(null);
   const dragUpRef = useRef<((e: MouseEvent) => void) | null>(null);
 
+  /** Cleans up global drag listeners when the card unmounts. */
   useEffect(() => {
     return () => {
       if (dragMoveRef.current) document.removeEventListener('mousemove', dragMoveRef.current);
@@ -56,6 +63,7 @@ export function ProjectCard({ project, onEdit }: ProjectCardProps) {
     };
   }, []);
 
+  /** Seeks the preview video to the scrub position represented by a clientX coordinate. */
   const seekToClientX = useCallback((clientX: number) => {
     const video = videoRef.current;
     const bar = scrubRef.current;
@@ -66,6 +74,7 @@ export function ProjectCard({ project, onEdit }: ProjectCardProps) {
     setScrubProgress(ratio);
   }, []);
 
+  /** Updates the scrub progress from the video playback position, unless the user is dragging. */
   const handleVideoTimeUpdate = useCallback(() => {
     if (isDraggingRef.current) return;
     const video = videoRef.current;
@@ -73,13 +82,13 @@ export function ProjectCard({ project, onEdit }: ProjectCardProps) {
     setScrubProgress(video.currentTime / video.duration);
   }, []);
 
+  /** Called when the preview video reaches its end. */
   const handleVideoEnded = useCallback(() => {
     setScrubProgress(1);
     onVideoEnded();
   }, [onVideoEnded]);
 
-
-
+  /** Starts dragging the scrub bar and attaches global mouse move/up listeners. */
   const handleScrubMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
