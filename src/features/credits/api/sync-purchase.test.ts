@@ -68,7 +68,7 @@ describe('syncPurchaseCredits', () => {
 
     expect(result.ok).toBe(false);
     expect(result.syncPending).toBe(true);
-    expect(fetch).toHaveBeenCalledTimes(5);
+    expect(fetch).toHaveBeenCalledTimes(6);
     vi.useRealTimers();
   });
 
