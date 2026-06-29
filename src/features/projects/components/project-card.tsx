@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { Link } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { MoreVertical, PlayCircle, Edit2, Copy, Trash2, AlertTriangle, HardDrive } from 'lucide-react';
@@ -24,12 +24,19 @@ import type { Project } from '@/types/project';
 import { formatRelativeTime } from '../utils/project-helpers';
 import { useDeleteProject, useDuplicateProject } from '../hooks/use-project-actions';
 import { useProjectThumbnail } from '../hooks/use-project-thumbnail';
+import { useProjectHoverPreview } from '../hooks/use-project-hover-preview';
 
 interface ProjectCardProps {
   project: Project;
   onEdit?: (project: Project) => void;
 }
 
+/**
+ * Renders a project card with thumbnail, metadata, actions, and a hover-to-play video preview.
+ *
+ * The preview loads the first video in the project timeline, supports scrubbing via drag,
+ * and restores the thumbnail when the video ends or the mouse leaves.
+ */
 export function ProjectCard({ project, onEdit }: ProjectCardProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
@@ -38,6 +45,69 @@ export function ProjectCard({ project, onEdit }: ProjectCardProps) {
   const deleteProject = useDeleteProject();
   const duplicateProject = useDuplicateProject();
   const thumbnailUrl = useProjectThumbnail(project);
+  const { previewState, videoSrc, onMouseEnter, onMouseLeave, onVideoEnded, onVideoError } = useProjectHoverPreview(project);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const scrubRef = useRef<HTMLDivElement>(null);
+  const [scrubProgress, setScrubProgress] = useState(0);
+
+  const isDraggingRef = useRef(false);
+  const dragMoveRef = useRef<((e: MouseEvent) => void) | null>(null);
+  const dragUpRef = useRef<((e: MouseEvent) => void) | null>(null);
+
+  /** Cleans up global drag listeners when the card unmounts. */
+  useEffect(() => {
+    return () => {
+      if (dragMoveRef.current) document.removeEventListener('mousemove', dragMoveRef.current);
+      if (dragUpRef.current) document.removeEventListener('mouseup', dragUpRef.current);
+      isDraggingRef.current = false;
+    };
+  }, []);
+
+  /** Seeks the preview video to the scrub position represented by a clientX coordinate. */
+  const seekToClientX = useCallback((clientX: number) => {
+    const video = videoRef.current;
+    const bar = scrubRef.current;
+    if (!video || !bar || !video.duration) return;
+    const rect = bar.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    video.currentTime = ratio * video.duration;
+    setScrubProgress(ratio);
+  }, []);
+
+  /** Updates the scrub progress from the video playback position, unless the user is dragging. */
+  const handleVideoTimeUpdate = useCallback(() => {
+    if (isDraggingRef.current) return;
+    const video = videoRef.current;
+    if (!video || !video.duration) return;
+    setScrubProgress(video.currentTime / video.duration);
+  }, []);
+
+  /** Called when the preview video reaches its end. */
+  const handleVideoEnded = useCallback(() => {
+    setScrubProgress(1);
+    onVideoEnded();
+  }, [onVideoEnded]);
+
+  /** Starts dragging the scrub bar and attaches global mouse move/up listeners. */
+  const handleScrubMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    isDraggingRef.current = true;
+    seekToClientX(e.clientX);
+
+    const onMove = (ev: MouseEvent) => seekToClientX(ev.clientX);
+    const onUp = () => {
+      isDraggingRef.current = false;
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      dragMoveRef.current = null;
+      dragUpRef.current = null;
+    };
+    dragMoveRef.current = onMove;
+    dragUpRef.current = onUp;
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [seekToClientX]);
 
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -106,10 +176,16 @@ export function ProjectCard({ project, onEdit }: ProjectCardProps) {
         to="/editor/$projectId"
         params={{ projectId: project.id }}
         className="block relative aspect-video bg-secondary/30 overflow-hidden"
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={() => {
+          onMouseLeave(() => isDraggingRef.current);
+          setScrubProgress(0);
+        }}
       >
+        {/* Base layer — always rendered so the overlay has something beneath it */}
         {thumbnailUrl ? (
           <img
-            key={project.updatedAt} // Force re-render when project is updated
+            key={project.updatedAt}
             src={thumbnailUrl}
             alt={project.name}
             className="w-full h-full object-contain bg-black/40"
@@ -120,13 +196,55 @@ export function ProjectCard({ project, onEdit }: ProjectCardProps) {
           </div>
         )}
 
-        {/* Hover overlay */}
-        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-          <div className="flex items-center gap-2 text-white">
-            <PlayCircle className="w-6 h-6" />
-            <span className="font-medium">Open in Editor</span>
+        {/* Loading shimmer */}
+        {previewState === 'loading' && (
+          <div className="absolute inset-0 bg-black/30 animate-pulse" />
+        )}
+
+        {/* Video player — absolutely positioned so base layer stays mounted */}
+        {videoSrc && (
+          <video
+            ref={videoRef}
+            src={videoSrc}
+            className="absolute inset-0 w-full h-full object-contain bg-black"
+            autoPlay
+            muted
+            playsInline
+            onTimeUpdate={handleVideoTimeUpdate}
+            onEnded={handleVideoEnded}
+            onError={onVideoError}
+          />
+        )}
+
+        {/* Scrub bar — visible while playing */}
+        {previewState === 'playing' && (
+          <div
+            className="absolute bottom-0 left-0 right-0 h-5 flex items-end cursor-pointer"
+            onMouseDown={handleScrubMouseDown}
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+          >
+            <div ref={scrubRef} className="relative w-full h-1 bg-white/20">
+              <div
+                className="h-full bg-white transition-none"
+                style={{ width: `${scrubProgress * 100}%` }}
+              />
+              <div
+                className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white shadow -translate-x-1/2"
+                style={{ left: `${scrubProgress * 100}%` }}
+              />
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* "Open in Editor" overlay — appears when video ends */}
+        {previewState === 'ended' && (
+          <div className="absolute inset-0 bg-black/60 flex items-center justify-center animate-in fade-in duration-300">
+            <div className="flex items-center gap-2 text-white">
+              <PlayCircle className="w-6 h-6" />
+              <span className="font-medium">Open in Editor</span>
+            </div>
+          </div>
+        )}
 
         {/* Resolution badge */}
         <div className="absolute top-2 right-2 px-2 py-1 bg-black/80 backdrop-blur-sm rounded text-xs font-mono text-white">
