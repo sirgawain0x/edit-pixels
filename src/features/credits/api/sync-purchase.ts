@@ -10,8 +10,8 @@ export interface SyncPurchaseResult extends SyncPurchaseResponse {
   syncPending?: boolean;
 }
 
-const SYNC_MAX_ATTEMPTS = 5;
-const SYNC_BACKOFF_MS = [1_000, 2_000, 3_000, 5_000, 8_000] as const;
+const SYNC_MAX_ATTEMPTS = 6;
+const SYNC_BACKOFF_MS = [1_000, 2_000, 3_000, 5_000, 8_000, 13_000] as const;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -27,6 +27,7 @@ const TERMINAL_SYNC_REASONS = new Set([
   'pack_mismatch',
   'tx_failed',
   'tx_not_found',
+  'invalid',
 ]);
 
 function isRetryableSyncFailure(

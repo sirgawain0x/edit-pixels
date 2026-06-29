@@ -1,5 +1,5 @@
-import { encodeFunctionData, parseAbi } from 'viem';
-import { getPaymentContractAddress } from '@/config/billing';
+import { encodeFunctionData, erc20Abi, parseAbi, parseUnits } from 'viem';
+import { getPaymentContractAddress, USDC_DECIMALS } from '@/config/billing';
 
 const PAY_AI_RENDER_ABI = parseAbi([
   'function payAiRender(uint256 amountUsdc6) external',
@@ -29,6 +29,23 @@ export function buildBuyCreditsCalldata(packId: number): `0x${string}` | undefin
     abi: PAY_AI_RENDER_ABI,
     functionName: 'buyCredits',
     args: [packId],
+  });
+}
+
+/**
+ * Builds an ERC-20 approve call for the exact USDC amount of a credit pack.
+ * Approving the exact pack price reduces exposure and avoids re-approval
+ * issues when a prior unlimited approval was set to a different value.
+ */
+export function buildBuyCreditsApproveCalldata(
+  paymentContract: `0x${string}`,
+  packUsdc6: number
+): `0x${string}` {
+  const amount = parseUnits(String(packUsdc6 / 10 ** USDC_DECIMALS), USDC_DECIMALS);
+  return encodeFunctionData({
+    abi: erc20Abi,
+    functionName: 'approve',
+    args: [paymentContract, amount],
   });
 }
 

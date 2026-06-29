@@ -7,7 +7,6 @@ import {
   useSmartAccountClient,
 } from '@account-kit/react';
 import { useSmartWalletOps } from '@/hooks/use-smart-wallet-ops';
-import { encodeFunctionData, erc20Abi, maxUint256 } from 'viem';
 import { getPaymentContractAddress } from '@/config/billing';
 import { USDC_ADDRESS_BY_CHAIN_ID } from '@/config/chains';
 import {
@@ -15,6 +14,7 @@ import {
   type CreditPackDefinition,
 } from '@/config/credits';
 import {
+  buildBuyCreditsApproveCalldata,
   buildBuyCreditsCalldata,
   classifyPayFailure,
 } from '@/features/credits/api/buy-credits';
@@ -179,11 +179,10 @@ export function useCredits(): UseCreditsResult {
       if (!buyData) return { ok: false, error: 'Invalid pack' };
 
       try {
-        const approveData = encodeFunctionData({
-          abi: erc20Abi,
-          functionName: 'approve',
-          args: [paymentContract, maxUint256],
-        });
+        const approveData = buildBuyCreditsApproveCalldata(
+          paymentContract,
+          pack.usdc6
+        );
 
         const { txHash, txHashes } = await sendOps([
           { target: usdcAddress, data: approveData, value: 0n },
