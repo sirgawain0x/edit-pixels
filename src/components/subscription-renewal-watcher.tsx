@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { useAccount } from '@account-kit/react';
 import { useQuery } from '@tanstack/react-query';
-import { arbitrum } from '@account-kit/infra';
+import { arbitrum } from 'viem/chains';
 import { toast } from 'sonner';
+import { useWalletContext } from '@/context/wallet-context';
 import {
   checkPixelsPremium,
   getPixelsPremiumExpiry,
@@ -40,17 +40,14 @@ async function fetchSubStatus(
  * Silent watcher: on mount and on address change, checks whether the user's
  * Pixels Premium subscription is at risk of failing to auto-renew. Fires at
  * most one toast per app session, keyed by alert type, so users aren't nagged.
- *
- *  - Key expired: user had a subscription, now doesn't → "Subscription expired"
- *  - Renewal risk: key valid, expiring within 3 days, USDC balance < $30 →
- *    "Renewal may fail — top up"
  */
 export function SubscriptionRenewalWatcher() {
-  const { address } = useAccount({ type: 'LightAccount' });
+  const { wallet } = useWalletContext();
+  const address = wallet?.address as `0x${string}` | undefined;
   const { openSubscribeCheckout, isConfigured } = useUnlockCheckout();
   const { balance: usdcBalance } = useUsdcBalance(
     arbitrum,
-    address as `0x${string}` | undefined
+    address
   );
 
   const { data: subStatus } = useQuery({

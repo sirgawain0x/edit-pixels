@@ -1,12 +1,10 @@
 /**
  * POST /api/generate-image — submit Nanobanana job (credits debited server-side).
+ * Header: Authorization: Bearer <privy-access-token>
+ * Body: { prompt, quality?, size?, image_urls? }
  */
 
-import {
-  buildCreditsAuthMessage,
-  parseWalletAuthBody,
-  verifyWalletMessage,
-} from './_wallet-auth.js';
+import { getBearerToken, verifyPrivyAccessToken } from './_wallet-auth.js';
 import { debitCredits, isCreditStoreConfigured } from './_credit-store.js';
 import { evolinkServerPost, isEvolinkServerConfigured } from './_evolink-server.js';
 
@@ -25,16 +23,21 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'service unavailable' }, { status: 503 });
   }
 
+  const token = getBearerToken(request);
+  if (!token) {
+    return Response.json({ error: 'missing authorization' }, { status: 401 });
+  }
+
+  const auth = await verifyPrivyAccessToken(token);
+  if (!auth) {
+    return Response.json({ error: 'invalid authorization' }, { status: 401 });
+  }
+
   let body: Record<string, unknown>;
   try {
     body = (await request.json()) as Record<string, unknown>;
   } catch {
     return Response.json({ error: 'invalid body' }, { status: 400 });
-  }
-
-  const auth = parseWalletAuthBody(body);
-  if (!auth) {
-    return Response.json({ error: 'invalid auth' }, { status: 400 });
   }
 
   const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
@@ -45,20 +48,7 @@ export async function POST(request: Request): Promise<Response> {
   const quality = typeof body.quality === 'string' ? body.quality : '2K';
   const credits = quoteNanobananaCredits(quality);
 
-  const message = buildCreditsAuthMessage(
-    'generate-image',
-    auth.address,
-    auth.timestamp,
-    auth.nonce,
-    `credits: ${credits}`
-  );
-
-  const valid = await verifyWalletMessage(auth.address, message, auth.signature);
-  if (!valid) {
-    return Response.json({ error: 'signature verification failed' }, { status: 401 });
-  }
-
-  const idempotencyKey = `flow-image-${auth.nonce}`;
+  const idempotencyKey = `flow-image-${auth.address.toLowerCase()}-${Date.now()}`;
   const debit = await debitCredits(auth.address, credits, idempotencyKey);
   if (!debit.ok) {
     return Response.json(

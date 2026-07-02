@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Clock, DollarSign } from 'lucide-react';
 import { useLiveSessionStore } from '../stores/live-session-store';
 import { usePremiumMembership } from '../hooks/use-premium-membership';
-import { useAccount } from '@account-kit/react';
+import { useWalletContext } from '@/context/wallet-context';
 import { hourlyUsdcFromInterval } from '@/config/superfluid';
 import {
   formatUsdRate,
@@ -24,10 +24,8 @@ function formatElapsed(ms: number): string {
  */
 export function UsageMeter() {
   const streamActive = useLiveSessionStore((s) => s.streamActive);
-  const { address } = useAccount({ type: 'LightAccount' });
-  const { intervalCostUsdc6, isPremiumMember, isLoading } = usePremiumMembership(
-    address as `0x${string}` | undefined
-  );
+  const { account: address } = useWalletContext();
+  const { intervalCostUsdc6, isPremiumMember, isLoading } = usePremiumMembership(address);
   const [elapsedMs, setElapsedMs] = useState(0);
 
   const hourlyRate = hourlyUsdcFromInterval(intervalCostUsdc6);

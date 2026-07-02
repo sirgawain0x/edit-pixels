@@ -1,14 +1,11 @@
 /**
  * POST /api/credits-debit
- * Signed debit for Live AI ticks or Flow jobs.
- * Body: { address, timestamp, nonce, signature, amount, reason, idempotencyKey? }
+ * Privy-authenticated debit for Live AI ticks or Flow jobs.
+ * Header: Authorization: Bearer <privy-access-token>
+ * Body: { amount, reason, idempotencyKey? }
  */
 
-import {
-  buildCreditsAuthMessage,
-  parseWalletAuthBody,
-  verifyWalletMessage,
-} from './_wallet-auth.js';
+import { getBearerToken, verifyPrivyAccessToken } from './_wallet-auth.js';
 import { debitCredits, isCreditStoreConfigured } from './_credit-store.js';
 
 const VALID_REASONS = new Set(['live_ai', 'flow_video', 'flow_image']);
@@ -21,16 +18,21 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
+  const token = getBearerToken(request);
+  if (!token) {
+    return Response.json({ error: 'missing authorization' }, { status: 401 });
+  }
+
+  const auth = await verifyPrivyAccessToken(token);
+  if (!auth) {
+    return Response.json({ error: 'invalid authorization' }, { status: 401 });
+  }
+
   let body: Record<string, unknown>;
   try {
     body = (await request.json()) as Record<string, unknown>;
   } catch {
     return Response.json({ error: 'invalid body' }, { status: 400 });
-  }
-
-  const auth = parseWalletAuthBody(body);
-  if (!auth) {
-    return Response.json({ error: 'invalid auth' }, { status: 400 });
   }
 
   const amount =
@@ -44,23 +46,6 @@ export async function POST(request: Request): Promise<Response> {
   }
   if (!VALID_REASONS.has(reason)) {
     return Response.json({ error: 'invalid reason' }, { status: 400 });
-  }
-
-  const message = buildCreditsAuthMessage(
-    'debit',
-    auth.address,
-    auth.timestamp,
-    auth.nonce,
-    `amount: ${amount}\nreason: ${reason}`
-  );
-
-  const valid = await verifyWalletMessage(
-    auth.address,
-    message,
-    auth.signature
-  );
-  if (!valid) {
-    return Response.json({ error: 'signature verification failed' }, { status: 401 });
   }
 
   try {

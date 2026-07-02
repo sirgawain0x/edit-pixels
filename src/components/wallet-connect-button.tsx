@@ -1,13 +1,5 @@
 'use client';
 
-import {
-  useAccount,
-  useAuthModal,
-  useChain,
-  useLogout,
-  useSignerStatus,
-  useUser,
-} from '@account-kit/react';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import {
@@ -20,6 +12,7 @@ import {
   Wallet,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useWalletContext } from '@/context/wallet-context';
 import { useBuyUsdcOnramp } from '@/hooks/use-buy-usdc-onramp';
 import { useUnlockCheckout } from '@/hooks/use-unlock-checkout';
 import { usePremiumMembership } from '@/features/live-ai/hooks/use-premium-membership';
@@ -44,7 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { alchemyConfig, SWITCHABLE_CHAINS } from '@/config/alchemy';
+import { SWITCHABLE_CHAINS } from '@/config/alchemy';
 import { canAffordAnyCreditPack } from '@/features/credits/usdc-for-purchase';
 import { formatSubscribeCta } from '@/shared/utils/currency-display';
 import { SendUsdcModal } from '@/components/send-usdc-modal';
@@ -68,7 +61,7 @@ interface WalletConnectButtonProps {
 }
 
 /**
- * Connect wallet button for navbar/toolbar. Renders nothing when Alchemy is not configured.
+ * Connect wallet button for navbar/toolbar.
  * When connected, shows truncated address with a disconnect dropdown.
  */
 export function WalletConnectButton({
@@ -77,34 +70,21 @@ export function WalletConnectButton({
   compact = false,
   className,
 }: WalletConnectButtonProps) {
-  if (!alchemyConfig) return null;
-
-  return (
-    <WalletConnectButtonInner
-      connectLabel={connectLabel}
-      size={size}
-      compact={compact}
-      className={className}
-    />
-  );
-}
-
-function WalletConnectButtonInner({
-  connectLabel,
-  size,
-  compact,
-  className,
-}: WalletConnectButtonProps) {
   const navigate = useNavigate();
-  const user = useUser();
-  const { openAuthModal } = useAuthModal();
-  const signerStatus = useSignerStatus();
-  const { logout } = useLogout();
-  const { address } = useAccount({ type: 'LightAccount' });
-  const { chain, setChain, isSettingChain } = useChain();
+  const {
+    ready,
+    authenticated,
+    connect,
+    disconnect,
+    wallet,
+    chain,
+    switchChain,
+    isConnecting,
+  } = useWalletContext();
+  const address = wallet?.address as `0x${string}` | undefined;
   const { balance: usdcBalance, formatted: usdcFormatted } = useUsdcBalance(
     chain,
-    address as `0x${string}` | undefined
+    address
   );
   const { openBuyUsdc, isLoading: isOnrampLoading, error: onrampError } = useBuyUsdcOnramp();
   const {
@@ -112,9 +92,7 @@ function WalletConnectButtonInner({
     openManageSubscription,
     isConfigured: isUnlockConfigured,
   } = useUnlockCheckout();
-  const { isPremiumMember, isPaidSubscriber } = usePremiumMembership(
-    address as `0x${string}` | undefined
-  );
+  const { isPremiumMember, isPaidSubscriber } = usePremiumMembership(address);
   const { balance, isLoading: creditsLoading, claimMembershipCredits } = useCredits();
 
   const [buyCreditsOpen, setBuyCreditsOpen] = useState(false);
@@ -160,7 +138,7 @@ function WalletConnectButtonInner({
   };
 
   const handleDisconnect = async () => {
-    await logout();
+    await disconnect();
     navigate({ to: '/' });
   };
 
@@ -170,8 +148,8 @@ function WalletConnectButtonInner({
     }
   };
 
-  const isInitializing = signerStatus.isInitializing;
-  const isConnected = Boolean(user && !isInitializing);
+  const isInitializing = !ready || isConnecting;
+  const isConnected = Boolean(authenticated && wallet);
 
   if (isInitializing) {
     return (
@@ -187,7 +165,7 @@ function WalletConnectButtonInner({
         variant="outline"
         size={size}
         className={className}
-        onClick={() => openAuthModal()}
+        onClick={() => connect()}
         aria-label={connectLabel}
       >
         <Wallet className="h-4 w-4 shrink-0" />
@@ -301,12 +279,11 @@ function WalletConnectButtonInner({
             Network
           </label>
           <Select
-            value={chain?.id?.toString() ?? ''}
+            value={chain.id.toString()}
             onValueChange={(value) => {
               const c = SWITCHABLE_CHAINS.find((ch) => ch.id.toString() === value);
-              if (c) setChain({ chain: c });
+              if (c) void switchChain(c.id);
             }}
-            disabled={isSettingChain}
           >
             <SelectTrigger className="h-8 w-full text-xs">
               <SelectValue placeholder="Select network" />

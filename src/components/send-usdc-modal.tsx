@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useAccount, useChain } from '@account-kit/react';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -16,6 +15,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { USDC_ADDRESS_BY_CHAIN_ID } from '@/config/chains';
+import { useWalletContext } from '@/context/wallet-context';
 import { useSendUsdc } from '@/hooks/use-send-usdc';
 import { useUsdcBalance } from '@/hooks/use-usdc-balance';
 import {
@@ -30,14 +30,14 @@ interface SendUsdcModalProps {
 }
 
 export function SendUsdcModal({ open, onOpenChange }: SendUsdcModalProps) {
-  const { address } = useAccount({ type: 'LightAccount' });
-  const { chain } = useChain();
+  const { wallet, chain } = useWalletContext();
+  const address = wallet?.address as `0x${string}` | undefined;
   const {
     balance: usdcBalance,
     formatted: usdcFormatted,
     isLoading: isBalanceLoading,
     isError: isBalanceError,
-  } = useUsdcBalance(chain, address as `0x${string}` | undefined);
+  } = useUsdcBalance(chain, address);
   const { sendUsdc, ready } = useSendUsdc();
 
   const [recipient, setRecipient] = useState('');

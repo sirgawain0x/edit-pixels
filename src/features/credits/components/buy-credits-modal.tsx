@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useAccount, useChain } from '@account-kit/react';
 import { Coins, DollarSign, Loader2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -13,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { useWalletContext } from '@/context/wallet-context';
 import {
   CREDIT_PACKS,
   useCredits,
@@ -44,14 +44,13 @@ interface BuyCreditsModalProps {
 
 export function BuyCreditsModal({ open, onOpenChange }: BuyCreditsModalProps) {
   const { t } = useTranslation();
-  const { address } = useAccount({ type: 'LightAccount' });
-  const { chain } = useChain();
+  const { account, chain } = useWalletContext();
   const { purchasePack, syncPurchase } = useCredits();
   const {
     balance: usdcBalance,
     formatted: usdcFormatted,
     isLoading: isBalanceLoading,
-  } = useUsdcBalance(chain, address as `0x${string}` | undefined);
+  } = useUsdcBalance(chain, account);
   const { openBuyUsdc, isLoading: isOnrampLoading } = useBuyUsdcOnramp();
   const [purchasingId, setPurchasingId] = useState<number | null>(null);
   const [pendingSync, setPendingSync] = useState<PendingSync | null>(null);
@@ -129,7 +128,7 @@ export function BuyCreditsModal({ open, onOpenChange }: BuyCreditsModalProps) {
   };
 
   const handleBuyUsdc = () => {
-    void openBuyUsdc({ address: address ?? undefined });
+    void openBuyUsdc({ address: account ?? undefined });
   };
 
   return (

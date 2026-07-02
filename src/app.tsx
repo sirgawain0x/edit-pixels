@@ -1,13 +1,14 @@
 import { useEffect } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider, createRouter } from '@tanstack/react-router';
-import { AlchemyAccountProvider } from '@account-kit/react';
+import { PrivyProvider } from '@privy-io/react-auth';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { GlobalTooltip } from '@/components/ui/global-tooltip';
 import { Toaster } from '@/components/ui/sonner';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { SubscriptionRenewalWatcher } from '@/components/subscription-renewal-watcher';
-import { alchemyConfig, queryClient } from '@/config/alchemy';
+import { WalletProvider } from '@/context/wallet-context';
+import { queryClient, DEFAULT_CHAIN, SWITCHABLE_CHAINS } from '@/config/alchemy';
 import { routeTree } from './routeTree.gen';
 
 const router = createRouter({ routeTree });
@@ -18,6 +19,19 @@ declare module '@tanstack/react-router' {
   }
 }
 
+function WalletApp() {
+  return (
+    <WalletProvider>
+      <TooltipProvider delayDuration={300}>
+        <RouterProvider router={router} />
+        <GlobalTooltip />
+        <SubscriptionRenewalWatcher />
+        <Toaster />
+      </TooltipProvider>
+    </WalletProvider>
+  );
+}
+
 export function App() {
   // Prevent default browser zoom application-wide
   useEffect(() => {
@@ -25,24 +39,19 @@ export function App() {
     const keyListenerOptions: AddEventListenerOptions = { capture: true };
 
     const preventBrowserZoom = (e: WheelEvent) => {
-      // Prevent browser zoom when Ctrl/Cmd is held
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
       }
     };
 
     const preventKeyboardZoom = (e: KeyboardEvent) => {
-      // Prevent browser zoom shortcuts: Ctrl+=/+/-, Ctrl+0
-      // Only preventDefault (blocks browser zoom), event still propagates to react-hotkeys-hook
       if (e.ctrlKey || e.metaKey) {
         if (e.key === '+' || e.key === '=' || e.key === '-' || e.key === '_' || e.key === '0') {
           e.preventDefault();
-          // DO NOT call stopPropagation() - we want react-hotkeys-hook to still receive this
         }
       }
     };
 
-    // Add listeners at capture phase to intercept before browser handles them
     document.addEventListener('wheel', preventBrowserZoom, wheelListenerOptions);
     document.addEventListener('keydown', preventKeyboardZoom, keyListenerOptions);
 
@@ -52,33 +61,49 @@ export function App() {
     };
   }, []);
 
-  // TooltipProvider at app level to prevent re-renders cascading from Editor
-  // GlobalTooltip for performant data-tooltip based tooltips
-  // Toaster for toast notifications
-  // ErrorBoundary for graceful error recovery
-  const content = (
-    <RouterProvider router={router} />
-  );
+  const privyAppId = import.meta.env.VITE_PRIVY_APP_ID as string | undefined;
+
+  const content = <WalletApp />;
+
+  if (!privyAppId) {
+    // App still renders without Privy so local/offline flows can run.
+    return (
+      <ErrorBoundary level="app">
+        <QueryClientProvider client={queryClient}>
+          <TooltipProvider delayDuration={300}>
+            <RouterProvider router={router} />
+            <GlobalTooltip />
+            <Toaster />
+          </TooltipProvider>
+        </QueryClientProvider>
+      </ErrorBoundary>
+    );
+  }
 
   return (
     <ErrorBoundary level="app">
       <QueryClientProvider client={queryClient}>
-        {alchemyConfig ? (
-          <AlchemyAccountProvider config={alchemyConfig} queryClient={queryClient}>
-            <TooltipProvider delayDuration={300}>
-              {content}
-              <GlobalTooltip />
-              <SubscriptionRenewalWatcher />
-              <Toaster />
-            </TooltipProvider>
-          </AlchemyAccountProvider>
-        ) : (
-          <TooltipProvider delayDuration={300}>
-            {content}
-            <GlobalTooltip />
-            <Toaster />
-          </TooltipProvider>
-        )}
+        <PrivyProvider
+          appId={privyAppId}
+          config={{
+            defaultChain: DEFAULT_CHAIN,
+            supportedChains: [...SWITCHABLE_CHAINS],
+            loginMethods: ['wallet', 'email', 'google', 'farcaster'],
+            appearance: {
+              theme: 'dark',
+              accentColor: '#7C3AED',
+              landingHeader: 'Connect to Creative Pixels',
+              loginMessage: 'Sign in to mint, edit, and publish on-chain.',
+            },
+            embeddedWallets: {
+              ethereum: {
+                createOnLogin: 'users-without-wallets',
+              },
+            },
+          }}
+        >
+          {content}
+        </PrivyProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   );

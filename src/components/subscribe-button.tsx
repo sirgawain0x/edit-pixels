@@ -1,34 +1,34 @@
 'use client';
 
-import { useAccount } from '@account-kit/react';
 import { Sparkles, Settings2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useWalletContext } from '@/context/wallet-context';
 import { usePremiumMembership } from '@/features/live-ai/hooks/use-premium-membership';
 import { useUnlockCheckout } from '@/hooks/use-unlock-checkout';
 import { formatSubscribeCta } from '@/shared/utils/currency-display';
 
 interface SubscribeButtonProps {
-  variant?: 'default' | 'outline' | 'ghost' | 'secondary';
-  size?: 'default' | 'sm' | 'lg';
+  variant?: 'default' | 'outline' | 'ghost';
+  size?: 'default' | 'sm' | 'lg' | 'icon';
   className?: string;
 }
 
 /**
- * Subscribe CTA for Pixels Premium ($30/mo, Unlock on Arbitrum).
- * - Not connected or checking membership: renders nothing.
- * - Not premium: "Subscribe $30/mo" opens Unlock Labs hosted checkout (USDC or Stripe card).
+ * Pixels Premium subscribe / manage button.
+ *
+ * - No wallet or loading: renders nothing.
+ * - Premium member via Base DAO lock: renders nothing (they already get the rate).
  * - Paid subscriber: "Manage subscription" opens Unlock keychain dashboard.
- * - DAO member (premium via Base DAO lock): renders nothing — they already have the rate.
+ * - Otherwise: opens the Unlock checkout (USDC or Stripe card).
  */
 export function SubscribeButton({
   variant = 'default',
   size = 'sm',
   className,
 }: SubscribeButtonProps) {
-  const { address } = useAccount({ type: 'LightAccount' });
-  const { isPremiumMember, isPaidSubscriber, isLoading } = usePremiumMembership(
-    address as `0x${string}` | undefined
-  );
+  const { wallet } = useWalletContext();
+  const address = wallet?.address as `0x${string}` | undefined;
+  const { isPremiumMember, isPaidSubscriber, isLoading } = usePremiumMembership(address);
   const { openSubscribeCheckout, openManageSubscription, isConfigured } =
     useUnlockCheckout();
 

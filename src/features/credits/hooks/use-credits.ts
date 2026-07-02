@@ -1,11 +1,6 @@
 import { useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  useAccount,
-  useChain,
-  useSignMessage,
-  useSmartAccountClient,
-} from '@account-kit/react';
+import { useWalletContext } from '@/context/wallet-context';
 import { useSmartWalletOps } from '@/hooks/use-smart-wallet-ops';
 import { getPaymentContractAddress } from '@/config/billing';
 import { USDC_ADDRESS_BY_CHAIN_ID } from '@/config/chains';
@@ -20,10 +15,6 @@ import {
 } from '@/features/credits/api/buy-credits';
 import { syncPurchaseCredits } from '@/features/credits/api/sync-purchase';
 import { rankCreditsPurchaseTxHashes } from '@/features/credits/api/resolve-purchase-tx';
-import {
-  buildCreditsAuthMessage,
-  generateCreditsNonce,
-} from '@/features/credits/api/credits-auth-message';
 
 const ARBITRUM_ONE_CHAIN_ID = 42_161;
 
@@ -107,49 +98,45 @@ export interface UseCreditsResult {
 }
 
 export function useCredits(): UseCreditsResult {
-  const { address } = useAccount({ type: 'LightAccount' });
-  const { chain } = useChain();
-  const { client } = useSmartAccountClient({ type: 'LightAccount' });
-  const { signMessageAsync } = useSignMessage({ client });
+  const { account, chain, authenticated, getAccessToken } = useWalletContext();
   const queryClient = useQueryClient();
 
   const paymentContract = getPaymentContractAddress();
   const usdcAddress = USDC_ADDRESS_BY_CHAIN_ID[ARBITRUM_ONE_CHAIN_ID];
 
-  const { sendOps } = useSmartWalletOps(client ?? undefined);
+  const { sendOps } = useSmartWalletOps();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['credits-balance', address],
-    queryFn: () => fetchBalance(address!),
-    enabled: Boolean(address),
+    queryKey: ['credits-balance', account],
+    queryFn: () => fetchBalance(account!),
+    enabled: Boolean(account),
     staleTime: 15_000,
     refetchInterval: 30_000,
   });
 
   const refreshBalance = useCallback(() => {
-    if (address) {
-      void queryClient.invalidateQueries({ queryKey: ['credits-balance', address] });
+    if (account) {
+      void queryClient.invalidateQueries({ queryKey: ['credits-balance', account] });
     }
-  }, [address, queryClient]);
+  }, [account, queryClient]);
 
   const signAuth = useCallback(
     async (action: string, extra?: string) => {
-      if (!address || !client) throw new Error('Wallet not ready');
+      if (!account || !authenticated) throw new Error('Wallet not ready');
+      const token = await getAccessToken();
+      if (!token) throw new Error('Authentication token not available');
       const timestamp = Date.now();
-      const nonce = generateCreditsNonce();
-      const message = buildCreditsAuthMessage(action, address, timestamp, nonce, extra);
-      const signature = await signMessageAsync({ message });
-      return { address, timestamp, nonce, signature };
+      return { account, timestamp, action, extra, token };
     },
-    [address, client, signMessageAsync]
+    [account, authenticated, getAccessToken]
   );
 
   const syncPurchase = useCallback(
     async (txHash: `0x${string}`): Promise<PurchasePackResult> => {
-      if (!address) {
+      if (!account) {
         return { ok: false, error: 'Connect wallet on Arbitrum' };
       }
-      const syncBody = await syncPurchaseCredits(address, txHash);
+      const syncBody = await syncPurchaseCredits(account, txHash);
       refreshBalance();
       if (syncBody.ok) {
         return { ok: true, txHash };
@@ -163,12 +150,12 @@ export function useCredits(): UseCreditsResult {
           : (syncBody.reason ?? 'Sync failed'),
       };
     },
-    [address, refreshBalance]
+    [account, refreshBalance]
   );
 
   const purchasePack = useCallback(
     async (pack: CreditPackDefinition): Promise<PurchasePackResult> => {
-      if (!client || !address || chain?.id !== ARBITRUM_ONE_CHAIN_ID) {
+      if (!account || chain?.id !== ARBITRUM_ONE_CHAIN_ID) {
         return { ok: false, error: 'Connect wallet on Arbitrum' };
       }
       if (!paymentContract || !usdcAddress) {
@@ -220,9 +207,8 @@ export function useCredits(): UseCreditsResult {
       }
     },
     [
-      address,
+      account,
       chain?.id,
-      client,
       paymentContract,
       sendOps,
       syncPurchase,
@@ -243,8 +229,18 @@ export function useCredits(): UseCreditsResult {
         );
         const res = await fetch('/api/credits-debit', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...auth, amount, reason, idempotencyKey }),
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${auth.token}`,
+          },
+          body: JSON.stringify({
+            amount,
+            reason,
+            idempotencyKey,
+            action: auth.action,
+            extra: auth.extra,
+            timestamp: auth.timestamp,
+          }),
         });
         const body = (await res.json()) as DebitResponse;
         refreshBalance();
@@ -262,8 +258,11 @@ export function useCredits(): UseCreditsResult {
         const auth = await signAuth('redeem-promo', `code: ${code.trim().toUpperCase()}`);
         const res = await fetch('/api/credits-redeem-promo', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...auth, code: code.trim() }),
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${auth.token}`,
+          },
+          body: JSON.stringify({ code: code.trim(), action: auth.action, extra: auth.extra }),
         });
         const body = (await res.json()) as RedeemResponse;
         refreshBalance();
@@ -281,8 +280,11 @@ export function useCredits(): UseCreditsResult {
         const auth = await signAuth('claim-membership');
         const res = await fetch('/api/credits-claim-membership', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(auth),
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${auth.token}`,
+          },
+          body: JSON.stringify({ action: auth.action }),
         });
         const body = (await res.json()) as ClaimMembershipResponse;
         refreshBalance();

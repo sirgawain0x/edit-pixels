@@ -1,15 +1,15 @@
-import { toHex } from 'viem';
 import { USDC_ADDRESS_BY_CHAIN_ID } from '@/config/chains';
 
 /**
  * Gas payment mode for Alchemy smart wallet operations.
  *
  * - "sponsorship" (default): the app's gas policy sponsors gas. Nothing extra
- *   is sent; Account Kit injects the policyId automatically.
+ *   is sent; the global policyId is attached at client-creation time.
  * - "erc20": the policy in VITE_ALCHEMY_POLICY_ID is an ERC-20 paymaster
- *   policy (users pay gas in USDC). wallet_prepareCalls must then include the
- *   `erc20` capability or Alchemy rejects sponsorship with
- *   "Policy ... is of type ERC20, but erc20 capability is missing".
+ *   policy (users pay gas in USDC). v5 prepareCalls / requestQuoteV0 must then
+ *   include the `erc20` capability under `paymaster` or Alchemy rejects
+ *   sponsorship with "Policy ... is of type ERC20, but erc20 capability is
+ *   missing".
  */
 const policyId = import.meta.env.VITE_ALCHEMY_POLICY_ID as string | undefined;
 
@@ -34,20 +34,20 @@ export function getPurchaseGasBufferUsdc6(chainId: number): number {
 }
 
 export interface Erc20PaymasterCapabilities {
-  paymasterService: {
+  paymaster: {
     policyId: string;
     erc20: {
       tokenAddress: `0x${string}`;
-      maxTokenAmount: `0x${string}`;
+      maxTokenAmount: bigint;
       postOpSettings: { autoApprove: true };
     };
   };
 }
 
 /**
- * Capabilities for wallet_prepareCalls when using an ERC-20 gas policy.
- * Returns null in sponsorship mode (default) so Account Kit's automatic
- * policyId injection applies unchanged.
+ * Capabilities for v5 prepareCalls / requestQuoteV0 when using an ERC-20 gas
+ * policy. Returns null in sponsorship mode (default) so the global client-level
+ * policy applies automatically.
  */
 export function buildGasPaymasterCapabilities(
   chainId: number
@@ -56,11 +56,11 @@ export function buildGasPaymasterCapabilities(
   const tokenAddress = USDC_ADDRESS_BY_CHAIN_ID[chainId];
   if (!tokenAddress) return null;
   return {
-    paymasterService: {
+    paymaster: {
       policyId,
       erc20: {
         tokenAddress,
-        maxTokenAmount: toHex(getMaxGasUsdc6()),
+        maxTokenAmount: getMaxGasUsdc6(),
         postOpSettings: { autoApprove: true },
       },
     },

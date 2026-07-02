@@ -1,86 +1,69 @@
-import type { PublicClient } from 'viem';
-import {
-  ADDRESS_REGEX,
-  HEX_SIG_REGEX,
-  MAX_SIG_AGE_MS,
-} from './_address.js';
+/** Privy JWT access-token verification for Vercel serverless routes. */
 
-export { ADDRESS_REGEX, HEX_SIG_REGEX, MAX_SIG_AGE_MS };
+import { PrivyClient } from '@privy-io/server-auth';
 
-function getArbitrumRpcUrl(): string {
-  const apiKey =
-    process.env.ALCHEMY_API_KEY || process.env.VITE_ALCHEMY_API_KEY;
-  if (apiKey) return `https://arb-mainnet.g.alchemy.com/v2/${apiKey}`;
-  return 'https://arb1.arbitrum.io/rpc';
+export { ADDRESS_REGEX, HEX_SIG_REGEX, MAX_SIG_AGE_MS } from './_address.js';
+
+let privyClient: PrivyClient | null = null;
+
+export function getPrivyAuth(): { appId: string; appSecret: string } | null {
+  const appId = process.env.PRIVY_APP_ID?.trim() || null;
+  const appSecret = process.env.PRIVY_APP_SECRET?.trim() || null;
+  if (!appId || !appSecret) return null;
+  return { appId, appSecret };
 }
 
-let publicClient: PublicClient | null = null;
-
-async function getPublicClient(): Promise<PublicClient> {
-  if (!publicClient) {
-    const { createPublicClient, http } = await import('viem');
-    const { arbitrum } = await import('viem/chains');
-    publicClient = createPublicClient({
-      chain: arbitrum,
-      transport: http(getArbitrumRpcUrl()),
-    });
+function getPrivyClient(): PrivyClient | null {
+  if (!privyClient) {
+    const auth = getPrivyAuth();
+    if (!auth) return null;
+    privyClient = new PrivyClient(auth.appId, auth.appSecret);
   }
-  return publicClient;
+  return privyClient;
 }
 
-export interface WalletAuthPayload {
-  address: string;
-  timestamp: number;
-  nonce: string;
-  signature: string;
+function isWalletWithAddress(account: unknown): account is { address: string } {
+  return (
+    typeof account === 'object' &&
+    account !== null &&
+    'address' in account &&
+    typeof (account as { address: unknown }).address === 'string' &&
+    (account as { address: string }).address.startsWith('0x')
+  );
 }
 
-export function parseWalletAuthBody(body: unknown): WalletAuthPayload | null {
-  if (!body || typeof body !== 'object') return null;
-  const b = body as Record<string, unknown>;
-  const address = typeof b.address === 'string' ? b.address.trim() : '';
-  const timestamp = typeof b.timestamp === 'number' ? b.timestamp : NaN;
-  const nonce = typeof b.nonce === 'string' ? b.nonce.trim() : '';
-  const signature = typeof b.signature === 'string' ? b.signature.trim() : '';
-  if (!ADDRESS_REGEX.test(address)) return null;
-  if (!Number.isFinite(timestamp)) return null;
-  if (Math.abs(Date.now() - timestamp) > MAX_SIG_AGE_MS) return null;
-  if (!nonce || nonce.length < 8 || nonce.length > 128) return null;
-  if (!signature || !HEX_SIG_REGEX.test(signature)) return null;
-  return { address, timestamp, nonce, signature };
-}
+export async function verifyPrivyAccessToken(
+  token: string
+): Promise<{ address: `0x${string}` } | null> {
+  const client = getPrivyClient();
+  if (!client) return null;
 
-export async function verifyWalletMessage(
-  address: string,
-  message: string,
-  signature: string
-): Promise<boolean> {
   try {
-    const client = await getPublicClient();
-    return await client.verifyMessage({
-      address: address as `0x${string}`,
-      message,
-      signature: signature as `0x${string}`,
-    });
+    const claims = await client.verifyAuthToken(token);
+    if (!claims?.userId) return null;
+
+    const user = await client.getUserById(claims.userId);
+    if (!user) return null;
+
+    // Use the first linked account that looks like an EVM wallet.
+    const wallet = user.linkedAccounts.find(
+      (a) => a.type === 'wallet' && isWalletWithAddress(a)
+    );
+    if (!wallet) return null;
+
+    return {
+      address: (wallet as { address: string }).address.toLowerCase() as `0x${string}`,
+    };
   } catch {
-    return false;
+    return null;
   }
 }
 
-/** Build signed-message prefix for credit operations. Keep in sync with client hooks. */
-export function buildCreditsAuthMessage(
-  action: string,
-  address: string,
-  timestamp: number,
-  nonce: string,
-  extra?: string
-): string {
-  const lines = [
-    `Pixels credits ${action}`,
-    `address: ${address.toLowerCase()}`,
-    `timestamp: ${timestamp}`,
-    `nonce: ${nonce}`,
-  ];
-  if (extra) lines.push(extra);
-  return lines.join('\n');
+/** Extracts a Bearer token from an Authorization header. */
+export function getBearerToken(request: Request): string | null {
+  const header = request.headers.get('authorization');
+  if (!header) return null;
+  const [scheme, token] = header.split(' ');
+  if (scheme?.toLowerCase() !== 'bearer' || !token) return null;
+  return token;
 }
