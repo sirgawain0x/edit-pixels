@@ -119,64 +119,8 @@ export default defineConfig({
             return 'core-logger';
           }
 
-          // Application feature chunks
-          if (id.includes('/src/features/timeline/') || id.includes('/src/features/media-library/')) {
-            // Split UI from editing domain/runtime modules to reduce initial chunk pressure.
-            // Keep stores/services/utils/deps/contracts together to preserve execution order
-            // for tightly-coupled timeline/media-library integration points.
-            if (id.includes('/components/')) {
-              return 'feature-editing-ui';
-            }
-            return 'feature-editing-core';
-          }
-          if (id.includes('/src/features/effects/')) {
-            return 'feature-effects';
-          }
-          if (id.includes('/src/features/composition-runtime/')) {
-            return 'feature-composition-runtime';
-          }
-          // Generative AI features (lazy-loaded, never in main bundle)
-          if (id.includes('/src/features/generative/')) {
-            return 'feature-generative';
-          }
-          if (id.includes('/src/features/prompt-engine/')) {
-            return 'feature-prompt-engine';
-          }
-
-          // i18n stack must live with React so shared CJS interop helpers are not hoisted
-          // into app chunks (avoids react-vendor <-> feature-generative circular imports).
-          if (
-            id.includes('node_modules/i18next') ||
-            id.includes('node_modules/react-i18next') ||
-            id.includes('node_modules/i18next-browser-languagedetector')
-          ) {
-            return 'react-vendor';
-          }
-          // React must be in its own chunk, loaded first to ensure proper initialization
-          // This prevents "Cannot set properties of undefined" errors with React 19.2 features
-          if (id.includes('node_modules/react-dom')) {
-            return 'react-vendor';
-          }
-          if (id.includes('node_modules/react/')) {
-            return 'react-vendor';
-          }
-          // sonner is imported from main.tsx before the app tree mounts
-          if (id.includes('node_modules/sonner')) {
-            return 'react-vendor';
-          }
-          // Locale JSON and bootstrap — separate from entry to avoid bloating index chunk
-          if (id.includes('/src/i18n/')) {
-            return 'i18n-vendor';
-          }
-          // Router framework
-          if (id.includes('@tanstack/react-router')) {
-            return 'router-vendor';
-          }
-          // State management
-          if (id.includes('/node_modules/zustand/') || id.includes('/node_modules/zundo/')) {
-            return 'state-vendor';
-          }
-          // Media processing - loaded on demand
+          // Media processing - loaded on demand. Keep these large native-code-like
+          // packages separate so they do not bloat the main app bundle.
           if (id.includes('@mediabunny/ac3')) {
             return 'media-ac3-decoder';
           }
@@ -189,32 +133,13 @@ export default defineConfig({
           if (id.includes('@mediabunny/')) {
             return 'media-processing';
           }
-          // Audio/video processing helpers
           if (id.includes('/node_modules/soundtouchjs/')) {
             return 'audio-processing';
           }
           if (id.includes('/node_modules/gifuct-js/')) {
             return 'gif-processing';
           }
-          // Wallet / Account Kit – separate chunk so main bundle stays smaller and wallet code is cacheable
-          if (
-            id.includes('@account-kit/') ||
-            id.includes('/wagmi/') ||
-            id.includes('@reown/') ||
-            id.includes('@walletconnect/') ||
-            id.includes('@coinbase/wallet-sdk') ||
-            id.includes('/viem/')
-          ) {
-            return 'wallet-vendor';
-          }
-          // UI framework
-          if (id.includes('@radix-ui/')) {
-            return 'vendor-ui';
-          }
-          // Icons - keep lucide-react in separate chunk for better caching
-          if (id.includes('lucide-react')) {
-            return 'vendor-icons';
-          }
+
           return undefined;
         },
       },
