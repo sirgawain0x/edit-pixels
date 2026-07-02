@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { useAccount } from '@account-kit/react';
+import { useWalletContext } from '@/context/wallet-context';
 import { useUsdcBalance } from '@/hooks/use-usdc-balance';
 import { BuyCreditsModal } from './buy-credits-modal';
 
@@ -15,10 +15,11 @@ let mockUsdcBalance: {
   isError: boolean;
 };
 
-vi.mock('@account-kit/react', () => ({
-  useAccount: vi.fn(() => ({ address: LIGHT_ACCOUNT_ADDRESS })),
-  useChain: vi.fn(() => ({
+vi.mock('@/context/wallet-context', () => ({
+  useWalletContext: vi.fn(() => ({
+    account: LIGHT_ACCOUNT_ADDRESS,
     chain: { id: ARBITRUM_ONE_CHAIN_ID, name: 'Arbitrum One' },
+    authenticated: true,
   })),
 }));
 
@@ -91,10 +92,10 @@ describe('BuyCreditsModal', () => {
     };
   });
 
-  it('reads wallet address from LightAccount', () => {
+  it('reads wallet address from useWalletContext', () => {
     render(<BuyCreditsModal open onOpenChange={vi.fn()} />);
 
-    expect(vi.mocked(useAccount)).toHaveBeenCalledWith({ type: 'LightAccount' });
+    expect(vi.mocked(useWalletContext)).toHaveBeenCalled();
     expect(vi.mocked(useUsdcBalance)).toHaveBeenCalledWith(
       expect.objectContaining({ id: ARBITRUM_ONE_CHAIN_ID }),
       LIGHT_ACCOUNT_ADDRESS

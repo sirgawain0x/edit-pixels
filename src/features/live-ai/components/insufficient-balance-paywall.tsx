@@ -1,8 +1,8 @@
 'use client';
 
-import { useAccount } from '@account-kit/react';
 import { DollarSign, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useWalletContext } from '@/context/wallet-context';
 import { useBuyUsdcOnramp } from '@/hooks/use-buy-usdc-onramp';
 import { useUnlockCheckout } from '@/hooks/use-unlock-checkout';
 import {
@@ -20,10 +20,8 @@ import { usePremiumMembership } from '../hooks/use-premium-membership';
  * Subscribers (and DAO members) only see "Top up" since their rate is already premium.
  */
 export function InsufficientBalancePaywall() {
-  const { address } = useAccount({ type: 'LightAccount' });
-  const { isPremiumMember } = usePremiumMembership(
-    address as `0x${string}` | undefined
-  );
+  const { account: address } = useWalletContext();
+  const { isPremiumMember } = usePremiumMembership(address);
   const { openBuyUsdc, isLoading: isOnrampLoading } = useBuyUsdcOnramp();
   const { openSubscribeCheckout, isConfigured: isUnlockConfigured } =
     useUnlockCheckout();

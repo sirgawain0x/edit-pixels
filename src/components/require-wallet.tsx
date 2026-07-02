@@ -2,41 +2,29 @@
 
 import { useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { useSignerStatus, useUser } from '@account-kit/react';
-import { alchemyConfig } from '@/config/alchemy';
+import { useWalletContext } from '@/context/wallet-context';
 
 interface RequireWalletProps {
   children: React.ReactNode;
 }
 
 /**
- * When Alchemy is configured, requires a connected wallet before rendering children.
- * Redirects to / when not connected (after signer has finished initializing).
- * When Alchemy is not configured, renders children with no guard.
- *
- * Alchemy hooks (useUser, useSignerStatus) are only used in RequireWalletGuard, which
- * is mounted only when alchemyConfig exists — i.e. when AlchemyAccountProvider wraps the app.
+ * Requires a connected wallet before rendering children.
+ * Redirects to / when not connected (after the wallet context has finished initializing).
  */
 export function RequireWallet({ children }: RequireWalletProps) {
-  if (!alchemyConfig) {
-    return <>{children}</>;
-  }
-  return <RequireWalletGuard>{children}</RequireWalletGuard>;
-}
-
-function RequireWalletGuard({ children }: RequireWalletProps) {
   const navigate = useNavigate();
-  const user = useUser();
-  const signerStatus = useSignerStatus();
+  const { ready, authenticated, connect } = useWalletContext();
 
-  const isInitializing = signerStatus.isInitializing;
-  const isConnected = Boolean(user && !isInitializing);
+  const isInitializing = !ready;
+  const isConnected = authenticated;
 
   useEffect(() => {
-    if (!isInitializing && !user) {
+    if (!isInitializing && !isConnected) {
+      connect();
       navigate({ to: '/' });
     }
-  }, [user, isInitializing, navigate]);
+  }, [isInitializing, isConnected, connect, navigate]);
 
   if (isInitializing) {
     return (

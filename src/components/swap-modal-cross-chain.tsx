@@ -1,10 +1,5 @@
 'use client';
 
-import {
-  usePrepareSwap,
-  useSignAndSendPreparedCalls,
-  useSmartAccountClient,
-} from '@account-kit/react';
 import type { Chain } from 'viem';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -16,8 +11,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { useWalletContext } from '@/context/wallet-context';
 import { USDC_ADDRESS_BY_CHAIN_ID } from '@/config/chains';
-import { chainIdToHex, decimalAmountToHex, NATIVE_TOKEN_ADDRESS } from '@/shared/utils/swap-utils';
+import { decimalAmountToWei, NATIVE_TOKEN_ADDRESS } from '@/shared/utils/swap-utils';
+import { executeSwapQuote } from '@/shared/utils/smart-wallet-swap';
 
 const USDC_DECIMALS = 6;
 
@@ -37,20 +34,11 @@ export function CrossChainSwapModal({
   const [amount, setAmount] = useState('');
   const [toChainId, setToChainId] = useState<number | null>(null);
   const [fromTokenIsUsdc, setFromTokenIsUsdc] = useState(true);
+  const [quoteError, setQuoteError] = useState<Error | null>(null);
+  const [sendError, setSendError] = useState<Error | null>(null);
+  const [isBusy, setIsBusy] = useState(false);
 
-  const { client } = useSmartAccountClient();
-  const {
-    prepareSwapAsync,
-    isPreparingSwap,
-    error: quoteError,
-    reset: resetQuote,
-  } = usePrepareSwap({ client });
-  const {
-    signAndSendPreparedCallsAsync,
-    isSigningAndSendingPreparedCalls,
-    error: sendError,
-    reset: resetSend,
-  } = useSignAndSendPreparedCalls({ client });
+  const { smartWalletClient } = useWalletContext();
 
   const fromChain = chain;
   const toChain = toChainId != null ? chains.find((c) => c.id === toChainId) : undefined;
@@ -67,31 +55,32 @@ export function CrossChainSwapModal({
     toToken &&
     amount &&
     parseFloat(amount) > 0 &&
-    client;
-  const isBusy = isPreparingSwap || isSigningAndSendingPreparedCalls;
-  const error = quoteError ?? sendError;
+    smartWalletClient;
+
+  const resetQuote = () => setQuoteError(null);
+  const resetSend = () => setSendError(null);
 
   const handleSwap = async () => {
-    if (!canSwap || !fromChain || !toChain) return;
+    if (!canSwap || !fromChain || !toChain || !smartWalletClient) return;
     resetQuote();
     resetSend();
+    setIsBusy(true);
     try {
-      const fromAmountHex = decimalAmountToHex(amount, decimals);
-      const result = await prepareSwapAsync({
-        chainId: chainIdToHex(fromChain.id),
-        toChainId: chainIdToHex(toChain.id),
+      await executeSwapQuote(smartWalletClient, {
         fromToken,
         toToken,
-        fromAmount: fromAmountHex,
-      } as Parameters<typeof prepareSwapAsync>[0]);
-      if (result && 'signatureRequest' in result) {
-        await signAndSendPreparedCallsAsync(result as never);
-        setAmount('');
-        setToChainId(null);
-        onOpenChange(false);
-      }
-    } catch {
-      // Error surfaced via quoteError / sendError
+        fromAmount: decimalAmountToWei(amount, decimals),
+        chainId: fromChain.id,
+        toChainId: toChain.id,
+        capabilities: undefined,
+      });
+      setAmount('');
+      setToChainId(null);
+      onOpenChange(false);
+    } catch (e) {
+      setQuoteError(e instanceof Error ? e : new Error('Swap failed'));
+    } finally {
+      setIsBusy(false);
     }
   };
 
@@ -106,6 +95,8 @@ export function CrossChainSwapModal({
   };
 
   if (!chain) return null;
+
+  const error = quoteError ?? sendError;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -177,11 +168,7 @@ export function CrossChainSwapModal({
             Cancel
           </Button>
           <Button onClick={handleSwap} disabled={!canSwap || isBusy}>
-            {isPreparingSwap
-              ? 'Getting quote…'
-              : isSigningAndSendingPreparedCalls
-                ? 'Signing & sending…'
-                : 'Swap'}
+            {isBusy ? 'Swapping…' : 'Swap'}
           </Button>
         </DialogFooter>
       </DialogContent>

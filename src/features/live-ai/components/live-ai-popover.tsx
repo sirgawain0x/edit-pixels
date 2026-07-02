@@ -2,7 +2,6 @@
 
 import { Component, useEffect, useRef, useCallback, useState } from 'react';
 import { Circle, Settings, CameraOff, Maximize2, Minimize } from 'lucide-react';
-import { useAccount } from '@account-kit/react';
 import { useBroadcast, usePlayer } from '@daydreamlive/react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -14,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { useWalletContext } from '@/context/wallet-context';
 import { useLiveSessionStore, type RecordedTake } from '../stores/live-session-store';
 import { usePlaybackStore } from '@/shared/state/playback';
 import { useTimelineStore, useProjectStore } from '../deps/editor';
@@ -204,7 +204,7 @@ class BillingBridgeBoundary extends Component<
 
 /** Shared panel body (consent, session, settings, footer). Used in sidebar and floating popover. */
 export function LiveAIPanelContent() {
-  const { address } = useAccount({ type: 'LightAccount' });
+  const { account: address } = useWalletContext();
   const superfluidConfigured = isSuperfluidConfigured();
   const {
     hasFunding,
@@ -979,7 +979,7 @@ function LiveAISessionWithBroadcastCore({
       const u = new URL(effectiveWhepUrl);
       const parts = u.pathname.split('/').filter(Boolean);
       const webrtcIdx = parts.findIndex((p) => p === 'webrtc');
-      const tail = webrtcIdx >= 0 ? parts[webrtcIdx + 1] : '';
+      const tail = webrtcIdx >= 0 ? (parts[webrtcIdx + 1] ?? '') : '';
       if (tail.startsWith('video+')) {
         setInvalidWhepUrlError(`Invalid WHEP endpoint (unexpected "video+" id): ${tail}`);
       } else {

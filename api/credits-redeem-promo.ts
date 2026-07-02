@@ -1,14 +1,11 @@
 /**
  * POST /api/credits-redeem-promo
- * Signed promo code redemption.
- * Body: { address, timestamp, nonce, signature, code }
+ * Privy-authenticated promo code redemption.
+ * Header: Authorization: Bearer <privy-access-token>
+ * Body: { code }
  */
 
-import {
-  buildCreditsAuthMessage,
-  parseWalletAuthBody,
-  verifyWalletMessage,
-} from './_wallet-auth.js';
+import { getBearerToken, verifyPrivyAccessToken } from './_wallet-auth.js';
 import { isPromoStoreConfigured, redeemPromoCode } from './_promo-store.js';
 
 const REDEEM_RATE_WINDOW_MS = 60_000;
@@ -42,6 +39,11 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'rate limited' }, { status: 429 });
   }
 
+  const token = getBearerToken(request);
+  if (!token) {
+    return Response.json({ error: 'missing authorization' }, { status: 401 });
+  }
+
   let body: Record<string, unknown>;
   try {
     body = (await request.json()) as Record<string, unknown>;
@@ -49,31 +51,17 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'invalid body' }, { status: 400 });
   }
 
-  const auth = parseWalletAuthBody(body);
+  const auth = await verifyPrivyAccessToken(
+    token,
+    typeof body.walletAddress === 'string' ? body.walletAddress : undefined
+  );
   if (!auth) {
-    return Response.json({ error: 'invalid auth' }, { status: 400 });
+    return Response.json({ error: 'invalid authorization' }, { status: 401 });
   }
 
   const code = typeof body.code === 'string' ? body.code.trim() : '';
   if (!code) {
     return Response.json({ error: 'invalid code' }, { status: 400 });
-  }
-
-  const message = buildCreditsAuthMessage(
-    'redeem-promo',
-    auth.address,
-    auth.timestamp,
-    auth.nonce,
-    `code: ${code.toUpperCase()}`
-  );
-
-  const valid = await verifyWalletMessage(
-    auth.address,
-    message,
-    auth.signature
-  );
-  if (!valid) {
-    return Response.json({ error: 'signature verification failed' }, { status: 401 });
   }
 
   try {

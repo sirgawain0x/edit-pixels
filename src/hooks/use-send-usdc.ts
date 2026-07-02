@@ -1,12 +1,8 @@
 import { useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import {
-  useAccount,
-  useChain,
-  useSmartAccountClient,
-} from '@account-kit/react';
 import type { Hex } from 'viem';
 import { USDC_ADDRESS_BY_CHAIN_ID } from '@/config/chains';
+import { useWalletContext } from '@/context/wallet-context';
 import { useSmartWalletOps } from '@/hooks/use-smart-wallet-ops';
 import {
   buildUsdcTransferCalldata,
@@ -21,12 +17,11 @@ export interface SendUsdcResult {
 }
 
 export function useSendUsdc() {
-  const { address } = useAccount({ type: 'LightAccount' });
-  const { chain } = useChain();
-  const { client } = useSmartAccountClient({ type: 'LightAccount' });
-  const { sendOps, ready } = useSmartWalletOps(client ?? undefined);
+  const { wallet, chain } = useWalletContext();
+  const { sendOps, ready } = useSmartWalletOps();
   const queryClient = useQueryClient();
 
+  const address = wallet?.address as `0x${string}` | undefined;
   const usdcAddress = chain ? USDC_ADDRESS_BY_CHAIN_ID[chain.id] : undefined;
 
   const sendUsdc = useCallback(
@@ -35,7 +30,7 @@ export function useSendUsdc() {
       amount: string,
       balance: string | null
     ): Promise<SendUsdcResult> => {
-      if (!client || !address || !chain || !usdcAddress) {
+      if (!wallet || !address || !chain || !usdcAddress) {
         return { ok: false, error: 'Wallet not ready on a supported network' };
       }
       if (!ready) {
@@ -79,7 +74,7 @@ export function useSendUsdc() {
         return { ok: false, error: message };
       }
     },
-    [address, chain, client, queryClient, ready, sendOps, usdcAddress]
+    [address, chain, queryClient, ready, sendOps, usdcAddress, wallet]
   );
 
   return {

@@ -1,28 +1,22 @@
-import { base } from '@account-kit/infra';
+import { base } from 'viem/chains';
 import { createPublicClient, http } from 'viem';
 
 const apiKey = import.meta.env.VITE_ALCHEMY_API_KEY as string | undefined;
 
 function getBaseRpcUrl(): string {
-  const alchemyHttp = base.rpcUrls?.alchemy?.http?.[0];
-  if (!alchemyHttp) {
-    throw new Error('Base chain has no Alchemy RPC URL');
-  }
   if (!apiKey) {
     throw new Error('VITE_ALCHEMY_API_KEY is required for Base client');
   }
-  return `${alchemyHttp}/${apiKey}`;
+  return `https://base-mainnet.g.alchemy.com/v2/${apiKey}`;
 }
 
 /**
  * Read-only viem public client for Base (mainnet).
- * Uses the same VITE_ALCHEMY_API_KEY as Account Kit for deterministic behavior.
  */
 export function getBasePublicClient() {
-  const rpcUrl = getBaseRpcUrl();
   return createPublicClient({
     chain: base,
-    transport: http(rpcUrl),
+    transport: http(getBaseRpcUrl()),
   });
 }
 

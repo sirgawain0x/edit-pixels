@@ -3,10 +3,6 @@ import {
   quoteNanobananaCredits,
   quoteSeedanceCredits,
 } from '@/config/credits';
-import {
-  buildCreditsAuthMessage,
-  generateCreditsNonce,
-} from '../deps/credits';
 import type { EvolinkTaskDetail, NanobananaQuality, SeedanceQuality, SeedanceSpeed } from '../types';
 
 const log = createLogger('GenerativeProxy');
@@ -23,8 +19,8 @@ export class GenerativeApiError extends Error {
 }
 
 export interface SignedRequestParams {
-  address: `0x${string}`;
-  signMessage: (message: string) => Promise<string>;
+  getAccessToken: () => Promise<string | null>;
+  walletAddress: `0x${string}`;
 }
 
 async function withAuth<T extends Record<string, unknown>>(
@@ -32,12 +28,29 @@ async function withAuth<T extends Record<string, unknown>>(
   action: string,
   extra: string | undefined,
   payload: T
-): Promise<T & { address: string; timestamp: number; nonce: string; signature: string }> {
-  const timestamp = Date.now();
-  const nonce = generateCreditsNonce();
-  const message = buildCreditsAuthMessage(action, params.address, timestamp, nonce, extra);
-  const signature = await params.signMessage(message);
-  return { ...payload, address: params.address, timestamp, nonce, signature };
+): Promise<
+  T & {
+    action: string;
+    extra?: string;
+    timestamp: number;
+    requestId: string;
+    walletAddress: `0x${string}`;
+    token: string;
+  }
+> {
+  const token = await params.getAccessToken();
+  if (!token) {
+    throw new GenerativeApiError('Not authenticated', 401, 'not_authenticated');
+  }
+  return {
+    ...payload,
+    action,
+    ...(extra ? { extra } : {}),
+    timestamp: Date.now(),
+    requestId: crypto.randomUUID(),
+    walletAddress: params.walletAddress,
+    token,
+  };
 }
 
 export function isGenerativeProxyAvailable(): boolean {

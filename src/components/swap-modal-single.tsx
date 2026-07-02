@@ -1,10 +1,5 @@
 'use client';
 
-import {
-  usePrepareSwap,
-  useSignAndSendPreparedCalls,
-  useSmartAccountClient,
-} from '@account-kit/react';
 import type { Chain } from 'viem';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -16,8 +11,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { useWalletContext } from '@/context/wallet-context';
 import { USDC_ADDRESS_BY_CHAIN_ID } from '@/config/chains';
-import { chainIdToHex, decimalAmountToHex, NATIVE_TOKEN_ADDRESS } from '@/shared/utils/swap-utils';
+import { buildGasPaymasterCapabilities } from '@/config/gas-sponsorship';
+import { decimalAmountToWei, NATIVE_TOKEN_ADDRESS } from '@/shared/utils/swap-utils';
+import { executeSwapQuote } from '@/shared/utils/smart-wallet-swap';
 
 const USDC_DECIMALS = 6;
 
@@ -34,20 +32,11 @@ export function SingleChainSwapModal({
 }: SingleChainSwapModalProps) {
   const [amount, setAmount] = useState('');
   const [fromTokenIsUsdc, setFromTokenIsUsdc] = useState(true);
+  const [quoteError, setQuoteError] = useState<Error | null>(null);
+  const [sendError, setSendError] = useState<Error | null>(null);
+  const [isBusy, setIsBusy] = useState(false);
 
-  const { client } = useSmartAccountClient();
-  const {
-    prepareSwapAsync,
-    isPreparingSwap,
-    error: quoteError,
-    reset: resetQuote,
-  } = usePrepareSwap({ client });
-  const {
-    signAndSendPreparedCallsAsync,
-    isSigningAndSendingPreparedCalls,
-    error: sendError,
-    reset: resetSend,
-  } = useSignAndSendPreparedCalls({ client });
+  const { smartWalletClient } = useWalletContext();
 
   const usdcAddress = chain ? USDC_ADDRESS_BY_CHAIN_ID[chain.id] : undefined;
   const fromToken = fromTokenIsUsdc ? usdcAddress : NATIVE_TOKEN_ADDRESS;
@@ -59,30 +48,31 @@ export function SingleChainSwapModal({
     toToken &&
     amount &&
     parseFloat(amount) > 0 &&
-    client &&
+    smartWalletClient &&
     usdcAddress;
-  const isBusy = isPreparingSwap || isSigningAndSendingPreparedCalls;
-  const error = quoteError ?? sendError;
+
+  const resetQuote = () => setQuoteError(null);
+  const resetSend = () => setSendError(null);
 
   const handleGetQuote = async () => {
-    if (!canSwap || !chain) return;
+    if (!canSwap || !chain || !smartWalletClient) return;
     resetQuote();
     resetSend();
+    setIsBusy(true);
     try {
-      const fromAmountHex = decimalAmountToHex(amount, decimals);
-      const result = await prepareSwapAsync({
-        chainId: chainIdToHex(chain.id),
+      await executeSwapQuote(smartWalletClient, {
         fromToken,
         toToken,
-        fromAmount: fromAmountHex,
+        fromAmount: decimalAmountToWei(amount, decimals),
+        chainId: chain.id,
+        capabilities: buildGasPaymasterCapabilities(chain.id) ?? undefined,
       });
-      if (result && 'signatureRequest' in result) {
-        await signAndSendPreparedCallsAsync(result as never);
-        setAmount('');
-        onOpenChange(false);
-      }
-    } catch {
-      // Error surfaced via quoteError / sendError
+      setAmount('');
+      onOpenChange(false);
+    } catch (e) {
+      setQuoteError(e instanceof Error ? e : new Error('Swap failed'));
+    } finally {
+      setIsBusy(false);
     }
   };
 
@@ -96,6 +86,8 @@ export function SingleChainSwapModal({
   };
 
   if (!chain) return null;
+
+  const error = quoteError ?? sendError;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -145,12 +137,8 @@ export function SingleChainSwapModal({
           >
             Cancel
           </Button>
-          <Button onClick={handleGetQuote} disabled={!canSwap || isBusy}>
-            {isPreparingSwap
-              ? 'Getting quote…'
-              : isSigningAndSendingPreparedCalls
-                ? 'Signing & sending…'
-                : 'Swap'}
+          <Button onClick={() => void handleGetQuote()} disabled={!canSwap || isBusy}>
+            {isBusy ? 'Swapping…' : 'Swap'}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,7 +1,6 @@
 import { useCallback } from 'react';
-import { useSmartWalletClient } from '@account-kit/react';
-import { toHex } from 'viem';
 import type { Address, Hex } from 'viem';
+import { useWalletContext } from '@/context/wallet-context';
 import { buildGasPaymasterCapabilities } from '@/config/gas-sponsorship';
 import { createLogger } from '@/shared/logging/logger';
 
@@ -20,60 +19,20 @@ export interface SendOpsResult {
   txHashes: Hex[];
 }
 
-interface ClientWithAccount {
-  account: { address: Address };
-}
-
-type SmartWalletClient = NonNullable<ReturnType<typeof useSmartWalletClient>>;
-type PreparedCalls = Awaited<ReturnType<SmartWalletClient['prepareCalls']>>;
-
-interface PrepareCallsRequest {
-  calls: Array<{ to: Address; data?: Hex; value?: Hex }>;
-  capabilities?: unknown;
-  paymasterPermitSignature?: unknown;
-}
-
-/**
- * prepareCalls is generic over whether the client is account-bound, which makes
- * its params type unrepresentable here; the request shape matches the
- * wallet_prepareCalls wire format documented by Alchemy.
- */
-function callPrepareCalls(
-  client: { prepareCalls: (params: never) => Promise<PreparedCalls> },
-  request: PrepareCallsRequest
-): Promise<PreparedCalls> {
-  return client.prepareCalls(request as never);
-}
-
-/**
- * Sends batched calls through the Alchemy Smart Wallets API
- * (wallet_prepareCalls → sign → wallet_sendPreparedCalls) and waits for the
- * mined transaction.
- *
- * Unlike useSendUserOperation, this passes explicit paymaster capabilities so
- * ERC-20 gas policies work: Account Kit's default path only injects the
- * policyId and Alchemy rejects ERC-20 policies with "erc20 capability is
- * missing". It also handles the paymaster permit round-trip when the gas
- * policy operates in pre-op (permit) mode.
- */
-export function useSmartWalletOps(client: ClientWithAccount | undefined) {
-  const smartWalletClient = useSmartWalletClient({
-    account: client?.account.address,
-  });
+export function useSmartWalletOps() {
+  const { smartWalletClient, chain } = useWalletContext();
 
   const sendOps = useCallback(
     async (ops: SmartWalletOp[]): Promise<SendOpsResult> => {
       if (!smartWalletClient) throw new Error('Wallet not ready');
 
-      const capabilities = buildGasPaymasterCapabilities(
-        smartWalletClient.chain.id
-      );
+      const capabilities = chain ? buildGasPaymasterCapabilities(chain.id) : null;
 
-      let prepared = await callPrepareCalls(smartWalletClient, {
+      let prepared = await smartWalletClient.prepareCalls({
         calls: ops.map((op) => ({
           to: op.target,
           data: op.data,
-          value: op.value ? toHex(op.value) : undefined,
+          value: op.value,
         })),
         ...(capabilities ? { capabilities } : {}),
       });
@@ -85,8 +44,8 @@ export function useSmartWalletOps(client: ClientWithAccount | undefined) {
         const signature = await smartWalletClient.signSignatureRequest(
           prepared.signatureRequest
         );
-        prepared = await callPrepareCalls(smartWalletClient, {
-          calls: prepared.modifiedRequest.calls as PrepareCallsRequest['calls'],
+        prepared = await smartWalletClient.prepareCalls({
+          calls: prepared.modifiedRequest.calls,
           capabilities: prepared.modifiedRequest.capabilities,
           paymasterPermitSignature: signature,
         });
@@ -112,7 +71,7 @@ export function useSmartWalletOps(client: ClientWithAccount | undefined) {
       if (!txHash) throw new Error('Transaction confirmed without a receipt');
       return { txHash, txHashes };
     },
-    [smartWalletClient]
+    [smartWalletClient, chain]
   );
 
   return { sendOps, ready: Boolean(smartWalletClient) };

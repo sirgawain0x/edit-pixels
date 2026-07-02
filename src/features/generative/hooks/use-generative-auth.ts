@@ -1,19 +1,17 @@
-import { useAccount, useSignMessage, useSmartAccountClient } from '@account-kit/react';
 import { useMemo } from 'react';
+import { useWalletContext } from '@/context/wallet-context';
 import type { SignedRequestParams } from '../services/generative-proxy-client';
 
 export function useGenerativeAuth(): SignedRequestParams | null {
-  const { address } = useAccount({ type: 'LightAccount' });
-  const { client } = useSmartAccountClient({ type: 'LightAccount' });
-  const { signMessageAsync } = useSignMessage({ client });
+  const { account, authenticated, getAccessToken } = useWalletContext();
 
   return useMemo(() => {
-    if (!address || !client) return null;
+    if (!account || !authenticated) return null;
     return {
-      address: address as `0x${string}`,
-      signMessage: (message: string) => signMessageAsync({ message }),
+      getAccessToken,
+      walletAddress: account,
     };
-  }, [address, client, signMessageAsync]);
+  }, [account, authenticated, getAccessToken]);
 }
 
 export function useGenerativeReady(): boolean {

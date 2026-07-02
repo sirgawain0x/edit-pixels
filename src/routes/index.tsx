@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { Layers, ArrowRight, Play, FolderOpen, Download } from 'lucide-react';
-import { useAuthModal, useUser, useSignerStatus } from '@account-kit/react';
+import { useWalletContext } from '@/context/wallet-context';
 import { PixelsLogo } from '@/components/brand/pixels-logo';
 import { Button } from '@/components/ui/button';
 import {
@@ -10,7 +10,6 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
-import { alchemyConfig } from '@/config/alchemy';
 
 export const Route = createFileRoute('/')({
   component: LandingPage,
@@ -120,33 +119,31 @@ const showcaseItems = [
   },
 ];
 
-/** Get Started CTA: connect wallet when not connected, navigate to /projects when connected. Only rendered when Alchemy is configured. */
+/** Get Started CTA: connect wallet when not connected, navigate to /projects when connected. */
 function GetStartedWalletButton() {
   const navigate = useNavigate();
-  const user = useUser();
-  const { openAuthModal } = useAuthModal();
-  const signerStatus = useSignerStatus();
+  const { ready, authenticated, connect } = useWalletContext();
   const wasDisconnectedRef = useRef<boolean | null>(null);
 
-  const isInitializing = signerStatus.isInitializing;
-  const isConnected = Boolean(user && !isInitializing);
+  const isInitializing = !ready;
+  const isConnected = authenticated;
 
   // Only redirect when user *becomes* connected on this page (not when already connected on load).
   useEffect(() => {
     if (wasDisconnectedRef.current === null) {
-      wasDisconnectedRef.current = !user;
+      wasDisconnectedRef.current = !authenticated;
     }
-    if (user && wasDisconnectedRef.current) {
+    if (authenticated && wasDisconnectedRef.current) {
       wasDisconnectedRef.current = false;
       navigate({ to: '/projects' });
     }
-  }, [user, navigate]);
+  }, [authenticated, navigate]);
 
   const handleClick = () => {
     if (isConnected) {
       navigate({ to: '/projects' });
     } else {
-      openAuthModal();
+      connect();
     }
   };
 
@@ -203,16 +200,7 @@ function LandingPage() {
           </p>
 
           <div className="flex flex-col items-center gap-4 sm:flex-row">
-            {alchemyConfig ? (
-              <GetStartedWalletButton />
-            ) : (
-              <Button asChild size="lg" className="gap-2 px-8">
-                <Link to="/projects">
-                  Get Started
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-              </Button>
-            )}
+            <GetStartedWalletButton />
 
             {/* <Button asChild variant="outline" size="lg" className="gap-2">
               <a

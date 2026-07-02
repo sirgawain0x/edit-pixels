@@ -1,11 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  useAccount,
-  useChain,
-  useSmartAccountClient,
-} from '@account-kit/react';
 import { arbitrum } from 'viem/chains';
 import type { Hex } from 'viem';
+import { useWalletContext } from '@/context/wallet-context';
 import { useSmartWalletOps } from '@/hooks/use-smart-wallet-ops';
 import {
   getSuperfluidReceiverAddress,
@@ -55,12 +51,8 @@ export function useSuperfluidBilling() {
   const setStreamActive = useLiveSessionStore((s) => s.setStreamActive);
   const setBillingError = useLiveSessionStore((s) => s.setBillingError);
 
-  const { address } = useAccount({ type: 'LightAccount' });
-  const { chain, setChain } = useChain();
-  const { client } = useSmartAccountClient({ type: 'LightAccount' });
-  const { intervalCostUsdc6 } = usePremiumMembership(
-    address as `0x${string}` | undefined
-  );
+  const { account: address, chain, switchChain, smartWalletClient } = useWalletContext();
+  const { intervalCostUsdc6 } = usePremiumMembership(address);
 
   const receiver = getSuperfluidReceiverAddress();
   const configured = isSuperfluidConfigured();
@@ -84,7 +76,7 @@ export function useSuperfluidBilling() {
   const flowRateRef = useRef(intervalCostUsdc6ToFlowRate(intervalCostUsdc6));
   flowRateRef.current = intervalCostUsdc6ToFlowRate(intervalCostUsdc6);
 
-  const { sendOps, ready: walletReady } = useSmartWalletOps(client ?? undefined);
+  const { sendOps, ready: walletReady } = useSmartWalletOps();
 
   const sendOpsRef = useRef<
     (
@@ -93,15 +85,15 @@ export function useSuperfluidBilling() {
   >(() => Promise.reject(new Error('Wallet not ready')));
 
   sendOpsRef.current = async (uo) => {
-    if (!client) throw new Error('Wallet not ready');
+    if (!smartWalletClient) throw new Error('Wallet not ready');
     const result = await sendOps(uo);
     return { txHash: result.txHash };
   };
 
   const ensureArbitrum = useCallback(async () => {
     if (chain?.id === SUPERFLUID_CHAIN_ID) return;
-    await setChain({ chain: arbitrum });
-  }, [chain?.id, setChain]);
+    await switchChain(arbitrum.id);
+  }, [chain?.id, switchChain]);
 
   /**
    * Deletes the on-chain flow with bounded retries. On persistent failure the
@@ -163,9 +155,9 @@ export function useSuperfluidBilling() {
     if (!address || !receiver || !configured) return false;
     if (flowActiveRef.current) return true;
     if (startInFlightRef.current) return false;
-    if (!client || !walletReady) {
+    if (!smartWalletClient || !walletReady) {
       log.warn('Cannot start Superfluid flow: smart wallet not ready', {
-        hasClient: Boolean(client),
+        hasClient: Boolean(smartWalletClient),
         walletReady,
       });
       setBillingError('wallet_not_ready');
@@ -235,7 +227,7 @@ export function useSuperfluidBilling() {
     }
   }, [
     address,
-    client,
+    smartWalletClient,
     configured,
     ensureArbitrum,
     markFlowActive,
@@ -306,12 +298,11 @@ export function useSuperfluidBilling() {
 
   return {
     configured,
-    walletReady,
+    walletReady: Boolean(smartWalletClient && walletReady),
     setOnPause,
     intervalCostUsdc6,
     startFlow,
     stopFlow,
     flowActive,
-    walletReady: Boolean(client && walletReady),
   };
 }

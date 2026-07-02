@@ -1,16 +1,13 @@
 /**
  * POST /api/credits-claim-membership
- * Grants the monthly Pixels Premium credit allotment to active subscribers.
- * Membership is verified on-chain (Unlock Protocol key on Arbitrum); the
- * claim is limited to once per 30 days via an atomic Redis NX key.
- * Body: { address, timestamp, nonce, signature }
+ * Privy-authenticated: grants the monthly Pixels Premium credit allotment to
+ * active subscribers. Membership is verified on-chain (Unlock Protocol key on
+ * Arbitrum); the claim is limited to once per 30 days via an atomic Redis NX key.
+ * Header: Authorization: Bearer <privy-access-token>
+ * Body: {}
  */
 
-import {
-  buildCreditsAuthMessage,
-  parseWalletAuthBody,
-  verifyWalletMessage,
-} from './_wallet-auth.js';
+import { getBearerToken, verifyPrivyAccessToken } from './_wallet-auth.js';
 import {
   addCredits,
   getCreditBalance,
@@ -52,6 +49,11 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ ok: false, reason: 'disabled' }, { status: 503 });
   }
 
+  const token = getBearerToken(request);
+  if (!token) {
+    return Response.json({ error: 'missing authorization' }, { status: 401 });
+  }
+
   let body: Record<string, unknown>;
   try {
     body = (await request.json()) as Record<string, unknown>;
@@ -59,24 +61,12 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'invalid body' }, { status: 400 });
   }
 
-  const auth = parseWalletAuthBody(body);
-  if (!auth) {
-    return Response.json({ error: 'invalid auth' }, { status: 400 });
-  }
-
-  const message = buildCreditsAuthMessage(
-    'claim-membership',
-    auth.address,
-    auth.timestamp,
-    auth.nonce
+  const auth = await verifyPrivyAccessToken(
+    token,
+    typeof body.walletAddress === 'string' ? body.walletAddress : undefined
   );
-
-  const valid = await verifyWalletMessage(auth.address, message, auth.signature);
-  if (!valid) {
-    return Response.json(
-      { error: 'signature verification failed' },
-      { status: 401 }
-    );
+  if (!auth) {
+    return Response.json({ error: 'invalid authorization' }, { status: 401 });
   }
 
   try {
@@ -95,7 +85,7 @@ export async function POST(request: Request): Promise<Response> {
       address: getLockAddress(),
       abi: unlockHasValidKeyAbi,
       functionName: 'getHasValidKey',
-      args: [auth.address as `0x${string}`],
+      args: [auth.address],
     });
 
     if (!hasKey) {
