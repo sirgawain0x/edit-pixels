@@ -65,8 +65,10 @@ export async function verifyPrivyAccessToken(
     }
 
     // Fall back to the first linked wallet only when no expected address was supplied.
+    const firstWallet = linkedWallets[0];
+    if (!firstWallet) return null;
     return {
-      address: linkedWallets[0].address.toLowerCase() as `0x${string}`,
+      address: firstWallet.address.toLowerCase() as `0x${string}`,
     };
   } catch {
     return null;
