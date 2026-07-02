@@ -140,6 +140,16 @@ export default defineConfig({
             return 'gif-processing';
           }
 
+          // Self-contained third-party vendor chunks. Wallet and UI vendors reference each
+          // other, so keeping them in a single chunk prevents a vendor-ui <-> wallet-vendor
+          // circular chunk while still keeping third-party code separate from app code.
+          if (id.includes('@account-kit/') || id.includes('/wagmi/') || id.includes('@reown/') || id.includes('@walletconnect/') || id.includes('@coinbase/wallet-sdk') || id.includes('/viem/') || id.includes('@radix-ui/')) {
+            return 'vendor-ui-and-wallet';
+          }
+          if (id.includes('lucide-react')) {
+            return 'vendor-icons';
+          }
+
           return undefined;
         },
       },
