@@ -33,7 +33,8 @@ function isWalletWithAddress(account: unknown): account is { address: string } {
 }
 
 export async function verifyPrivyAccessToken(
-  token: string
+  token: string,
+  expectedAddress?: string
 ): Promise<{ address: `0x${string}` } | null> {
   const client = getPrivyClient();
   if (!client) return null;
@@ -45,14 +46,27 @@ export async function verifyPrivyAccessToken(
     const user = await client.getUserById(claims.userId);
     if (!user) return null;
 
-    // Use the first linked account that looks like an EVM wallet.
-    const wallet = user.linkedAccounts.find(
+    const lowerExpected = expectedAddress?.toLowerCase();
+    const linkedWallets = user.linkedAccounts.filter(
       (a) => a.type === 'wallet' && isWalletWithAddress(a)
-    );
-    if (!wallet) return null;
+    ) as Array<{ address: string }>;
 
+    if (!linkedWallets.length) return null;
+
+    // If the client sent an expected active wallet, verify it is linked to this user.
+    if (lowerExpected) {
+      const match = linkedWallets.find(
+        (w) => w.address.toLowerCase() === lowerExpected
+      );
+      if (!match) return null;
+      return {
+        address: match.address.toLowerCase() as `0x${string}`,
+      };
+    }
+
+    // Fall back to the first linked wallet only when no expected address was supplied.
     return {
-      address: (wallet as { address: string }).address.toLowerCase() as `0x${string}`,
+      address: linkedWallets[0].address.toLowerCase() as `0x${string}`,
     };
   } catch {
     return null;

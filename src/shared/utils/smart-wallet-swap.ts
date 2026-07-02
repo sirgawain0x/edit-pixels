@@ -46,13 +46,14 @@ export async function executeSwapQuote(
   let prepared = await client.requestQuoteV0(params as RequestQuoteV0Params);
 
   if (isPaymasterPermitRuntime(prepared)) {
-    const signature = (await client.signSignatureRequest(
+    const signature = await client.signSignatureRequest(
       prepared.signatureRequest as Parameters<SmartWalletClient['signSignatureRequest']>[0]
-    )).data as `0x${string}`;
+    );
+    const signatureHex = (typeof signature === 'string' ? signature : signature.data) as Hex;
     prepared = await client.requestQuoteV0({
       ...params,
       capabilities: prepared.modifiedRequest.capabilities,
-      paymasterPermitSignature: signature as never,
+      paymasterPermitSignature: signatureHex as never,
     } as RequestQuoteV0Params);
 
     if (isPaymasterPermitRuntime(prepared)) {

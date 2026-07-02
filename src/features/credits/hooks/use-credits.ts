@@ -240,6 +240,7 @@ export function useCredits(): UseCreditsResult {
             action: auth.action,
             extra: auth.extra,
             timestamp: auth.timestamp,
+            walletAddress: auth.account,
           }),
         });
         const body = (await res.json()) as DebitResponse;
@@ -262,7 +263,12 @@ export function useCredits(): UseCreditsResult {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${auth.token}`,
           },
-          body: JSON.stringify({ code: code.trim(), action: auth.action, extra: auth.extra }),
+          body: JSON.stringify({
+            code: code.trim(),
+            action: auth.action,
+            extra: auth.extra,
+            walletAddress: auth.account,
+          }),
         });
         const body = (await res.json()) as RedeemResponse;
         refreshBalance();
@@ -284,7 +290,7 @@ export function useCredits(): UseCreditsResult {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${auth.token}`,
           },
-          body: JSON.stringify({ action: auth.action }),
+          body: JSON.stringify({ action: auth.action, walletAddress: auth.account }),
         });
         const body = (await res.json()) as ClaimMembershipResponse;
         refreshBalance();

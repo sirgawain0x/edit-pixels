@@ -28,7 +28,10 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'missing authorization' }, { status: 401 });
   }
 
-  const auth = await verifyPrivyAccessToken(token);
+  const auth = await verifyPrivyAccessToken(
+    token,
+    typeof body.walletAddress === 'string' ? body.walletAddress : undefined
+  );
   if (!auth) {
     return Response.json({ error: 'invalid authorization' }, { status: 401 });
   }
@@ -45,10 +48,18 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'prompt required' }, { status: 400 });
   }
 
+  const requestId =
+    typeof body.requestId === 'string' && body.requestId.trim().length > 0
+      ? body.requestId.trim()
+      : null;
+  if (!requestId) {
+    return Response.json({ error: 'requestId required' }, { status: 400 });
+  }
+
   const quality = typeof body.quality === 'string' ? body.quality : '2K';
   const credits = quoteNanobananaCredits(quality);
 
-  const idempotencyKey = `flow-image-${auth.address.toLowerCase()}-${Date.now()}`;
+  const idempotencyKey = `flow-image-${auth.address.toLowerCase()}-${requestId}`;
   const debit = await debitCredits(auth.address, credits, idempotencyKey);
   if (!debit.ok) {
     return Response.json(

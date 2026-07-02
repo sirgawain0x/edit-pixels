@@ -20,6 +20,7 @@ export class GenerativeApiError extends Error {
 
 export interface SignedRequestParams {
   getAccessToken: () => Promise<string | null>;
+  walletAddress: `0x${string}`;
 }
 
 async function withAuth<T extends Record<string, unknown>>(
@@ -27,7 +28,16 @@ async function withAuth<T extends Record<string, unknown>>(
   action: string,
   extra: string | undefined,
   payload: T
-): Promise<T & { action: string; extra?: string; timestamp: number; token: string }> {
+): Promise<
+  T & {
+    action: string;
+    extra?: string;
+    timestamp: number;
+    requestId: string;
+    walletAddress: `0x${string}`;
+    token: string;
+  }
+> {
   const token = await params.getAccessToken();
   if (!token) {
     throw new GenerativeApiError('Not authenticated', 401, 'not_authenticated');
@@ -37,6 +47,8 @@ async function withAuth<T extends Record<string, unknown>>(
     action,
     ...(extra ? { extra } : {}),
     timestamp: Date.now(),
+    requestId: crypto.randomUUID(),
+    walletAddress: params.walletAddress,
     token,
   };
 }

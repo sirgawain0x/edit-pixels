@@ -20,7 +20,7 @@ import {
 } from '@alchemy/wallet-apis';
 import { swapActions, type SwapActions } from '@alchemy/wallet-apis/experimental';
 import { createWalletClient, custom, type Chain, type WalletClient, type Address } from 'viem';
-import { DEFAULT_CHAIN } from '@/config/alchemy';
+import { DEFAULT_CHAIN, SWITCHABLE_CHAINS } from '@/config/alchemy';
 
 const apiKey = import.meta.env.VITE_ALCHEMY_API_KEY as string | undefined;
 const policyId = import.meta.env.VITE_ALCHEMY_POLICY_ID as string | undefined;
@@ -88,7 +88,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         setWalletClient(client);
         const walletChainId = parseInt(activeWallet.chainId, 10);
         if (walletChainId && walletChainId !== chain.id) {
-          const known = [DEFAULT_CHAIN].find((c) => c.id === walletChainId);
+          const known = SWITCHABLE_CHAINS.find((c) => c.id === walletChainId);
           if (known) setChain(known);
         }
       } catch (e) {
@@ -101,7 +101,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [activeWallet, authenticated, chain]);
+  }, [activeWallet, activeWallet?.chainId, authenticated, chain]);
 
   const smartWalletClient = useMemo<SmartWalletClient | null>(() => {
     if (!walletClient || !apiKey) return null;

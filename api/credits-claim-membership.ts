@@ -54,7 +54,17 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'missing authorization' }, { status: 401 });
   }
 
-  const auth = await verifyPrivyAccessToken(token);
+  let body: Record<string, unknown>;
+  try {
+    body = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return Response.json({ error: 'invalid body' }, { status: 400 });
+  }
+
+  const auth = await verifyPrivyAccessToken(
+    token,
+    typeof body.walletAddress === 'string' ? body.walletAddress : undefined
+  );
   if (!auth) {
     return Response.json({ error: 'invalid authorization' }, { status: 401 });
   }

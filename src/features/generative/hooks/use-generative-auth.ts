@@ -9,6 +9,7 @@ export function useGenerativeAuth(): SignedRequestParams | null {
     if (!account || !authenticated) return null;
     return {
       getAccessToken,
+      walletAddress: account,
     };
   }, [account, authenticated, getAccessToken]);
 }

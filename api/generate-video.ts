@@ -32,7 +32,10 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'missing authorization' }, { status: 401 });
   }
 
-  const auth = await verifyPrivyAccessToken(token);
+  const auth = await verifyPrivyAccessToken(
+    token,
+    typeof body.walletAddress === 'string' ? body.walletAddress : undefined
+  );
   if (!auth) {
     return Response.json({ error: 'invalid authorization' }, { status: 401 });
   }
@@ -51,7 +54,16 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const credits = quoteSeedanceCredits(body);
-  const idempotencyKey = `flow-video-${auth.address.toLowerCase()}-${Date.now()}`;
+
+  const requestId =
+    typeof body.requestId === 'string' && body.requestId.trim().length > 0
+      ? body.requestId.trim()
+      : null;
+  if (!requestId) {
+    return Response.json({ error: 'requestId required' }, { status: 400 });
+  }
+
+  const idempotencyKey = `flow-video-${auth.address.toLowerCase()}-${requestId}`;
   const debit = await debitCredits(auth.address, credits, idempotencyKey);
   if (!debit.ok) {
     return Response.json(
