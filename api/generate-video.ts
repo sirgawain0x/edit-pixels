@@ -80,7 +80,13 @@ export async function POST(request: Request): Promise<Response> {
   const costUsdc6 = quoteRenderCostUsdc6(body);
 
   // Gate on CRTVAI balance — the actual debit happens on-chain
-  const balanceCheck = await checkMetokenSufficient(auth.address, costUsdc6);
+  let balanceCheck;
+  try {
+    balanceCheck = await checkMetokenSufficient(auth.address, costUsdc6);
+  } catch (e) {
+    console.error('Failed to check meToken balance', e);
+    return Response.json({ error: 'failed to verify balance' }, { status: 502 });
+  }
   if (!balanceCheck.sufficient) {
     return Response.json(
       {

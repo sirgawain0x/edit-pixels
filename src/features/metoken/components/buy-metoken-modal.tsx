@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Coins, DollarSign, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { parseUnits, formatUnits } from 'viem';
@@ -53,6 +53,17 @@ export function BuyMetokenModal({ open, onOpenChange }: BuyMetokenModalProps) {
 
   const onBase = chain?.id === BASE_CHAIN_ID;
 
+  const hasSufficientUsdc = useMemo(() => {
+    if (!usdcInput || !usdcBalance) return true;
+    try {
+      const inputRaw = parseUnits(usdcInput, USDC_DECIMALS);
+      const balanceRaw = parseUnits(usdcBalance, USDC_DECIMALS);
+      return inputRaw <= balanceRaw;
+    } catch {
+      return false;
+    }
+  }, [usdcInput, usdcBalance]);
+
   // Fetch current price on open
   useEffect(() => {
     if (!open || !onBase) return;
@@ -78,7 +89,13 @@ export function BuyMetokenModal({ open, onOpenChange }: BuyMetokenModalProps) {
       setEstimatedOutput(null);
       return;
     }
-    const usdcRaw = parseUnits(usdcInput, USDC_DECIMALS);
+    let usdcRaw: bigint;
+    try {
+      usdcRaw = parseUnits(usdcInput, USDC_DECIMALS);
+    } catch {
+      setEstimatedOutput(null);
+      return;
+    }
     if (usdcRaw <= 0n) {
       setEstimatedOutput(null);
       return;
@@ -108,7 +125,13 @@ export function BuyMetokenModal({ open, onOpenChange }: BuyMetokenModalProps) {
       toast.error('Switch to Base to buy CRTVAI');
       return;
     }
-    const usdcRaw = parseUnits(usdcInput || '0', USDC_DECIMALS);
+    let usdcRaw: bigint;
+    try {
+      usdcRaw = parseUnits(usdcInput || '0', USDC_DECIMALS);
+    } catch {
+      toast.error('Invalid USDC amount');
+      return;
+    }
     if (usdcRaw <= 0n) {
       toast.error('Enter a USDC amount');
       return;
@@ -218,7 +241,7 @@ export function BuyMetokenModal({ open, onOpenChange }: BuyMetokenModalProps) {
             <Button
               type="button"
               className="w-full"
-              disabled={minting || !usdcInput || quoting || !walletReady}
+              disabled={minting || !usdcInput || quoting || !walletReady || !hasSufficientUsdc}
               onClick={() => void handleMint()}
             >
               {minting ? (
@@ -226,6 +249,8 @@ export function BuyMetokenModal({ open, onOpenChange }: BuyMetokenModalProps) {
                   <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
                   Minting…
                 </>
+              ) : !hasSufficientUsdc ? (
+                'Insufficient USDC Balance'
               ) : (
                 'Mint CRTVAI'
               )}

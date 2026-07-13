@@ -101,7 +101,7 @@ export async function checkMetokenSufficient(
     price > 0n ? (BigInt(costUsdc6) * 10n ** 18n) / price : 0n;
 
   return {
-    sufficient: balance >= requiredMetoken,
+    sufficient: price > 0n && balance >= requiredMetoken,
     balance,
     requiredMetoken,
   };
@@ -133,9 +133,14 @@ export async function verifyMetokenDebit(
         continue;
       if (log.topics.length < 3) continue;
       // Transfer(from, to, value) — topics[1]=from, topics[2]=to
-      const fromTopic = log.topics[1]?.toLowerCase();
-      const toTopic = log.topics[2]?.toLowerCase();
-      if (fromTopic !== fromLower || toTopic !== toLower) continue;
+      // EVM topics are 32-byte padded; extract the last 20 bytes (40 hex chars) for address comparison
+      const fromTopic = log.topics[1];
+      const toTopic = log.topics[2];
+      if (!fromTopic || !toTopic) continue;
+
+      const parsedFrom = `0x${fromTopic.slice(-40)}`.toLowerCase();
+      const parsedTo = `0x${toTopic.slice(-40)}`.toLowerCase();
+      if (parsedFrom !== fromLower || parsedTo !== toLower) continue;
 
       const value = log.data ? BigInt(log.data) : 0n;
       if (value >= minAmount) {
