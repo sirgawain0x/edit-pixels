@@ -8,6 +8,8 @@ import {
 import { base } from 'viem/chains';
 import {
   CFA_FORWARDER_ADDRESS,
+  CRTVAI_DIAMOND_ADDRESS,
+  METOKEN_DIAMOND_ABI,
   getCrtvaiXAddress,
   SUPER_TOKEN_ABI,
 } from '@/config/metoken';
@@ -40,16 +42,14 @@ export function createBasePublicClient() {
   });
 }
 
-/** Read CRTVAI meToken balance on Base (replaces readUsdcBalanceArbitrum). */
+/** Read raw CRTVAI meToken balance on Base (the unwrapped ERC-20, not the Super Token). */
 export async function readCrtvaiBalanceBase(
   address: `0x${string}`
 ): Promise<bigint> {
-  const superToken = getCrtvaiXAddress();
-  if (!superToken) return 0n;
   const client = createBasePublicClient();
   return client.readContract({
-    address: superToken,
-    abi: SUPER_TOKEN_ABI,
+    address: CRTVAI_DIAMOND_ADDRESS,
+    abi: METOKEN_DIAMOND_ABI,
     functionName: 'balanceOf',
     args: [address],
   });
@@ -114,20 +114,20 @@ export function buildStartFlowUserOperations(
   const ops: FlowUserOperation[] = [];
 
   if (params.wrapMetokenWei > 0n) {
-    // Approve the super token contract to pull underlying CRTVAI
+    // Approve the Super Token contract to pull underlying CRTVAI from the diamond
     const approveData = encodeFunctionData({
       abi: erc20Abi,
       functionName: 'approve',
       args: [superToken, params.wrapMetokenWei],
     });
-    // Upgrade (wrap) CRTVAI → CRTVAIx
+    // Upgrade (wrap) CRTVAI → CRTVAIx — called on the Super Token contract
     const upgradeData = encodeFunctionData({
       abi: SUPER_TOKEN_ABI,
       functionName: 'upgrade',
       args: [params.wrapMetokenWei],
     });
     ops.push(
-      { target: superToken, data: approveData, value: 0n },
+      { target: CRTVAI_DIAMOND_ADDRESS, data: approveData, value: 0n },
       { target: superToken, data: upgradeData, value: 0n }
     );
   }
