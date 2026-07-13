@@ -1,14 +1,20 @@
 import { useQuery } from '@tanstack/react-query';
-import { arbitrum } from 'viem/chains';
+import { base } from 'viem/chains';
 import { getPurchaseGasBufferUsdc6 } from '@/config/gas-sponsorship';
-import { wrapUsdc6ForOneHour, SUPERFLUID_CHAIN_ID } from '@/config/superfluid';
+import {
+  wrapMetokenWeiForOneHour,
+  SUPERFLUID_CHAIN_ID,
+} from '@/config/metoken';
 import { usePremiumMembership } from '@/features/live-ai/hooks/use-premium-membership';
-import { readUsdcBalanceArbitrum } from '../api/superfluid-flow';
+import { readCrtvaiBalanceBase } from '../api/superfluid-flow';
 
 export interface UseLiveAiFundingResult {
-  /** USDC on Arbitrum (6 decimals) as number. */
-  usdcBalance6: number;
-  minRequiredUsdc6: number;
+  /** CRTVAI balance on Base (meToken wei, 18 decimals) as bigint. */
+  crtvaiBalance: bigint;
+  /** CRTVAI balance formatted for display. */
+  crtvaiFormatted: string;
+  /** Minimum CRTVAI (meToken wei) required to start streaming. */
+  minRequiredMetokenWei: bigint;
   hasFunding: boolean;
   isLoading: boolean;
   hourlyUsdc: number;
@@ -16,7 +22,7 @@ export interface UseLiveAiFundingResult {
 }
 
 /**
- * Checks Arbitrum USDC balance for starting Live AI (Superfluid streaming).
+ * Checks CRTVAI balance on Base for starting Live AI (Superfluid streaming).
  */
 export function useLiveAiFunding(
   address: `0x${string}` | undefined
@@ -24,28 +30,37 @@ export function useLiveAiFunding(
   const { intervalCostUsdc6, isPremiumMember, isLoading: tierLoading } =
     usePremiumMembership(address);
 
-  const wrapUsdc6 = Number(wrapUsdc6ForOneHour(intervalCostUsdc6));
-  const minRequiredUsdc6 =
-    wrapUsdc6 + getPurchaseGasBufferUsdc6(SUPERFLUID_CHAIN_ID);
-  const hourlyUsdc = wrapUsdc6 / 1_000_000;
+  const wrapMetokenWei = wrapMetokenWeiForOneHour(intervalCostUsdc6);
+  const minRequiredMetokenWei =
+    wrapMetokenWei +
+    BigInt(getPurchaseGasBufferUsdc6(SUPERFLUID_CHAIN_ID)) * 10n ** 12n;
+  const hourlyUsdc = (intervalCostUsdc6 * 12) / 1_000_000;
 
   const { data, isLoading: balanceLoading } = useQuery({
-    queryKey: ['live-ai-usdc-arbitrum', address],
+    queryKey: ['live-ai-crtvai-base', address],
     queryFn: async () => {
-      const raw = await readUsdcBalanceArbitrum(address!);
-      return Number(raw);
+      const raw = await readCrtvaiBalanceBase(address!);
+      return raw;
     },
     enabled: Boolean(address),
     staleTime: 15_000,
     refetchInterval: 30_000,
   });
 
-  const usdcBalance6 = data ?? 0;
-  const hasFunding = usdcBalance6 >= minRequiredUsdc6;
+  const crtvaiBalance = data ?? 0n;
+  const hasFunding = crtvaiBalance >= minRequiredMetokenWei;
+
+  const crtvaiFormatted = Number(crtvaiBalance) > 0
+    ? (Number(crtvaiBalance) / 1e18).toLocaleString(undefined, {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+      })
+    : '0';
 
   return {
-    usdcBalance6,
-    minRequiredUsdc6,
+    crtvaiBalance,
+    crtvaiFormatted,
+    minRequiredMetokenWei,
     hasFunding,
     isLoading: tierLoading || balanceLoading,
     hourlyUsdc,
@@ -54,4 +69,4 @@ export function useLiveAiFunding(
 }
 
 /** Chain required for Superfluid Live AI billing. */
-export const LIVE_AI_BILLING_CHAIN = arbitrum;
+export const LIVE_AI_BILLING_CHAIN = base;

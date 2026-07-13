@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { arbitrum } from 'viem/chains';
+import { base } from 'viem/chains';
 import type { Hex } from 'viem';
 import { useWalletContext } from '@/context/wallet-context';
 import { useSmartWalletOps } from '@/hooks/use-smart-wallet-ops';
@@ -8,8 +8,8 @@ import {
   intervalCostUsdc6ToFlowRate,
   isSuperfluidConfigured,
   SUPERFLUID_CHAIN_ID,
-  wrapUsdc6ForOneHour,
-} from '@/config/superfluid';
+  wrapMetokenWeiForOneHour,
+} from '@/config/metoken';
 import { createLogger, createOperationId } from '@/shared/logging/logger';
 import { usePremiumMembership } from '@/features/live-ai/hooks/use-premium-membership';
 import { formatBillingErrorDetail, extractTxHashFromError } from '../utils/billing-error-detail';
@@ -18,8 +18,8 @@ import {
   buildDeleteFlowUserOperation,
   buildStartFlowUserOperations,
   readExistingFlowRate,
-  readUsdcBalanceArbitrum,
-  readUsdcxBalance,
+  readCrtvaiBalanceBase,
+  readCrtvaiXBalance,
 } from '../api/superfluid-flow';
 
 const log = createLogger('superfluid-billing');
@@ -38,13 +38,13 @@ export interface StopFlowOptions {
 }
 
 /**
- * Manages Superfluid USDCx streaming for Live AI.
+ * Manages Superfluid CRTVAIx streaming for Live AI.
  *
  * Payment-first contract: callers must await `startFlow()` (which resolves only
  * after the flow is confirmed on-chain) BEFORE starting the AI session, so no
  * rendering happens without an active payment stream. The hook stops the flow
  * when the stream ends, when the flow runs without the stream ever going live
- * (grace timeout), or when USDCx runway gets too low.
+ * (grace timeout), or when CRTVAIx runway gets too low.
  */
 export function useSuperfluidBilling() {
   const streamActive = useLiveSessionStore((s) => s.streamActive);
@@ -90,9 +90,9 @@ export function useSuperfluidBilling() {
     return { txHash: result.txHash };
   };
 
-  const ensureArbitrum = useCallback(async () => {
+  const ensureBase = useCallback(async () => {
     if (chain?.id === SUPERFLUID_CHAIN_ID) return;
-    await switchChain(arbitrum.id);
+    await switchChain(base.id);
   }, [chain?.id, switchChain]);
 
   /**
@@ -172,22 +172,22 @@ export function useSuperfluidBilling() {
     event.merge({ address, receiver });
 
     try {
-      await ensureArbitrum();
+      await ensureBase();
 
       const cost = intervalCostRef.current;
       const rate = flowRateRef.current;
-      const wrapUsdc6 = wrapUsdc6ForOneHour(cost);
+      const wrapMetokenWei = wrapMetokenWeiForOneHour(cost);
       event.merge({
         intervalCostUsdc6: cost,
         flowRate: rate.toString(),
-        wrapUsdc6: wrapUsdc6.toString(),
+        wrapMetokenWei: wrapMetokenWei.toString(),
       });
 
-      const usdcBalance = await readUsdcBalanceArbitrum(address);
-      event.set('usdcBalance6', usdcBalance.toString());
-      if (usdcBalance < wrapUsdc6) {
+      const crtvaiBalance = await readCrtvaiBalanceBase(address);
+      event.set('crtvaiBalance', crtvaiBalance.toString());
+      if (crtvaiBalance < wrapMetokenWei) {
         setBillingError('insufficient_balance');
-        event.failure(new Error('Insufficient USDC for wrap amount'));
+        event.failure(new Error('Insufficient CRTVAI for wrap amount'));
         return false;
       }
 
@@ -196,7 +196,7 @@ export function useSuperfluidBilling() {
         sender: address,
         receiver,
         flowRate: rate,
-        wrapUsdc6,
+        wrapMetokenWei,
         existingFlowRate,
       });
 
@@ -229,7 +229,7 @@ export function useSuperfluidBilling() {
     address,
     smartWalletClient,
     configured,
-    ensureArbitrum,
+    ensureBase,
     markFlowActive,
     receiver,
     setBillingError,
@@ -275,8 +275,8 @@ export function useSuperfluidBilling() {
       const rate = flowRateRef.current;
       if (rate <= 0n) return;
       try {
-        const usdcxBalance = await readUsdcxBalance(address);
-        const runwaySeconds = Number(usdcxBalance / rate);
+        const crtvaiXBalance = await readCrtvaiXBalance(address);
+        const runwaySeconds = Number(crtvaiXBalance / rate);
         if (runwaySeconds < MIN_RUNWAY_SECONDS) {
           setBillingError('insufficient_balance');
           setStreamActive(false);

@@ -5,7 +5,7 @@ import { Clock, DollarSign } from 'lucide-react';
 import { useLiveSessionStore } from '../stores/live-session-store';
 import { usePremiumMembership } from '../hooks/use-premium-membership';
 import { useWalletContext } from '@/context/wallet-context';
-import { hourlyUsdcFromInterval } from '@/config/superfluid';
+import { hourlyUsdcFromInterval } from '@/config/metoken';
 import {
   formatUsdRate,
   formatUsdStreamedInUsdc,

@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { quoteSeedanceCredits } from '@/config/credits';
+import { quoteSeedanceCostUsdc6, formatCostUsdc6 } from '../services/generative-proxy-client';
 import { useCredits, InsufficientCreditsPaywall } from '../deps/credits';
 import { useGenerativeStore } from '../stores/generative-store';
 import { useGenerativeAuth } from '../hooks/use-generative-auth';
@@ -56,9 +56,9 @@ export const RenderControls = memo(function RenderControls() {
 
   const { startPolling, cancel } = useTaskPolling(setVideoTask);
 
-  const creditCost = useMemo(
+  const renderCostUsdc6 = useMemo(
     () =>
-      quoteSeedanceCredits({
+      quoteSeedanceCostUsdc6({
         duration,
         quality,
         speed: seedanceSpeed,
@@ -74,12 +74,12 @@ export const RenderControls = memo(function RenderControls() {
     !!auth &&
     hasCredits &&
     !isGenerating &&
-    creditCost > 0;
+    renderCostUsdc6 > 0;
 
   const handleGenerate = useCallback(async () => {
     if (!startImage || !prompt.trim() || !auth) return;
     if (!hasCredits) {
-      toast.error('Buy credits or redeem a promo code first.');
+      toast.error('Buy CRTVAI first to generate videos.');
       return;
     }
 
@@ -140,7 +140,7 @@ export const RenderControls = memo(function RenderControls() {
   return (
     <div className="flex flex-col items-center gap-4">
       {!hasCredits && (
-        <InsufficientCreditsPaywall message="Buy credits or redeem a promo code to generate videos." />
+        <InsufficientCreditsPaywall message="Buy CRTVAI to generate videos." />
       )}
 
       <div className="flex w-full flex-wrap items-end justify-center gap-3 px-2 sm:w-auto sm:px-0">
@@ -169,7 +169,10 @@ export const RenderControls = memo(function RenderControls() {
           <Label className="text-xs">Duration: {duration}s</Label>
           <Slider
             value={[duration]}
-            onValueChange={([v]) => setDuration(v)}
+            onValueChange={(values) => {
+              const v = values[0];
+              if (v !== undefined) setDuration(v);
+            }}
             min={4}
             max={15}
             step={1}
@@ -227,7 +230,7 @@ export const RenderControls = memo(function RenderControls() {
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Cost: {creditCost} credits per generation
+        Cost: {formatCostUsdc6(renderCostUsdc6)} CRTVAI per generation
       </p>
 
       <Button

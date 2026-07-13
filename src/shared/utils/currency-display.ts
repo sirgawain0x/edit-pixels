@@ -14,7 +14,7 @@ import {
   INTERVAL_COST_PREMIUM_USDC6,
   INTERVAL_COST_RETAIL_USDC6,
 } from '@/config/billing';
-import { hourlyUsdcFromInterval } from '@/config/superfluid';
+import { hourlyUsdcFromInterval } from '@/config/metoken';
 
 /** Pixels Premium subscription (Unlock checkout — USDC or card). */
 export const PIXELS_PREMIUM_MONTHLY_USD = 30;

@@ -5,7 +5,6 @@ import { useEffect, useState } from 'react';
 import {
   Copy,
   DollarSign,
-  Gift,
   Send,
   Settings2,
   Sparkles,
@@ -16,12 +15,7 @@ import { useWalletContext } from '@/context/wallet-context';
 import { useBuyUsdcOnramp } from '@/hooks/use-buy-usdc-onramp';
 import { useUnlockCheckout } from '@/hooks/use-unlock-checkout';
 import { usePremiumMembership } from '@/features/live-ai/hooks/use-premium-membership';
-import {
-  BuyCreditsModal,
-  CreditBalanceBadge,
-  RedeemPromoModal,
-  useCredits,
-} from '@/features/credits';
+import { BuyMetokenModal } from '@/features/metoken';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -38,12 +32,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { SWITCHABLE_CHAINS } from '@/config/alchemy';
-import { canAffordAnyCreditPack } from '@/features/credits/usdc-for-purchase';
 import { formatSubscribeCta } from '@/shared/utils/currency-display';
 import { SendUsdcModal } from '@/components/send-usdc-modal';
 import { useUsdcBalance } from '@/hooks/use-usdc-balance';
-
-const ARBITRUM_ONE_CHAIN_ID = 42_161;
+import { useCrtvaiBalance } from '@/hooks/use-crtvai-balance';
 
 function truncateAddress(address: string): string {
   if (address.length <= 10) return address;
@@ -82,50 +74,23 @@ export function WalletConnectButton({
     isConnecting,
   } = useWalletContext();
   const address = wallet?.address as `0x${string}` | undefined;
-  const { balance: usdcBalance, formatted: usdcFormatted } = useUsdcBalance(
+  const { formatted: usdcFormatted } = useUsdcBalance(
     chain,
     address
   );
-  const { openBuyUsdc, isLoading: isOnrampLoading, error: onrampError } = useBuyUsdcOnramp();
+  const { formatted: crtvaiFormatted, symbol: crtvaiSymbol } =
+    useCrtvaiBalance(address);
+  const { openBuyUsdc, isLoading: isOnrampLoading, error: onrampError } =
+    useBuyUsdcOnramp();
   const {
     openSubscribeCheckout,
     openManageSubscription,
     isConfigured: isUnlockConfigured,
   } = useUnlockCheckout();
   const { isPremiumMember, isPaidSubscriber } = usePremiumMembership(address);
-  const { balance, isLoading: creditsLoading, claimMembershipCredits } = useCredits();
 
-  const [buyCreditsOpen, setBuyCreditsOpen] = useState(false);
+  const [buyMetokenOpen, setBuyMetokenOpen] = useState(false);
   const [sendUsdcOpen, setSendUsdcOpen] = useState(false);
-  const [redeemOpen, setRedeemOpen] = useState(false);
-  const [claimingMembership, setClaimingMembership] = useState(false);
-
-  const handleClaimMembershipCredits = async () => {
-    if (claimingMembership) return;
-    setClaimingMembership(true);
-    try {
-      const res = await claimMembershipCredits();
-      if (res.ok) {
-        toast.success('Membership credits claimed', {
-          description: `+${res.creditsGranted} credits added to your balance.`,
-        });
-      } else if (res.reason === 'already_claimed') {
-        toast.info('Already claimed this month', {
-          description: 'Your monthly membership credits were already claimed. Come back next month.',
-        });
-      } else if (res.reason === 'not_member') {
-        toast.error('No active membership', {
-          description: 'An active Pixels Premium subscription is required.',
-        });
-      } else {
-        toast.error('Claim failed', {
-          description: 'Could not claim membership credits. Try again later.',
-        });
-      }
-    } finally {
-      setClaimingMembership(false);
-    }
-  };
 
   useEffect(() => {
     if (onrampError) {
@@ -175,19 +140,24 @@ export function WalletConnectButton({
   }
 
   const displayText = address ? truncateAddress(address) : 'Connected';
-  const onArbitrum = chain?.id === ARBITRUM_ONE_CHAIN_ID;
-  const canBuyCredits = !onArbitrum || canAffordAnyCreditPack(usdcBalance);
 
   return (
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size={size} className={className} aria-label="Wallet">
+          <Button
+            variant="outline"
+            size={size}
+            className={className}
+            aria-label="Wallet"
+          >
             <Wallet className="h-4 w-4 shrink-0" />
             {!compact && (
               <span className="hidden sm:inline-flex sm:items-center sm:gap-2">
                 <span>{displayText}</span>
-                <CreditBalanceBadge className="border-0 bg-transparent p-0 hover:bg-transparent" />
+                <span className="text-muted-foreground tabular-nums">
+                  {crtvaiFormatted} {crtvaiSymbol}
+                </span>
               </span>
             )}
           </Button>
@@ -204,7 +174,18 @@ export function WalletConnectButton({
             </DropdownMenuItem>
           )}
           <DropdownMenuItem disabled className="text-muted-foreground">
+            {crtvaiSymbol}: {crtvaiFormatted}
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled className="text-muted-foreground">
             USDC: {usdcFormatted}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => setBuyMetokenOpen(true)}
+            className="flex cursor-pointer items-center gap-2"
+            aria-label="Buy CRTVAI"
+          >
+            <Sparkles className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+            Buy CRTVAI
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={handleBuyUsdc}
@@ -229,81 +210,64 @@ export function WalletConnectButton({
               className="flex cursor-pointer items-center gap-2"
               aria-label="Subscribe to Pixels Premium"
             >
-              <Sparkles className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+              <Sparkles
+                className="h-3.5 w-3.5 shrink-0 opacity-70"
+                aria-hidden
+              />
               {formatSubscribeCta()}
             </DropdownMenuItem>
           )}
-          <DropdownMenuItem disabled className="text-muted-foreground">
-            Credits: {creditsLoading ? '…' : `${balance} cr`}
+          {isUnlockConfigured && isPaidSubscriber && (
+            <DropdownMenuItem
+              onClick={openManageSubscription}
+              className="flex cursor-pointer items-center gap-2"
+              aria-label="Manage subscription"
+            >
+              <Settings2
+                className="h-3.5 w-3.5 shrink-0 opacity-70"
+                aria-hidden
+              />
+              Manage subscription
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuSeparator />
+          <div className="px-2 py-1.5">
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+              Network
+            </label>
+            <Select
+              value={chain.id.toString()}
+              onValueChange={(value) => {
+                const c = SWITCHABLE_CHAINS.find(
+                  (ch) => ch.id.toString() === value
+                );
+                if (c) void switchChain(c.id);
+              }}
+            >
+              <SelectTrigger className="h-8 w-full text-xs">
+                <SelectValue placeholder="Select network" />
+              </SelectTrigger>
+              <SelectContent className="z-[10000]">
+                {SWITCHABLE_CHAINS.map((c) => (
+                  <SelectItem
+                    key={c.id}
+                    value={c.id.toString()}
+                    className="text-xs"
+                  >
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={handleDisconnect}>
+            Disconnect
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => setBuyCreditsOpen(true)}
-            disabled={!canBuyCredits}
-            title={canBuyCredits ? undefined : 'Top up USDC on Arbitrum first'}
-            className="flex cursor-pointer items-center gap-2"
-          >
-            <Sparkles className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
-            Buy credits
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => setRedeemOpen(true)}
-            className="flex cursor-pointer items-center gap-2"
-          >
-            <Gift className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
-            Redeem code
-          </DropdownMenuItem>
-        {isUnlockConfigured && isPaidSubscriber && (
-          <DropdownMenuItem
-            onClick={() => void handleClaimMembershipCredits()}
-            disabled={claimingMembership}
-            className="flex cursor-pointer items-center gap-2"
-            aria-label="Claim monthly membership credits"
-          >
-            <Gift className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
-            {claimingMembership ? 'Claiming…' : 'Claim monthly credits'}
-          </DropdownMenuItem>
-        )}
-        {isUnlockConfigured && isPaidSubscriber && (
-          <DropdownMenuItem
-            onClick={openManageSubscription}
-            className="flex cursor-pointer items-center gap-2"
-            aria-label="Manage subscription"
-          >
-            <Settings2 className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
-            Manage subscription
-          </DropdownMenuItem>
-        )}
-        <DropdownMenuSeparator />
-        <div className="px-2 py-1.5">
-          <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-            Network
-          </label>
-          <Select
-            value={chain.id.toString()}
-            onValueChange={(value) => {
-              const c = SWITCHABLE_CHAINS.find((ch) => ch.id.toString() === value);
-              if (c) void switchChain(c.id);
-            }}
-          >
-            <SelectTrigger className="h-8 w-full text-xs">
-              <SelectValue placeholder="Select network" />
-            </SelectTrigger>
-            <SelectContent className="z-[10000]">
-              {SWITCHABLE_CHAINS.map((c) => (
-                <SelectItem key={c.id} value={c.id.toString()} className="text-xs">
-                  {c.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={handleDisconnect}>Disconnect</DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-      <BuyCreditsModal open={buyCreditsOpen} onOpenChange={setBuyCreditsOpen} />
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <BuyMetokenModal open={buyMetokenOpen} onOpenChange={setBuyMetokenOpen} />
       <SendUsdcModal open={sendUsdcOpen} onOpenChange={setSendUsdcOpen} />
-      <RedeemPromoModal open={redeemOpen} onOpenChange={setRedeemOpen} />
     </>
   );
 }

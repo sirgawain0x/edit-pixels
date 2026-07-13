@@ -1,25 +1,34 @@
 /**
- * POST /api/generate-image — submit Nanobanana job (credits debited server-side).
- * Header: Authorization: Bearer <privy-access-token>
+ * POST /api/generate-image — submit Nanobanana job.
+ * Payment: checks CRTVAI meToken balance on Base (sufficient to cover the cost).
+ * The actual debit happens on-chain via the user's smart wallet.
+ *
+ * Header: Authorization: Bearer <privy...ken>
  * Body: { prompt, quality?, size?, image_urls? }
  */
 
 import { getBearerToken, verifyPrivyAccessToken } from './_wallet-auth.js';
-import { debitCredits, isCreditStoreConfigured } from './_credit-store.js';
+import { checkMetokenSufficient } from './_metoken-server.js';
 import { evolinkServerPost, isEvolinkServerConfigured } from './_evolink-server.js';
 
-function quoteNanobananaCredits(quality: string): number {
-  const map: Record<string, number> = {
+/**
+ * Quote render cost in USDC-equivalent (6 decimals).
+ * Based on the legacy credit rates (~$0.10/credit).
+ */
+function quoteRenderCostUsdc6(quality: string): number {
+  const creditMap: Record<string, number> = {
     '0.5K': 5,
     '1K': 8,
     '2K': 12,
     '4K': 18,
   };
-  return map[quality] ?? 10;
+  const credits = creditMap[quality] ?? 10;
+  // $0.10 USDC per credit → usdc6 = credits * 100_000
+  return credits * 100_000;
 }
 
 export async function POST(request: Request): Promise<Response> {
-  if (!isCreditStoreConfigured() || !isEvolinkServerConfigured()) {
+  if (!isEvolinkServerConfigured()) {
     return Response.json({ error: 'service unavailable' }, { status: 503 });
   }
 
@@ -61,13 +70,18 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const quality = typeof body.quality === 'string' ? body.quality : '2K';
-  const credits = quoteNanobananaCredits(quality);
+  const costUsdc6 = quoteRenderCostUsdc6(quality);
 
-  const idempotencyKey = `flow-image-${auth.address.toLowerCase()}-${requestId}`;
-  const debit = await debitCredits(auth.address, credits, idempotencyKey);
-  if (!debit.ok) {
+  // Gate on CRTVAI balance
+  const balanceCheck = await checkMetokenSufficient(auth.address, costUsdc6);
+  if (!balanceCheck.sufficient) {
     return Response.json(
-      { error: 'insufficient_credits', balance: debit.balance, creditsRequired: credits },
+      {
+        error: 'insufficient_crtvai',
+        balance: balanceCheck.balance.toString(),
+        requiredMetoken: balanceCheck.requiredMetoken.toString(),
+        costUsdc6,
+      },
       { status: 402 }
     );
   }
@@ -83,7 +97,11 @@ export async function POST(request: Request): Promise<Response> {
         : {}),
     });
 
-    return Response.json({ ...result, creditsDebited: credits, balance: debit.balance });
+    return Response.json({
+      ...result,
+      costUsdc6,
+      crtvaiRequired: balanceCheck.requiredMetoken.toString(),
+    });
   } catch (e) {
     console.error('generate-image evolink error', e);
     return Response.json({ error: 'generation failed' }, { status: 502 });

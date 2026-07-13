@@ -1,4 +1,4 @@
-import { isSuperfluidConfigured } from '@/config/superfluid';
+import { isSuperfluidConfigured } from '@/config/metoken';
 import { isDaydreamConfigured } from '../api/create-stream';
 import { isLivepeerStudioConfigured } from '../api/livepeer-studio-live-video';
 
@@ -24,7 +24,7 @@ export function getLiveAiBillingConfigIssues(): LiveAiBillingConfigIssue[] {
   if (!isSuperfluidConfigured()) {
     issues.push({
       code: 'missing_superfluid_receiver',
-      message: 'Set VITE_SUPERFLUID_RECEIVER to the Arbitrum treasury address.',
+      message: 'Set VITE_SUPERFLUID_RECEIVER (Base treasury) and VITE_CRTVAIX_ADDRESS (Wrapped Super Token on Base).',
     });
   }
 

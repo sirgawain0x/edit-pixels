@@ -1,8 +1,4 @@
 import { createLogger } from '@/shared/logging/logger';
-import {
-  quoteNanobananaCredits,
-  quoteSeedanceCredits,
-} from '@/config/credits';
 import type { EvolinkTaskDetail, NanobananaQuality, SeedanceQuality, SeedanceSpeed } from '../types';
 
 const log = createLogger('GenerativeProxy');
@@ -57,6 +53,46 @@ export function isGenerativeProxyAvailable(): boolean {
   return typeof window !== 'undefined';
 }
 
+/**
+ * Quote Seedance video render cost in USDC-equivalent (6 decimals).
+ * Based on ~$0.10/credit legacy rate: 1.4 credits/sec base.
+ */
+function quoteSeedanceCostUsdc6(params: {
+  duration: number;
+  quality: SeedanceQuality;
+  speed: SeedanceSpeed;
+  generateAudio: boolean;
+}): number {
+  const { duration, quality, speed, generateAudio } = params;
+  const qMult = quality === '1080p' ? 2.5 : quality === '720p' ? 1.6 : 1;
+  const sMult = speed === 'fast' ? 0.75 : 1;
+  let credits = duration * 1.4 * qMult * sMult;
+  if (generateAudio) credits *= 1.15;
+  credits = Math.max(1, Math.ceil(credits));
+  // $0.10 USDC per credit
+  return credits * 100_000;
+}
+
+/**
+ * Quote Nanobanana image render cost in USDC-equivalent (6 decimals).
+ */
+function quoteNanobananaCostUsdc6(quality: NanobananaQuality): number {
+  const creditMap: Record<NanobananaQuality, number> = {
+    '0.5K': 5,
+    '1K': 8,
+    '2K': 12,
+    '4K': 18,
+  };
+  const credits = creditMap[quality] ?? 10;
+  return credits * 100_000;
+}
+
+/** Format USDC6 cost for display. */
+function formatCostUsdc6(usdc6: number): string {
+  const usd = usdc6 / 1_000_000;
+  return `$${usd.toFixed(2)}`;
+}
+
 export async function proxySubmitVideo(
   auth: SignedRequestParams,
   body: {
@@ -69,21 +105,22 @@ export async function proxySubmitVideo(
     generate_audio?: boolean;
   },
   signal?: AbortSignal
-): Promise<EvolinkTaskDetail & { creditsDebited?: number; balance?: number }> {
-  const credits = quoteSeedanceCredits({
+): Promise<EvolinkTaskDetail & { costUsdc6?: number; crtvaiRequired?: string }> {
+  const costUsdc6 = quoteSeedanceCostUsdc6({
     duration: body.duration ?? 5,
     quality: body.quality ?? '720p',
     speed: body.speed ?? 'standard',
     generateAudio: body.generate_audio !== false,
   });
+
   const signed = await withAuth(
     auth,
     'generate-video',
-    `credits: ${credits}`,
+    `cost: ${formatCostUsdc6(costUsdc6)} USDC (CRTVAI)`,
     body as Record<string, unknown>
   );
 
-  log.debug('POST /api/generate-video');
+  log.debug('POST /api/generate-video', { costUsdc6 });
   const response = await fetch('/api/generate-video', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -94,7 +131,8 @@ export async function proxySubmitVideo(
   if (!response.ok) {
     const errBody = (await response.json().catch(() => ({}))) as {
       error?: string;
-      creditsRequired?: number;
+      costUsdc6?: number;
+      crtvaiRequired?: string;
     };
     throw new GenerativeApiError(
       errBody.error ?? `Request failed (${response.status})`,
@@ -103,8 +141,8 @@ export async function proxySubmitVideo(
     );
   }
   return (await response.json()) as EvolinkTaskDetail & {
-    creditsDebited?: number;
-    balance?: number;
+    costUsdc6?: number;
+    crtvaiRequired?: string;
   };
 }
 
@@ -117,17 +155,18 @@ export async function proxySubmitImage(
     image_urls?: string[];
   },
   signal?: AbortSignal
-): Promise<EvolinkTaskDetail & { creditsDebited?: number; balance?: number }> {
+): Promise<EvolinkTaskDetail & { costUsdc6?: number; crtvaiRequired?: string }> {
   const quality = body.quality ?? '2K';
-  const credits = quoteNanobananaCredits(quality);
+  const costUsdc6 = quoteNanobananaCostUsdc6(quality);
+
   const signed = await withAuth(
     auth,
     'generate-image',
-    `credits: ${credits}`,
+    `cost: ${formatCostUsdc6(costUsdc6)} USDC (CRTVAI)`,
     body as Record<string, unknown>
   );
 
-  log.debug('POST /api/generate-image');
+  log.debug('POST /api/generate-image', { costUsdc6 });
   const response = await fetch('/api/generate-image', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -144,8 +183,8 @@ export async function proxySubmitImage(
     );
   }
   return (await response.json()) as EvolinkTaskDetail & {
-    creditsDebited?: number;
-    balance?: number;
+    costUsdc6?: number;
+    crtvaiRequired?: string;
   };
 }
 
@@ -165,3 +204,6 @@ export async function proxyGetTask(
   }
   return (await response.json()) as EvolinkTaskDetail;
 }
+
+// Export cost helpers for UI display
+export { quoteSeedanceCostUsdc6, quoteNanobananaCostUsdc6, formatCostUsdc6 };

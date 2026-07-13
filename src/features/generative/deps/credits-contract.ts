@@ -1,6 +1,4 @@
 export {
-  useCredits,
-  InsufficientCreditsPaywall,
-  buildCreditsAuthMessage,
-  generateCreditsNonce,
-} from '@/features/credits/deps/generative-public';
+  useCrtvaiCredits as useCredits,
+} from '@/features/metoken/deps/generative-public';
+export { InsufficientMetokenPaywall as InsufficientCreditsPaywall } from '@/features/metoken';
