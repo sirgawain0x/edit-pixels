@@ -172,19 +172,9 @@ export function WalletConnectButton({
               <Copy className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
             </DropdownMenuItem>
           )}
-          <DropdownMenuItem disabled className="text-muted-foreground">
-            {crtvaiSymbol}: {crtvaiFormatted}
-          </DropdownMenuItem>
+          {/* USDC first */}
           <DropdownMenuItem disabled className="text-muted-foreground">
             USDC: {usdcFormatted}
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => setBuyMetokenOpen(true)}
-            className="flex cursor-pointer items-center gap-2"
-            aria-label="Buy CRTVAI"
-          >
-            <Sparkles className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
-            Buy CRTVAI
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={handleBuyUsdc}
@@ -201,6 +191,18 @@ export function WalletConnectButton({
           >
             <Send className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
             Send USDC
+          </DropdownMenuItem>
+          {/* CRTVAI below USDC */}
+          <DropdownMenuItem disabled className="text-muted-foreground">
+            {crtvaiSymbol}: {crtvaiFormatted}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => setBuyMetokenOpen(true)}
+            className="flex cursor-pointer items-center gap-2"
+            aria-label="Buy CRTVAI"
+          >
+            <Sparkles className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+            Buy CRTVAI
           </DropdownMenuItem>
           {isUnlockConfigured && !isPremiumMember && (
             <DropdownMenuItem
