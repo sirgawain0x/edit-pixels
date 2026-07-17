@@ -349,7 +349,7 @@ export function LiveAIPanelContent() {
         return;
       }
       if (!hasFunding) {
-        setError('Top up USDC on Arbitrum to start Live AI streaming.');
+        setError('Top up USDC on Base to start Live AI streaming.');
         return;
       }
       if (billingUnavailable || !billingControls) {
@@ -1251,7 +1251,7 @@ function LiveAISessionWithBroadcastCore({
     <>
       {!billingEnabled && (
         <p className="mb-2 text-xs text-muted-foreground">
-          Connect your wallet on Arbitrum to stream USDC for Live AI.
+          Connect your wallet on Base to stream USDC for Live AI.
         </p>
       )}
       {billingEnabled && <UsageMeter />}

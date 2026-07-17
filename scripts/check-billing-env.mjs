@@ -23,12 +23,23 @@ const REQUIRED_SERVER = [
     pattern: /^.{8,}$/,
     label: 'Redis token (UPSTASH_REDIS_REST_TOKEN or KV_REST_API_TOKEN)',
   },
+  {
+    keys: ['COINBASE_CDP_API_KEY_ID'],
+    pattern: /^.{8,}$/,
+    label: 'Coinbase CDP API key ID',
+  },
+  {
+    keys: ['COINBASE_CDP_API_KEY_SECRET'],
+    pattern: /^(-----BEGIN EC PRIVATE KEY-----|organizations\/|\S{20,})$/,
+    label: 'Coinbase CDP API key secret',
+  },
 ];
 
 const RECOMMENDED = [
   { key: 'VITE_ALCHEMY_POLICY_ID', pattern: /^.{4,}$/ },
   { key: 'VITE_ALCHEMY_GAS_POLICY_TYPE', pattern: /^(sponsorship|erc20)$/i },
   { key: 'VITE_PIXELS_PREMIUM_LOCK_ADDRESS', pattern: /^0x[a-fA-F0-9]{40}$/ },
+  { key: 'VITE_CRTVAIX_ADDRESS', pattern: /^0x[a-fA-F0-9]{40}$/ },
 ];
 
 function check(entries) {

@@ -1,9 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Coins, DollarSign, Loader2 } from 'lucide-react';
+import { Coins, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { parseUnits, formatUnits } from 'viem';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -16,15 +17,15 @@ import { Input } from '@/components/ui/input';
 import { useWalletContext } from '@/context/wallet-context';
 import { useSmartWalletOps } from '@/hooks/use-smart-wallet-ops';
 import { useUsdcBalance } from '@/hooks/use-usdc-balance';
-import { useBuyUsdcOnramp } from '@/hooks/use-buy-usdc-onramp';
 import { useCrtvaiBalance } from '@/hooks/use-crtvai-balance';
 import {
   CRTVAI_DECIMALS,
   USDC_DECIMALS,
-  readCrtvaiMintQuote,
   readCrtvaiCurrentPrice,
+  readCrtvaiMintQuote,
 } from '@/config/metoken';
 import { buildBuyMetokenOps } from '../api/buy-metoken';
+import { HeadlessCdpOnramp } from '@/components/headless-cdp-onramp';
 import { base } from 'viem/chains';
 
 interface BuyMetokenModalProps {
@@ -35,15 +36,16 @@ interface BuyMetokenModalProps {
 const BASE_CHAIN_ID = base.id;
 
 export function BuyMetokenModal({ open, onOpenChange }: BuyMetokenModalProps) {
-  const { account, chain } = useWalletContext();
+  const { account, chain, user } = useWalletContext();
+  const queryClient = useQueryClient();
   const { sendOps, ready: walletReady } = useSmartWalletOps();
   const {
     balance: usdcBalance,
     formatted: usdcFormatted,
     isLoading: isUsdcLoading,
   } = useUsdcBalance(chain, account);
-  const { openBuyUsdc, isLoading: isOnrampLoading } = useBuyUsdcOnramp();
   const { formatted: crtvaiFormatted, symbol } = useCrtvaiBalance(account);
+  const [onrampSuccess, setOnrampSuccess] = useState(false);
 
   const [usdcInput, setUsdcInput] = useState('');
   const [estimatedOutput, setEstimatedOutput] = useState<string | null>(null);
@@ -52,6 +54,8 @@ export function BuyMetokenModal({ open, onOpenChange }: BuyMetokenModalProps) {
   const [minting, setMinting] = useState(false);
 
   const onBase = chain?.id === BASE_CHAIN_ID;
+
+  const hasAnyUsdc = Boolean(usdcBalance && Number(usdcBalance) > 0);
 
   const hasSufficientUsdc = useMemo(() => {
     if (!usdcInput || !usdcBalance) return true;
@@ -63,6 +67,16 @@ export function BuyMetokenModal({ open, onOpenChange }: BuyMetokenModalProps) {
       return false;
     }
   }, [usdcInput, usdcBalance]);
+
+  // When USDC arrives via onramp, refetch balance so the UI enables minting
+  useEffect(() => {
+    if (onrampSuccess) {
+      setOnrampSuccess(false);
+      void queryClient.invalidateQueries({
+        queryKey: ['usdc-balance', chain?.id, account],
+      });
+    }
+  }, [onrampSuccess, queryClient, chain?.id, account]);
 
   // Fetch current price on open
   useEffect(() => {
@@ -160,9 +174,8 @@ export function BuyMetokenModal({ open, onOpenChange }: BuyMetokenModalProps) {
     }
   }, [account, onBase, usdcInput, walletReady, sendOps, onOpenChange]);
 
-  const handleBuyUsdc = () => {
-    void openBuyUsdc({ address: account ?? undefined });
-  };
+  const prefillEmail =
+    typeof user?.email === 'string' ? user.email : undefined;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -211,11 +224,16 @@ export function BuyMetokenModal({ open, onOpenChange }: BuyMetokenModalProps) {
                 placeholder="0.00"
                 value={usdcInput}
                 onChange={(e) => setUsdcInput(e.target.value)}
-                disabled={minting}
+                disabled={minting || !hasAnyUsdc}
                 className="tabular-nums"
                 min="0"
                 step="0.01"
               />
+              {!hasAnyUsdc && (
+                <p className="mt-1 text-xs text-amber-600">
+                  Add USDC to your wallet to enable minting.
+                </p>
+              )}
             </div>
 
             {quoting && (
@@ -238,35 +256,57 @@ export function BuyMetokenModal({ open, onOpenChange }: BuyMetokenModalProps) {
               </div>
             )}
 
-            <Button
-              type="button"
-              className="w-full"
-              disabled={minting || !usdcInput || quoting || !walletReady || !hasSufficientUsdc}
-              onClick={() => void handleMint()}
-            >
-              {minting ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                  Minting…
-                </>
-              ) : !hasSufficientUsdc ? (
-                'Insufficient USDC Balance'
-              ) : (
-                'Mint CRTVAI'
-              )}
-            </Button>
+            {!hasAnyUsdc && (
+              <div className="rounded-md border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400 space-y-2">
+                <p>
+                  You need USDC in your wallet before you can mint {symbol}.
+                  Buy USDC on Base first.
+                </p>
+                <HeadlessCdpOnramp
+                  address={account}
+                  email={prefillEmail}
+                  onSuccess={() => setOnrampSuccess(true)}
+                  onError={(msg) => toast.error('Buy USDC', { description: msg })}
+                />
+              </div>
+            )}
 
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="w-full text-xs"
-              disabled={isOnrampLoading}
-              onClick={handleBuyUsdc}
-            >
-              <DollarSign className="h-3.5 w-3.5" aria-hidden />
-              {isOnrampLoading ? 'Opening…' : 'Buy USDC first'}
-            </Button>
+            {hasAnyUsdc && (
+              <Button
+                type="button"
+                className="w-full"
+                disabled={minting || !usdcInput || quoting || !walletReady || !hasSufficientUsdc}
+                onClick={() => void handleMint()}
+              >
+                {minting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                    Minting…
+                  </>
+                ) : !hasSufficientUsdc ? (
+                  'Insufficient USDC Balance'
+                ) : (
+                  'Mint CRTVAI'
+                )}
+              </Button>
+            )}
+
+            {hasAnyUsdc && (
+              <p className="text-center text-xs text-muted-foreground">
+                Need more USDC?{' '}
+                <HeadlessCdpOnramp
+                  address={account}
+                  email={prefillEmail}
+                  onSuccess={() => setOnrampSuccess(true)}
+                  onError={(msg) => toast.error('Buy USDC', { description: msg })}
+                  className="inline-block"
+                >
+                  <button className="underline hover:text-foreground">
+                    Buy USDC
+                  </button>
+                </HeadlessCdpOnramp>
+              </p>
+            )}
           </div>
         )}
       </DialogContent>

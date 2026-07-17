@@ -46,10 +46,19 @@ ARBITRUM_PAYMENT_CONTRACT=
 # Subscriber Flow credit bonus — keep at 50–100, NOT wholesale 500/1750
 MEMBERSHIP_MONTHLY_CREDITS=100
 
-# Live AI USDC streaming
-VITE_SUPERFLUID_RECEIVER=
+# On-chain billing
+VITE_ALCHEMY_API_KEY=
+VITE_ALCHEMY_POLICY_ID=
+VITE_ALCHEMY_GAS_POLICY_TYPE=erc20
+VITE_CRTVAIX_ADDRESS=          # CRTVAI Super Token on Base
+VITE_SUPERFLUID_RECEIVER=    # Live AI stream receiver
 
-# Unlock $30/mo subscription lock
+# Coinbase CDP headless onramp (server-side only)
+COINBASE_CDP_API_KEY_ID=
+COINBASE_CDP_API_KEY_SECRET=
+NEXT_PUBLIC_APP_URL=https://create.creativeplatform.xyz
+
+# Unlock subscription
 VITE_PIXELS_PREMIUM_LOCK_ADDRESS=
 PIXELS_PREMIUM_LOCK_ADDRESS=
 ```
