@@ -1,7 +1,7 @@
 'use client';
 
 import { useNavigate } from '@tanstack/react-router';
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   Copy,
   DollarSign,
@@ -10,13 +10,19 @@ import {
   Sparkles,
   Wallet,
 } from 'lucide-react';
-import { toast } from 'sonner';
 import { useWalletContext } from '@/context/wallet-context';
-import { useBuyUsdcOnramp } from '@/hooks/use-buy-usdc-onramp';
+import { HeadlessCdpOnramp } from '@/components/headless-cdp-onramp';
 import { useUnlockCheckout } from '@/hooks/use-unlock-checkout';
 import { usePremiumMembership } from '@/features/live-ai/hooks/use-premium-membership';
 import { BuyMetokenModal } from '@/features/metoken';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -72,16 +78,12 @@ export function WalletConnectButton({
     chain,
     switchChain,
     isConnecting,
+    user,
   } = useWalletContext();
   const address = wallet?.address as `0x${string}` | undefined;
-  const { formatted: usdcFormatted } = useUsdcBalance(
-    chain,
-    address
-  );
+  const { formatted: usdcFormatted } = useUsdcBalance(chain, address);
   const { formatted: crtvaiFormatted, symbol: crtvaiSymbol } =
     useCrtvaiBalance(address);
-  const { openBuyUsdc, isLoading: isOnrampLoading, error: onrampError } =
-    useBuyUsdcOnramp();
   const {
     openSubscribeCheckout,
     openManageSubscription,
@@ -91,16 +93,11 @@ export function WalletConnectButton({
 
   const [buyMetokenOpen, setBuyMetokenOpen] = useState(false);
   const [sendUsdcOpen, setSendUsdcOpen] = useState(false);
+  const [onrampOpen, setOnrampOpen] = useState(false);
 
-  useEffect(() => {
-    if (onrampError) {
-      toast.error('Buy USDC', { description: onrampError });
-    }
-  }, [onrampError]);
-
-  const handleBuyUsdc = () => {
-    void openBuyUsdc({ address: address ?? undefined });
-  };
+  const handleBuyUsdc = useCallback(() => {
+    setOnrampOpen(true);
+  }, []);
 
   const handleDisconnect = async () => {
     await disconnect();
@@ -140,6 +137,8 @@ export function WalletConnectButton({
   }
 
   const displayText = address ? truncateAddress(address) : 'Connected';
+  const prefillEmail =
+    typeof user?.email === 'string' ? user.email : undefined;
 
   return (
     <>
@@ -189,12 +188,11 @@ export function WalletConnectButton({
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={handleBuyUsdc}
-            disabled={isOnrampLoading}
             className="flex cursor-pointer items-center gap-2"
             aria-label="Buy USDC"
           >
             <DollarSign className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
-            {isOnrampLoading ? 'Opening…' : 'Buy USDC'}
+            Buy USDC
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => setSendUsdcOpen(true)}
@@ -266,8 +264,31 @@ export function WalletConnectButton({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
       <BuyMetokenModal open={buyMetokenOpen} onOpenChange={setBuyMetokenOpen} />
       <SendUsdcModal open={sendUsdcOpen} onOpenChange={setSendUsdcOpen} />
+
+      <Dialog open={onrampOpen} onOpenChange={setOnrampOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <DollarSign className="h-5 w-5" aria-hidden />
+              Buy USDC
+            </DialogTitle>
+            <DialogDescription>
+              Fund your wallet with USDC on Base. You need USDC before you can
+              mint CRTVAI or start Live AI streaming.
+            </DialogDescription>
+          </DialogHeader>
+          <HeadlessCdpOnramp
+            address={address}
+            email={prefillEmail}
+            onSuccess={() => {
+              setOnrampOpen(false);
+            }}
+          />
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
