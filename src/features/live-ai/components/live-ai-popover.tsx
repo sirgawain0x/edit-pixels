@@ -41,7 +41,7 @@ import {
   isSDXLTurboModel,
 } from '../config/curated-loras';
 import { InsufficientBalancePaywall } from './insufficient-balance-paywall';
-import { isSuperfluidConfigured } from '@/config/superfluid';
+import { isSuperfluidConfigured } from '@/config/metoken';
 import { getLiveAiBillingConfigIssues } from '../config/billing-config';
 import { useLiveAiFunding } from '../hooks/use-live-ai-funding';
 import { useSuperfluidBilling, type StopFlowOptions } from '../hooks/use-superfluid-billing';

@@ -1,5 +1,5 @@
 import { encodeFunctionData, erc20Abi, parseAbi, parseUnits } from 'viem';
-import { getPaymentContractAddress, USDC_DECIMALS } from '@/config/billing';
+import { USDC_DECIMALS } from '@/config/billing';
 
 const PAY_AI_RENDER_ABI = parseAbi([
   'function payAiRender(uint256 amountUsdc6) external',
@@ -11,25 +11,15 @@ export type PayAiRenderFailureReason =
   | 'session_limit_exceeded'
   | 'rpc_or_unknown';
 
+ 
 export function buildPayAiRenderCalldata(amountUsdc6: number): `0x${string}` | undefined {
-  const contractAddress = getPaymentContractAddress();
-  if (!contractAddress) return undefined;
-  return encodeFunctionData({
-    abi: PAY_AI_RENDER_ABI,
-    functionName: 'payAiRender',
-    args: [BigInt(amountUsdc6)],
-  });
+  void amountUsdc6;
+  return undefined;
 }
 
 export function buildBuyCreditsCalldata(packId: number): `0x${string}` | undefined {
-  const contractAddress = getPaymentContractAddress();
-  if (!contractAddress) return undefined;
-  if (packId < 0 || packId > 255) return undefined;
-  return encodeFunctionData({
-    abi: PAY_AI_RENDER_ABI,
-    functionName: 'buyCredits',
-    args: [packId],
-  });
+  void packId;
+  return undefined;
 }
 
 /**

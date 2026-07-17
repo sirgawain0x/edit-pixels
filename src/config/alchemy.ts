@@ -17,13 +17,13 @@ export const DEVELOPMENT_CHAINS = [
   arbitrumSepolia,
 ] as const;
 
-export const PRODUCTION_CHAINS = [arbitrum, base] as const;
+export const PRODUCTION_CHAINS = [base, arbitrum] as const;
 
 export const SWITCHABLE_CHAINS = useMainnetChains
   ? ([...PRODUCTION_CHAINS] as const)
   : ([...DEVELOPMENT_CHAINS] as const);
 
-export const DEFAULT_CHAIN = useMainnetChains ? arbitrum : arbitrumSepolia;
+export const DEFAULT_CHAIN = useMainnetChains ? base : baseSepolia;
 
 export const DEFAULT_CHAIN_ID = DEFAULT_CHAIN.id;
 

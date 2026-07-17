@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { quoteNanobananaCredits } from '@/config/credits';
+import { quoteNanobananaCostUsdc6, formatCostUsdc6 } from '../services/generative-proxy-client';
 import { useCredits } from '../deps/credits';
 import { useGenerativeStore } from '../stores/generative-store';
 import { useGenerativeAuth } from '../hooks/use-generative-auth';
@@ -71,15 +71,15 @@ export const ImageGenDialog = memo(function ImageGenDialog({
 
   const { startPolling, cancel } = useTaskPolling(setTask);
 
-  const creditCost = useMemo(
-    () => quoteNanobananaCredits(imageQuality),
+  const renderCostUsdc6 = useMemo(
+    () => quoteNanobananaCostUsdc6(imageQuality),
     [imageQuality],
   );
 
   const handleGenerate = useCallback(async () => {
     if (!prompt.trim() || !auth) return;
     if (!hasCredits) {
-      toast.error('Buy credits or redeem a promo code first.');
+      toast.error('Buy CRTVAI first to generate images.');
       return;
     }
 
@@ -198,7 +198,7 @@ export const ImageGenDialog = memo(function ImageGenDialog({
             </div>
 
             <p className="text-xs text-muted-foreground">
-              Cost: {creditCost} credits
+              Cost: {formatCostUsdc6(renderCostUsdc6)} CRTVAI
             </p>
 
             {isGenerating ? (
