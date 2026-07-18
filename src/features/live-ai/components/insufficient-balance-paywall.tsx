@@ -32,7 +32,7 @@ import { HeadlessCdpOnramp } from '@/components/headless-cdp-onramp';
  *   3. If the user is not a premium member, also offer Subscribe for the lower rate.
  */
 export function InsufficientBalancePaywall() {
-  const { account: address, chain, user } = useWalletContext();
+  const { account: address, chain } = useWalletContext();
   const { isPremiumMember } = usePremiumMembership(address);
   const { openSubscribeCheckout, isConfigured: isUnlockConfigured } =
     useUnlockCheckout();
@@ -44,8 +44,6 @@ export function InsufficientBalancePaywall() {
 
   const hasAnyUsdc = Boolean(usdcBalance && Number(usdcBalance) > 0);
   const showSubscribe = isUnlockConfigured && !isPremiumMember;
-  const prefillEmail =
-    typeof user?.email === 'string' ? user.email : undefined;
 
   return (
     <>
@@ -114,7 +112,6 @@ export function InsufficientBalancePaywall() {
           </DialogHeader>
           <HeadlessCdpOnramp
             address={address}
-            email={prefillEmail}
             onSuccess={() => {
               setOnrampOpen(false);
             }}

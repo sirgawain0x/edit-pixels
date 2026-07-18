@@ -30,15 +30,13 @@ interface InsufficientMetokenPaywallProps {
 export function InsufficientMetokenPaywall({
   message = 'Buy CRTVAI to generate AI renders.',
 }: InsufficientMetokenPaywallProps) {
-  const { account, chain, user } = useWalletContext();
+  const { account, chain } = useWalletContext();
   const { formatted, symbol } = useCrtvaiBalance(account);
   const { balance: usdcBalance } = useUsdcBalance(chain, account);
   const [buyOpen, setBuyOpen] = useState(false);
   const [onrampOpen, setOnrampOpen] = useState(false);
 
   const hasAnyUsdc = Boolean(usdcBalance && Number(usdcBalance) > 0);
-  const prefillEmail =
-    typeof user?.email === 'string' ? user.email : undefined;
 
   return (
     <>
@@ -92,7 +90,6 @@ export function InsufficientMetokenPaywall({
           </DialogHeader>
           <HeadlessCdpOnramp
             address={account}
-            email={prefillEmail}
             onSuccess={() => {
               setOnrampOpen(false);
             }}
