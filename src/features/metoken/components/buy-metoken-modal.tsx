@@ -36,7 +36,7 @@ interface BuyMetokenModalProps {
 const BASE_CHAIN_ID = base.id;
 
 export function BuyMetokenModal({ open, onOpenChange }: BuyMetokenModalProps) {
-  const { account, chain, user } = useWalletContext();
+  const { account, chain } = useWalletContext();
   const queryClient = useQueryClient();
   const { sendOps, ready: walletReady } = useSmartWalletOps();
   const {
@@ -174,9 +174,6 @@ export function BuyMetokenModal({ open, onOpenChange }: BuyMetokenModalProps) {
     }
   }, [account, onBase, usdcInput, walletReady, sendOps, onOpenChange]);
 
-  const prefillEmail =
-    typeof user?.email === 'string' ? user.email : undefined;
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
@@ -264,7 +261,6 @@ export function BuyMetokenModal({ open, onOpenChange }: BuyMetokenModalProps) {
                 </p>
                 <HeadlessCdpOnramp
                   address={account}
-                  email={prefillEmail}
                   onSuccess={() => setOnrampSuccess(true)}
                   onError={(msg) => toast.error('Buy USDC', { description: msg })}
                 />
@@ -296,7 +292,6 @@ export function BuyMetokenModal({ open, onOpenChange }: BuyMetokenModalProps) {
                 Need more USDC?{' '}
                 <HeadlessCdpOnramp
                   address={account}
-                  email={prefillEmail}
                   onSuccess={() => setOnrampSuccess(true)}
                   onError={(msg) => toast.error('Buy USDC', { description: msg })}
                   className="inline-block"

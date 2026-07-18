@@ -17,7 +17,9 @@ import {
   TabsTrigger,
 } from '@/components/ui/tabs';
 import { getOnrampApiBaseUrl } from '@/config/onramp';
+import { useWalletContext } from '@/context/wallet-context';
 import { createLogger, createOperationId } from '@/shared/logging/logger';
+import { getPrivyUserEmail } from '@/utils/privy-user';
 
 const log = createLogger('headless-cdp-onramp');
 
@@ -131,13 +133,16 @@ async function createOnrampOrder(
  */
 export function HeadlessCdpOnramp({
   address,
-  email: prefilledEmail,
+  email: emailOverride,
   redirectUrl,
   onSuccess,
   onError,
   className,
   children,
 }: HeadlessCdpOnrampProps) {
+  const { user } = useWalletContext();
+  const prefilledEmail = emailOverride ?? getPrivyUserEmail(user);
+
   const [activeTab, setActiveTab] = useState<OnrampPaymentMethod>(
     'GUEST_CHECKOUT_APPLE_PAY'
   );

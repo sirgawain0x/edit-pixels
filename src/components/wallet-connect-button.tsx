@@ -78,7 +78,6 @@ export function WalletConnectButton({
     chain,
     switchChain,
     isConnecting,
-    user,
   } = useWalletContext();
   const address = wallet?.address as `0x${string}` | undefined;
   const { formatted: usdcFormatted } = useUsdcBalance(chain, address);
@@ -137,8 +136,6 @@ export function WalletConnectButton({
   }
 
   const displayText = address ? truncateAddress(address) : 'Connected';
-  const prefillEmail =
-    typeof user?.email === 'string' ? user.email : undefined;
 
   return (
     <>
@@ -284,7 +281,6 @@ export function WalletConnectButton({
           </DialogHeader>
           <HeadlessCdpOnramp
             address={address}
-            email={prefillEmail}
             onSuccess={() => {
               setOnrampOpen(false);
             }}
