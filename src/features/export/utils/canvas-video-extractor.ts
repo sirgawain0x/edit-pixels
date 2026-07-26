@@ -315,25 +315,31 @@ export class VideoFrameExtractor {
     }
 
     try {
+      const sample = this.currentSample;
+      if (!sample) {
+        this.lastFailureKind = 'no-sample';
+        return false;
+      }
+
+      const sampleRotation = (sample.rotation ?? 0) % 360;
+      const isRotated = sampleRotation !== 0 && sampleRotation !== 180 && sampleRotation !== -180;
+
+      // For phone videos with rotation metadata, let mediabunny draw the sample
+      // directly. Its draw() respects rotation, which is more reliable than
+      // converting to a VideoFrame and using ctx.drawImage(), because browser
+      // handling of VideoFrame rotation metadata is inconsistent and can render
+      // the frame sideways during scrub/export.
+      if (isRotated && sample.draw) {
+        sample.draw(ctx, x, y, width, height);
+        return true;
+      }
+
       // Prefer the VideoFrame path so we can respect visibleRect cropping.
       // Direct sample.draw() can include padded decode columns that halftone
       // turns into bright side fringes.
       const videoFrame = this.getOrCreateCurrentVideoFrame();
       if (!videoFrame) {
         return false;
-      }
-
-      const sample = this.currentSample;
-      const sampleRotation = (sample?.rotation ?? 0) % 360;
-      const isRotated = sampleRotation !== 0 && sampleRotation !== 180 && sampleRotation !== -180;
-
-      // Rotated phone videos: the VideoFrame already encodes rotation metadata and
-      // ctx.drawImage() will apply it. Using an explicit visibleRect in coded-frame
-      // space can conflict with that rotation and draw the frame sideways, so for
-      // rotated samples we draw the full frame and let the browser handle rotation.
-      if (isRotated) {
-        ctx.drawImage(videoFrame, x, y, width, height);
-        return true;
       }
 
       const visibleRect = videoFrame.visibleRect;

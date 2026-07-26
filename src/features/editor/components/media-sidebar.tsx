@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useEffect, memo, Activity } from 'react';
+import { useCallback, useMemo, useRef, useEffect, memo, Activity, useState } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
@@ -167,8 +167,13 @@ export const MediaSidebar = memo(function MediaSidebar({ toolbarActions }: Media
   // These change frequently and would cause re-renders cascading to MediaLibrary/MediaCards
   // Read from store directly in callbacks using getState()
 
+  // Text item creation state
+  const [isAddingText, setIsAddingText] = useState(false);
+  const [newTextValue, setNewTextValue] = useState('');
+  const newTextInputRef = useRef<HTMLInputElement>(null);
+
   // Add text item to timeline at the best available position
-  const handleAddText = useCallback(() => {
+  const handleAddText = useCallback((textOverride?: string) => {
     // Read all needed state from stores directly to avoid subscriptions
     const { tracks, items, fps, addItem } = useTimelineStore.getState();
     const { activeTrackId, selectItems } = useSelectionStore.getState();
@@ -205,6 +210,10 @@ export const MediaSidebar = memo(function MediaSidebar({ toolbarActions }: Media
     const canvasWidth = currentProject?.metadata.width ?? 1920;
     const canvasHeight = currentProject?.metadata.height ?? 1080;
 
+    const finalText = typeof textOverride === 'string' && textOverride.trim().length > 0
+      ? textOverride.trim()
+      : 'Your Text Here';
+
     // Create a new text item
     const textItem: TextItem = {
       id: crypto.randomUUID(),
@@ -212,8 +221,8 @@ export const MediaSidebar = memo(function MediaSidebar({ toolbarActions }: Media
       trackId: targetTrack.id,
       from: finalPosition,
       durationInFrames,
-      label: 'Text',
-      text: 'Your Text Here',
+      label: finalText.split('\n')[0] || 'Text',
+      text: finalText,
       fontSize: 60,
       fontFamily: 'Inter',
       fontWeight: 'normal',
@@ -238,6 +247,36 @@ export const MediaSidebar = memo(function MediaSidebar({ toolbarActions }: Media
     // Select the new item
     selectItems([textItem.id]);
   }, []);
+
+  const startAddingText = useCallback(() => {
+    setNewTextValue('');
+    setIsAddingText(true);
+    // Focus the input on the next tick after rendering
+    requestAnimationFrame(() => {
+      newTextInputRef.current?.focus();
+    });
+  }, []);
+
+  const commitNewText = useCallback(() => {
+    handleAddText(newTextValue);
+    setIsAddingText(false);
+    setNewTextValue('');
+  }, [handleAddText, newTextValue]);
+
+  const cancelAddingText = useCallback(() => {
+    setIsAddingText(false);
+    setNewTextValue('');
+  }, []);
+
+  const handleNewTextKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commitNewText();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelAddingText();
+    }
+  }, [commitNewText, cancelAddingText]);
 
   // Add shape item to timeline at the best available position
   const handleAddShape = useCallback((shapeType: ShapeType) => {
@@ -573,17 +612,36 @@ export const MediaSidebar = memo(function MediaSidebar({ toolbarActions }: Media
           {/* Text Tab */}
           <div className={`flex-1 overflow-y-auto p-3 ${activeTab === 'text' ? 'block' : 'hidden'}`}>
             <div className="space-y-3">
-              <button
-                onClick={handleAddText}
-                className="w-full flex items-center gap-3 p-3 rounded-lg border border-border bg-secondary/30 hover:bg-secondary/50 hover:border-primary/50 transition-colors group"
-              >
-                <div className="w-9 h-9 rounded-md bg-timeline-text/20 border border-timeline-text/50 flex items-center justify-center group-hover:bg-timeline-text/30 flex-shrink-0">
-                  <Type className="w-4 h-4 text-timeline-text" />
+              {isAddingText ? (
+                <div className="flex flex-col gap-2">
+                  <input
+                    ref={newTextInputRef}
+                    type="text"
+                    value={newTextValue}
+                    onChange={(e) => setNewTextValue(e.target.value)}
+                    onKeyDown={handleNewTextKeyDown}
+                    onBlur={commitNewText}
+                    placeholder="Type text and press Enter"
+                    className="w-full rounded-md border border-border bg-secondary/30 px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                  />
+                  <div className="flex gap-2">
+                    <Button size="sm" className="flex-1" onClick={commitNewText}>Add</Button>
+                    <Button size="sm" variant="ghost" onClick={cancelAddingText}>Cancel</Button>
+                  </div>
                 </div>
-                <span className="text-sm text-muted-foreground group-hover:text-foreground">
-                  Add Text
-                </span>
-              </button>
+              ) : (
+                <button
+                  onClick={startAddingText}
+                  className="w-full flex items-center gap-3 p-3 rounded-lg border border-border bg-secondary/30 hover:bg-secondary/50 hover:border-primary/50 transition-colors group"
+                >
+                  <div className="w-9 h-9 rounded-md bg-timeline-text/20 border border-timeline-text/50 flex items-center justify-center group-hover:bg-timeline-text/30 flex-shrink-0">
+                    <Type className="w-4 h-4 text-timeline-text" />
+                  </div>
+                  <span className="text-sm text-muted-foreground group-hover:text-foreground">
+                    Add Text
+                  </span>
+                </button>
+              )}
             </div>
           </div>
 
