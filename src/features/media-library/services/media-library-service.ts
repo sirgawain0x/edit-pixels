@@ -209,30 +209,52 @@ class MediaLibraryService {
     const resolvedMimeType = getMimeType(file);
     const id = crypto.randomUUID();
     let thumbnailId: string | undefined;
+    let metadata: Awaited<ReturnType<typeof mediaProcessorService.processMedia>>['metadata'];
 
-    const { metadata, thumbnail } = await mediaProcessorService.processMedia(
-      file,
-      resolvedMimeType,
-      { thumbnailTimestamp: 1 }
-    );
+    try {
+      const result = await mediaProcessorService.processMedia(
+        file,
+        resolvedMimeType,
+        { thumbnailTimestamp: 1 }
+      );
+      metadata = result.metadata;
 
-    // Stage 5: Save thumbnail if generated
-    if (thumbnail) {
-      try {
-        thumbnailId = crypto.randomUUID();
-        const thumbnailData: ThumbnailData = {
-          id: thumbnailId,
-          mediaId: id,
-          blob: thumbnail,
-          timestamp: 1,
-          width: 320,
-          height: 180,
-        };
-        await saveThumbnailDB(thumbnailData);
-      } catch (error) {
-        logger.warn('Failed to save thumbnail:', error);
-        thumbnailId = undefined;
+      // Stage 5: Save thumbnail if generated
+      if (result.thumbnail) {
+        try {
+          thumbnailId = crypto.randomUUID();
+          const thumbnailData: ThumbnailData = {
+            id: thumbnailId,
+            mediaId: id,
+            blob: result.thumbnail,
+            timestamp: 1,
+            width: 320,
+            height: 180,
+          };
+          await saveThumbnailDB(thumbnailData);
+        } catch (error) {
+          logger.warn('Failed to save thumbnail:', error);
+          thumbnailId = undefined;
+        }
       }
+    } catch (error) {
+      // Thumbnail/metadata extraction can hang or fail on some mobile-encoded files.
+      // Fall back to minimal metadata so the import still succeeds and the user isn't stuck.
+      logger.warn('Media processing failed; importing without thumbnail/metadata', { error });
+      metadata = {
+        type: resolvedMimeType.startsWith('video/')
+          ? 'video'
+          : resolvedMimeType.startsWith('audio/')
+            ? 'audio'
+            : 'image',
+        duration: 0,
+        width: 0,
+        height: 0,
+        fps: 30,
+        codec: 'unknown',
+        bitrate: 0,
+        audioCodecSupported: true,
+      } as typeof metadata;
     }
 
     // Check for unsupported audio codec (included in metadata from worker)
@@ -306,28 +328,51 @@ class MediaLibraryService {
     }
 
     const { hash, opfsPath } = await opfsService.processUpload(file);
+
+    // Stage 4: Process media in worker (metadata + thumbnail in one pass, off main thread)
     const resolvedMimeType = getMimeType(file);
     await ensureContentRecordAndIncrement(hash, file.size, resolvedMimeType);
 
     const id = crypto.randomUUID();
-    const { metadata, thumbnail } = await mediaProcessorService.processMedia(
-      file,
-      resolvedMimeType,
-      { thumbnailTimestamp: 1 }
-    );
-
     let thumbnailId: string | undefined;
-    if (thumbnail) {
-      thumbnailId = crypto.randomUUID();
-      const thumbnailData: ThumbnailData = {
-        id: thumbnailId,
-        mediaId: id,
-        blob: thumbnail,
-        timestamp: 1,
-        width: 320,
-        height: 180,
-      };
-      await saveThumbnailDB(thumbnailData);
+    let metadata: Awaited<ReturnType<typeof mediaProcessorService.processMedia>>['metadata'];
+
+    try {
+      const result = await mediaProcessorService.processMedia(
+        file,
+        resolvedMimeType,
+        { thumbnailTimestamp: 1 }
+      );
+      metadata = result.metadata;
+
+      if (result.thumbnail) {
+        thumbnailId = crypto.randomUUID();
+        const thumbnailData: ThumbnailData = {
+          id: thumbnailId,
+          mediaId: id,
+          blob: result.thumbnail,
+          timestamp: 1,
+          width: 320,
+          height: 180,
+        };
+        await saveThumbnailDB(thumbnailData);
+      }
+    } catch (error) {
+      logger.warn('Media processing failed; importing OPFS file without thumbnail/metadata', { error });
+      metadata = {
+        type: resolvedMimeType.startsWith('video/')
+          ? 'video'
+          : resolvedMimeType.startsWith('audio/')
+            ? 'audio'
+            : 'image',
+        duration: 0,
+        width: 0,
+        height: 0,
+        fps: 30,
+        codec: 'unknown',
+        bitrate: 0,
+        audioCodecSupported: true,
+      } as typeof metadata;
     }
 
     const codecCheck = mediaProcessorService.hasUnsupportedAudioCodec(metadata);

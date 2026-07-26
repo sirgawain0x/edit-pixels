@@ -255,30 +255,42 @@ function ProjectsIndex() {
             <Link to="/" className="min-w-0 flex-shrink">
               <PixelsLogo variant="full" size="md" className="hover:opacity-80 transition-opacity" />
             </Link>
-            <div className="hidden flex-shrink-0 items-center gap-2 sm:gap-3 md:flex">
-              <LanguageSwitcher size="md" align="end" side="bottom" />
+            <div className="flex flex-shrink-0 items-center gap-2 sm:gap-3">
+              <div className="hidden md:flex items-center gap-2 sm:gap-3">
+                <LanguageSwitcher size="md" align="end" side="bottom" />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-10 w-10"
+                  asChild
+                >
+                  <a
+                    href="https://tv.creativeplatform.xyz"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-tooltip="Distribute"
+                    data-tooltip-side="left"
+                    aria-label="Distribute"
+                  >
+                    <Share2 className="w-5 h-5" />
+                  </a>
+                </Button>
+              </div>
               <WalletConnectButton size="sm" compact className="h-10" />
               <Button
                 variant="outline"
                 size="icon"
-                className="h-10 w-10"
-                asChild
+                className="h-10 w-10 md:hidden"
+                onClick={handleImportClick}
+                aria-label={t('projects.importProject')}
+                title={t('projects.importProject')}
               >
-                <a
-                  href="https://tv.creativeplatform.xyz"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  data-tooltip="Distribute"
-                  data-tooltip-side="left"
-                  aria-label="Distribute"
-                >
-                  <Share2 className="w-5 h-5" />
-                </a>
+                <Upload className="w-4 h-4 flex-shrink-0" />
               </Button>
               <Button
                 variant="outline"
                 size="lg"
-                className="gap-2 h-10 w-10 sm:w-auto sm:h-10"
+                className="hidden md:flex gap-2 h-10 w-10 sm:w-auto sm:h-10"
                 onClick={handleImportClick}
                 aria-label={t('projects.importProject')}
                 title={t('projects.importProject')}
@@ -287,6 +299,16 @@ function ProjectsIndex() {
                 <span className="hidden sm:inline">{t('projects.importProject')}</span>
               </Button>
               <Link to="/projects/new">
+                <Button
+                  size="icon"
+                  className="h-10 w-10 md:hidden"
+                  aria-label={t('projects.newProject')}
+                  title={t('projects.newProject')}
+                >
+                  <Plus className="w-4 h-4 flex-shrink-0" />
+                </Button>
+              </Link>
+              <Link to="/projects/new" className="hidden md:block">
                 <Button
                   size="lg"
                   className="gap-2 h-10 w-10 sm:w-auto sm:h-10"

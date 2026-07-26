@@ -229,7 +229,10 @@ export function MediaCard({ media, selected = false, isBroken = false, onSelect,
     }
   }, [addMediaToTimeline, addingToTimeline, isBroken, isImporting, media.id]);
 
-  const showAddToTimeline = isMobile && !isBroken && !isImporting;
+  // Always expose Add to Timeline in the dropdown on touch/mobile/tablet breakpoints
+  // where drag-and-drop is unavailable. Use only the dropdown item (no standalone
+  // plus button) to keep the card chrome minimal.
+  const showAddToTimelineMenu = isMobile && !isBroken && !isImporting;
 
   const transcriptProgressLabel = transcriptProgress
     ? `${getTranscriptionStageLabel(transcriptProgress.stage)} (${Math.round(getTranscriptionOverallPercent(transcriptProgress))}%)`
@@ -338,22 +341,6 @@ export function MediaCard({ media, selected = false, isBroken = false, onSelect,
         {/* Actions - hidden during upload */}
         {!isImporting && (
           <div className="flex items-center gap-1 flex-shrink-0">
-            {showAddToTimeline && (
-              <Button
-                variant="secondary"
-                size="icon"
-                className="h-6 w-6"
-                aria-label="Add to timeline"
-                disabled={addingToTimeline}
-                onClick={handleAddToTimeline}
-              >
-                {addingToTimeline ? (
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                ) : (
-                  <Plus className="w-3 h-3" />
-                )}
-              </Button>
-            )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
                 <Button
@@ -365,7 +352,7 @@ export function MediaCard({ media, selected = false, isBroken = false, onSelect,
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" onClick={(e) => e.stopPropagation()}>
-                {showAddToTimeline && (
+                {showAddToTimelineMenu && (
                   <DropdownMenuItem onClick={handleAddToTimeline} disabled={addingToTimeline}>
                     <Plus className="w-3 h-3 mr-2" />
                     {addingToTimeline ? 'Adding…' : 'Add to Timeline'}
@@ -522,22 +509,6 @@ export function MediaCard({ media, selected = false, isBroken = false, onSelect,
           {/* Actions dropdown - hidden during upload */}
           {!isImporting && (
             <div className="flex items-center gap-0.5 flex-shrink-0">
-              {showAddToTimeline && (
-                <Button
-                  variant="secondary"
-                  size="icon"
-                  className="h-5 w-5"
-                  aria-label="Add to timeline"
-                  disabled={addingToTimeline}
-                  onClick={handleAddToTimeline}
-                >
-                  {addingToTimeline ? (
-                    <Loader2 className="w-2.5 h-2.5 animate-spin" />
-                  ) : (
-                    <Plus className="w-2.5 h-2.5" />
-                  )}
-                </Button>
-              )}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
                   <Button
@@ -549,7 +520,7 @@ export function MediaCard({ media, selected = false, isBroken = false, onSelect,
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" onClick={(e) => e.stopPropagation()}>
-                  {showAddToTimeline && (
+                  {showAddToTimelineMenu && (
                     <DropdownMenuItem onClick={handleAddToTimeline} disabled={addingToTimeline}>
                       <Plus className="w-3 h-3 mr-2" />
                       {addingToTimeline ? 'Adding…' : 'Add to Timeline'}

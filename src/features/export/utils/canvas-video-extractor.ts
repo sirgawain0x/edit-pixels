@@ -19,6 +19,7 @@ interface MediabunnySink {
 
 interface MediabunnySample {
   timestamp: number;
+  rotation?: number;
   draw?: (
     context: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D,
     x: number,
@@ -320,6 +321,19 @@ export class VideoFrameExtractor {
       const videoFrame = this.getOrCreateCurrentVideoFrame();
       if (!videoFrame) {
         return false;
+      }
+
+      const sample = this.currentSample;
+      const sampleRotation = (sample?.rotation ?? 0) % 360;
+      const isRotated = sampleRotation !== 0 && sampleRotation !== 180 && sampleRotation !== -180;
+
+      // Rotated phone videos: the VideoFrame already encodes rotation metadata and
+      // ctx.drawImage() will apply it. Using an explicit visibleRect in coded-frame
+      // space can conflict with that rotation and draw the frame sideways, so for
+      // rotated samples we draw the full frame and let the browser handle rotation.
+      if (isRotated) {
+        ctx.drawImage(videoFrame, x, y, width, height);
+        return true;
       }
 
       const visibleRect = videoFrame.visibleRect;

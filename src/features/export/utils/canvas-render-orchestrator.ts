@@ -628,6 +628,15 @@ export async function renderComposition(options: RenderEngineOptions): Promise<C
       }
     }
 
+    // Close video source to flush any buffered encoder frames before finalizing.
+    // Without this, output.finalize() can hang near the end waiting for the last frames.
+    try {
+      videoSource.close();
+      log.info('Video source closed');
+    } catch (error) {
+      log.error('Failed to close video source', { error });
+    }
+
     // Finalize output
     await output.finalize();
 
