@@ -1,6 +1,4 @@
 /**
- * Cross-feature dependency adapter.
- *
- * Credits are deprecated and now bridge to the CRTVAI meToken buy flow.
+ * Cross-feature dependency adapter: metoken/CRTVAI.
  */
-export { BuyMetokenModal } from '@/features/metoken'
+export { BuyMetokenModal } from './metoken-contract'
