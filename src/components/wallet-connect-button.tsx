@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { Copy, Sparkles, Wallet } from 'lucide-react'
+import { Copy, DollarSign, Sparkles, Wallet } from 'lucide-react'
 import { useWalletContext } from '@/context/wallet-context'
 import { Button } from '@/components/ui/button'
 import {
@@ -19,6 +19,7 @@ import {
 import { SWITCHABLE_CHAINS } from '@/config/chains'
 import { useUsdcBalance } from '@/hooks/use-usdc-balance'
 import { useCrtvaiBalance } from '@/hooks/use-crtvai-balance'
+import { BuyUsdcOnrampModal } from '@/features/onramp'
 import { BuyMetokenModal } from '@/features/metoken'
 import { cn } from '@/shared/ui/cn'
 
@@ -49,6 +50,7 @@ export function WalletConnectButton({
   )
   const [copied, setCopied] = useState(false)
   const [buyMetokenOpen, setBuyMetokenOpen] = useState(false)
+  const [buyOnrampOpen, setBuyOnrampOpen] = useState(false)
 
   const handleCopyAddress = useCallback(() => {
     if (!address) return
@@ -121,6 +123,15 @@ export function WalletConnectButton({
             {crtvaiSymbol}: {crtvaiFormatted}
           </DropdownMenuItem>
           <DropdownMenuItem
+            onClick={() => setBuyOnrampOpen(true)}
+            className="flex cursor-pointer items-center gap-2"
+            aria-label="Buy USDC"
+          >
+            <DollarSign className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+            Buy USDC
+          </DropdownMenuItem>
+
+          <DropdownMenuItem
             onClick={() => setBuyMetokenOpen(true)}
             className="flex cursor-pointer items-center gap-2"
             aria-label="Buy CRTVAI"
@@ -158,6 +169,7 @@ export function WalletConnectButton({
       </DropdownMenu>
 
       <BuyMetokenModal open={buyMetokenOpen} onOpenChange={setBuyMetokenOpen} />
+      <BuyUsdcOnrampModal open={buyOnrampOpen} onOpenChange={setBuyOnrampOpen} />
     </>
   )
 }
