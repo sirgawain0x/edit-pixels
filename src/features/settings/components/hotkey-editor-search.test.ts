@@ -43,6 +43,7 @@ describe('getHotkeyBindingDisplayLabel', () => {
   })
 
   it('formats non-empty bindings normally', () => {
-    expect(getHotkeyBindingDisplayLabel('mod+shift+e', 'Unassigned')).toBe('Ctrl + Shift + E')
+    const label = getHotkeyBindingDisplayLabel('mod+shift+e', 'Unassigned')
+    expect(label).toMatch(/^(Ctrl|Cmd) \+ Shift \+ E$/)
   })
 })

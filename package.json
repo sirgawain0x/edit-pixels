@@ -1,8 +1,11 @@
 {
-  "name": "freecut",
+  "name": "pixels",
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.0.0 <23.0.0"
+  },
   "scripts": {
     "dev": "vp dev --host",
     "dev:quiet": "vp dev --host --mode perf",
@@ -51,6 +54,10 @@
     "prepare": "vp config"
   },
   "dependencies": {
+    "@alchemy/wallet-apis": "^5.0.6",
+    "@coinbase/cdp-sdk": "^1.45.0",
+    "@daydreamlive/react": "^0.3.2",
+    "@daydreamlive/sdk": "^0.1.1",
     "@hookform/resolvers": "5.2.2",
     "@huggingface/transformers": "4.1.0",
     "@lottiefiles/dotlottie-web": "0.76.0",
@@ -58,6 +65,8 @@
     "@mediabunny/ac3": "1.50.8",
     "@mediabunny/mp3-encoder": "1.50.8",
     "@mediabunny/prores": "1.50.8",
+    "@privy-io/react-auth": "^3.32.2",
+    "@privy-io/server-auth": "^1.32.5",
     "@radix-ui/react-accordion": "1.2.12",
     "@radix-ui/react-alert-dialog": "1.1.15",
     "@radix-ui/react-collapsible": "1.1.12",
@@ -75,8 +84,13 @@
     "@radix-ui/react-switch": "1.2.6",
     "@radix-ui/react-tabs": "1.1.13",
     "@radix-ui/react-tooltip": "1.2.8",
+    "@story-protocol/core-sdk": "^1.4.4",
+    "@supabase/supabase-js": "^2.104.1",
+    "@tanstack/react-query": "^5.62.0",
     "@tanstack/react-router": "1.168.22",
     "@tanstack/react-virtual": "3.13.24",
+    "@upstash/redis": "^1.37.0",
+    "@vercel/analytics": "^2.0.1",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "fflate": "0.8.2",
@@ -97,8 +111,10 @@
     "react-i18next": "16.2.4",
     "react-resizable-panels": "3.0.6",
     "sonner": "2.0.7",
+    "soundtouchjs": "^0.2.1",
     "tailwind-merge": "2.6.1",
     "tailwindcss-animate": "1.0.7",
+    "viem": "^2.45.0",
     "zod": "4.3.6",
     "zundo": "2.3.0",
     "zustand": "5.0.12"
