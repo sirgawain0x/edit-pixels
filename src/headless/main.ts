@@ -2,7 +2,7 @@
  * Headless render harness.
  *
  * This is a dedicated Vite entry (loaded by `headless.html`) that exposes a
- * small `window.freecut` API so a Node/Playwright driver can render projects to
+ * small `window.pixels` API so a Node/Playwright driver can render projects to
  * video inside a real (headless) Chrome — reusing the exact same render engine
  * the editor uses, with no React UI, router, or workspace gate mounted.
  *
@@ -128,7 +128,7 @@ interface HeadlessRenderWarning {
 type ProgressSink = (progress: RenderProgress) => void
 
 function reportProgress(progress: RenderProgress): void {
-  const sink = (globalThis as unknown as { __freecutProgress?: ProgressSink }).__freecutProgress
+  const sink = (globalThis as unknown as { __pixelsProgress?: ProgressSink }).__pixelsProgress
   if (!sink) return
   try {
     sink(progress)
@@ -164,7 +164,7 @@ function triggerDownload(blob: Blob, fileName: string): void {
 }
 
 function defaultFileName(settings: ClientExportSettings): string {
-  return `freecut-export.${settings.container}`
+  return `pixels-export.${settings.container}`
 }
 
 function effectiveFileName(requested: string | undefined, settings: ClientExportSettings): string {
@@ -238,9 +238,9 @@ async function adaptVideoSettings(
   if (settings.mode === 'audio') return { settings, warnings: [] }
   const testOverride = (
     globalThis as unknown as {
-      __freecutSupportedCodecsOverride?: Awaited<ReturnType<typeof getSupportedCodecs>>
+      __pixelsSupportedCodecsOverride?: Awaited<ReturnType<typeof getSupportedCodecs>>
     }
-  ).__freecutSupportedCodecsOverride
+  ).__pixelsSupportedCodecsOverride
   const supported =
     testOverride ??
     (await getSupportedCodecs({
@@ -409,7 +409,7 @@ async function renderProject(input: HeadlessProjectInput): Promise<HeadlessRende
   })
 }
 
-interface FreecutHeadlessApi {
+interface PixelsHeadlessApi {
   ready: true
   renderTimeline: typeof renderTimeline
   renderProject: typeof renderProject
@@ -470,7 +470,7 @@ async function probeMedia(input: { url: string; fileName: string; mimeType?: str
   }
   const root = await navigator.storage.getDirectory()
   const safeName = input.fileName.replace(/[^A-Za-z0-9._-]/g, '_').slice(-160) || 'source.bin'
-  const tempName = `.freecut-probe-${crypto.randomUUID()}-${safeName}`
+  const tempName = `.pixels-probe-${crypto.randomUUID()}-${safeName}`
   try {
     const handle = await root.getFileHandle(tempName, { create: true })
     const writable = await handle.createWritable()
@@ -491,11 +491,11 @@ async function probeMedia(input: { url: string; fileName: string; mimeType?: str
 
 declare global {
   interface Window {
-    freecut: FreecutHeadlessApi
+    pixels: PixelsHeadlessApi
   }
 }
 
-window.freecut = {
+window.pixels = {
   ready: true,
   renderTimeline,
   renderProject,

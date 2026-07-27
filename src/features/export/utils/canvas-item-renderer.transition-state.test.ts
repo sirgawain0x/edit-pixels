@@ -602,7 +602,7 @@ describe('resolveTransitionParticipantRenderState', () => {
 describe('renderTransitionToGpuTexture', () => {
   beforeEach(() => {
     testSpies.loggerDebugSpy.mockClear()
-    localStorage.removeItem('freecut.debugGpuTransitions')
+    localStorage.removeItem('pixels.debugGpuTransitions')
   })
 
   it('routes eligible image participants through GPU media textures without canvas rendering', async () => {
@@ -2335,7 +2335,7 @@ describe('renderTransitionToGpuTexture', () => {
   })
 
   it('routes eligible shape participants through GPU shape textures without canvas rendering', async () => {
-    localStorage.setItem('freecut.debugGpuTransitions', '1')
+    localStorage.setItem('pixels.debugGpuTransitions', '1')
     const leftClip: ShapeItem = {
       id: 'left-shape',
       type: 'shape',
@@ -2438,7 +2438,7 @@ describe('renderTransitionToGpuTexture', () => {
   })
 
   it('reports genuinely unsupported path shapes when they fall back to canvas rasterization', async () => {
-    localStorage.setItem('freecut.debugGpuTransitions', '1')
+    localStorage.setItem('pixels.debugGpuTransitions', '1')
     vi.stubGlobal('Path2D', class {})
     const leftClip: ShapeItem = {
       id: 'left-shape',

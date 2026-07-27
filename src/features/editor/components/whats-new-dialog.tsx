@@ -8,10 +8,10 @@ import { Separator } from '@/components/ui/separator'
 import { cn } from '@/shared/ui/cn'
 import changelogData from '@/data/changelog.json'
 import type { ChangelogEntry, ChangelogFile, ChangelogGroup } from '@/data/changelog-types'
+import { GITHUB_REPO_URL } from '@/config/community'
 import { markChangelogSeen } from './whats-new-seen'
 
 const data = changelogData as ChangelogFile
-const GITHUB_REPO_URL = 'https://github.com/walterlow/freecut'
 
 const GROUP_CONFIG: Record<
   ChangelogGroup,

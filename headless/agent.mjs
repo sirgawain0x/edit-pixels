@@ -155,7 +155,7 @@ async function run(argv = process.argv.slice(2)) {
         ...(args['background-color'] ? { backgroundColor: args['background-color'] } : {}),
       })
       const project = await withBrowser(workspace, args, (page) =>
-        page.evaluate((value) => window.freecut.createProject(value), input),
+        page.evaluate((value) => window.pixels.createProject(value), input),
       )
       return envelope(await createProjectResource(workspace, project))
     }
@@ -169,7 +169,7 @@ async function run(argv = process.argv.slice(2)) {
       if (body.project.id !== undefined && body.project.id !== args.id)
         throw new Error('Project body id must equal --id')
       const project = await withBrowser(workspace, args, (page) =>
-        page.evaluate((value) => window.freecut.normalizeProject(value), {
+        page.evaluate((value) => window.pixels.normalizeProject(value), {
           ...body.project,
           id: args.id,
         }),
@@ -208,7 +208,7 @@ async function run(argv = process.argv.slice(2)) {
       delete next.fps
       delete next.backgroundColor
       const project = await withBrowser(workspace, args, (page) =>
-        page.evaluate((value) => window.freecut.normalizeProject(value), next),
+        page.evaluate((value) => window.pixels.normalizeProject(value), next),
       )
       return envelope(await saveProjectResource(workspace, args.id, project, body))
     }
@@ -222,7 +222,7 @@ async function run(argv = process.argv.slice(2)) {
       })
       const current = await getProjectResource(workspace, args.id)
       const result = await withBrowser(workspace, args, async (page) => {
-        const edited = await page.evaluate((payload) => window.freecut.editProject(payload), {
+        const edited = await page.evaluate((payload) => window.pixels.editProject(payload), {
           project: current.project,
           ops: body.ops,
           media: collectAddClipMedia(workspace, body.ops),
@@ -231,7 +231,7 @@ async function run(argv = process.argv.slice(2)) {
         return {
           ...edited,
           project: await page.evaluate(
-            (value) => window.freecut.normalizeProject(value),
+            (value) => window.pixels.normalizeProject(value),
             edited.project,
           ),
         }
@@ -257,7 +257,7 @@ async function run(argv = process.argv.slice(2)) {
       const source = resolveMediaFile(workspace, args.id)
       if (!source) throw new Error('Media source file is missing')
       const probe = await withBrowser(workspace, args, (page, mediaUrlOf) =>
-        page.evaluate((payload) => window.freecut.probeMedia(payload), {
+        page.evaluate((payload) => window.pixels.probeMedia(payload), {
           url: mediaUrlOf(args.id),
           fileName: path.basename(source),
           mimeType: current.metadata.mimeType,
@@ -273,7 +273,7 @@ async function run(argv = process.argv.slice(2)) {
       try {
         staged = await stageLocalMedia(workspace, args.file, args.id)
         const probe = await withBrowser(workspace, args, (page, mediaUrlOf) =>
-          page.evaluate((payload) => window.freecut.probeMedia(payload), {
+          page.evaluate((payload) => window.pixels.probeMedia(payload), {
             url: mediaUrlOf(staged.id),
             fileName: path.basename(staged.target),
             mimeType: staged.mimeType,

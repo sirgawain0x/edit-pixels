@@ -92,7 +92,7 @@ export const useMicRecordingStore = create<MicRecordingState>()(
         set({ status: 'idle', elapsedMs: 0, level: 0, recordStartFrame: 0, error: null }),
     }),
     {
-      name: 'freecut-mic-recording',
+      name: 'pixels-mic-recording',
       partialize: (state) => ({
         selectedDeviceId: state.selectedDeviceId,
         noiseSuppression: state.noiseSuppression,

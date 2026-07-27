@@ -9,8 +9,8 @@ import { validateTtsGenerateRequest } from './tts-generate-validation'
 
 const logger = createLogger('MossTtsService')
 
-const HOST_SOURCE = 'freecut-moss-tts-worker'
-const CLIENT_SOURCE = 'freecut-moss-tts-client'
+const HOST_SOURCE = 'pixels-moss-tts-worker'
+const CLIENT_SOURCE = 'pixels-moss-tts-client'
 const WORKER_PATH = '/moss-tts/moss_tts.worker.js'
 const MODEL_KEY = 'nano-zh'
 const MODEL_LABEL = 'Multilingual Nano'

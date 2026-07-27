@@ -2135,7 +2135,7 @@ fn asciiFragment(input: VertexOutput) -> @location(0) vec4f {
     customChars: {
       type: 'text',
       label: 'Custom Characters',
-      default: 'FREECUT 01',
+      default: 'PIXELS 01',
       visibleWhen: (params) => params.charSet === 'custom',
     },
     font: {

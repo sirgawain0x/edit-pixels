@@ -5,7 +5,7 @@
  *
  * Context: `migrateFromLegacyIDB()` only sets the "migration complete"
  * marker when every record copied without error. Any per-store failures
- * are persisted to `.freecut-migration-errors.json` in the workspace so
+ * are persisted to `.pixels-migration-errors.json` in the workspace so
  * the next launch can offer a targeted retry. Without this banner, a
  * user whose migration partially-failed would see the main migration
  * banner again and have to re-run everything blindly.

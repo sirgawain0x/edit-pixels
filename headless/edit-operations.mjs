@@ -342,7 +342,7 @@ const cases = [
 ]
 
 async function edit(page, project, ops, media) {
-  return page.evaluate((input) => window.freecut.editProject(input), { project, ops, media })
+  return page.evaluate((input) => window.pixels.editProject(input), { project, ops, media })
 }
 
 async function main() {
@@ -371,7 +371,7 @@ async function main() {
   try {
     const page = await browser.newPage()
     await page.goto(server.harnessUrl, { waitUntil: 'load', timeout: 60_000 })
-    await page.waitForFunction(() => Boolean(window.freecut?.ready), { timeout: 30_000 })
+    await page.waitForFunction(() => Boolean(window.pixels?.ready), { timeout: 30_000 })
 
     for (const testCase of cases) {
       const project = testCase.setup ? await testCase.setup(page) : baseProject()

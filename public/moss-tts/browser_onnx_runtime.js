@@ -756,7 +756,7 @@ if (typeof window !== "undefined" && !window.__nanoReaderTokenizerSandboxListene
   });
 }
 async function postTokenizerSandboxRequest(action, data = {}) {
-  const bridge = globalThis.__freecutMossTokenizerBridge;
+  const bridge = globalThis.__pixelsMossTokenizerBridge;
   if (typeof bridge === "function") {
     return bridge(action, data);
   }

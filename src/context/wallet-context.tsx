@@ -30,6 +30,8 @@ type SmartWalletClient = AlchemySmartWalletClient & SwapActions
 export interface WalletContextValue {
   ready: boolean
   authenticated: boolean
+  /** True when VITE_PRIVY_APP_ID is set and PrivyProvider is active. */
+  configured: boolean
   connect: () => void
   disconnect: () => Promise<void>
   wallet: ConnectedWallet | null
@@ -56,7 +58,7 @@ export function useWalletContext(): WalletContextValue {
 
 const PRIVY_APP_ID = import.meta.env.VITE_PRIVY_APP_ID
 const PRIVY_CLIENT_ID = import.meta.env.VITE_PRIVY_CLIENT_ID
-const hasPrivyConfig = Boolean(PRIVY_APP_ID)
+export const isPrivyConfigured = Boolean(PRIVY_APP_ID)
 
 function WalletContextInner({ children }: { children: ReactNode }) {
   const { ready, authenticated, user, login, logout, connectWallet, getAccessToken } = usePrivy()
@@ -143,6 +145,7 @@ function WalletContextInner({ children }: { children: ReactNode }) {
     () => ({
       ready: ready && walletsReady,
       authenticated,
+      configured: true,
       connect,
       disconnect,
       wallet: activeWallet,
@@ -178,13 +181,24 @@ function WalletContextInner({ children }: { children: ReactNode }) {
 }
 
 export function WalletProvider({ children }: { children: ReactNode }) {
-  if (!hasPrivyConfig) {
+  if (!isPrivyConfigured) {
     // Render a stub provider so the app can still run without Privy configured
     // (local/offline dev flows).
     const stubValue: WalletContextValue = {
       ready: true,
       authenticated: false,
-      connect: () => {},
+      configured: false,
+      connect: () => {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('pixels:ensure-toaster'))
+        }
+        // Lazy import avoids pulling sonner into the critical path when unused.
+        void import('sonner').then(({ toast }) => {
+          toast.error('Wallet auth is not configured', {
+            description: 'Set VITE_PRIVY_APP_ID (and VITE_PRIVY_CLIENT_ID) to enable connect.',
+          })
+        })
+      },
       disconnect: async () => {},
       wallet: null,
       account: undefined,

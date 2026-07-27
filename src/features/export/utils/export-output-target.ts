@@ -2,7 +2,7 @@ import type { ClientContainer, ClientRenderResult } from './client-renderer'
 
 type MediabunnyModule = typeof import('mediabunny')
 
-const EXPORT_SCRATCH_DIR = 'freecut-export-output'
+const EXPORT_SCRATCH_DIR = 'pixels-export-output'
 const STREAM_CHUNK_SIZE_BYTES = 4 * 1024 * 1024
 const STALE_OUTPUT_AGE_MS = 24 * 60 * 60 * 1000
 let staleCleanupStarted = false

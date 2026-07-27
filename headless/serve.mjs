@@ -1,4 +1,4 @@
-// FreeCut headless render service.
+// Pixels headless render service.
 //
 // Launches one warm headless Chrome + harness over a workspace and exposes a
 // small HTTP API, so renders/edits avoid the per-call browser cold start.
@@ -93,12 +93,12 @@ const SERVE_OPTIONS = new Set([
 export function resolveHost(args = {}, env = process.env) {
   const host = Object.prototype.hasOwnProperty.call(args, 'host')
     ? args.host
-    : Object.prototype.hasOwnProperty.call(env, 'FREECUT_HOST')
-      ? env.FREECUT_HOST
+    : Object.prototype.hasOwnProperty.call(env, 'PIXELS_HOST')
+      ? env.PIXELS_HOST
       : '127.0.0.1'
 
   if (typeof host !== 'string' || host.trim() === '') {
-    throw new Error('Host must be a non-empty string (--host or FREECUT_HOST)')
+    throw new Error('Host must be a non-empty string (--host or PIXELS_HOST)')
   }
   return host.trim()
 }
@@ -195,7 +195,7 @@ async function main() {
     },
   })
 
-  const tmpDir = path.join(os.tmpdir(), 'freecut-serve')
+  const tmpDir = path.join(os.tmpdir(), 'pixels-serve')
   fs.mkdirSync(tmpDir, { recursive: true })
   let counter = 0
 
@@ -226,7 +226,7 @@ async function main() {
       // Header values must be ASCII; sanitize defensively so a warning never
       // turns a successful render into a 500.
       ...(summary.warnings?.length
-        ? { 'X-Freecut-Warnings': warningsHeaderValue(summary.warnings) }
+        ? { 'X-Pixels-Warnings': warningsHeaderValue(summary.warnings) }
         : {}),
     })
     const stream = fs.createReadStream(summary.outputPath)
@@ -242,7 +242,7 @@ async function main() {
     const media = collectAddClipMedia(workspace, ops)
     const result = await queue.enqueue(
       () =>
-        session.page.evaluate((payload) => window.freecut.editProject(payload), {
+        session.page.evaluate((payload) => window.pixels.editProject(payload), {
           project,
           ops,
           media,
@@ -254,7 +254,7 @@ async function main() {
 
   const browserNormalize = (project) =>
     queue.enqueue(
-      () => session.page.evaluate((value) => window.freecut.normalizeProject(value), project),
+      () => session.page.evaluate((value) => window.pixels.normalizeProject(value), project),
       { timeoutMs: editTimeoutMs, kind: 'project-normalize' },
     )
 
@@ -309,7 +309,7 @@ async function main() {
       },
       async () => {
         const project = await queue.enqueue(
-          () => session.page.evaluate((value) => window.freecut.createProject(value), body),
+          () => session.page.evaluate((value) => window.pixels.createProject(value), body),
           { timeoutMs: editTimeoutMs, kind: 'project-create' },
         )
         const resource = await createProjectResource(workspace, project)
@@ -366,7 +366,7 @@ async function main() {
       const media = collectAddClipMedia(workspace, body.ops)
       const result = await queue.enqueue(
         () =>
-          session.page.evaluate((payload) => window.freecut.editProject(payload), {
+          session.page.evaluate((payload) => window.pixels.editProject(payload), {
             project: current.project,
             ops: body.ops,
             media,
@@ -426,7 +426,7 @@ async function main() {
     if (!source) throw new HttpError(422, 'MISSING_MEDIA', 'Media source file is missing')
     const probe = await queue.enqueue(
       () =>
-        session.page.evaluate((payload) => window.freecut.probeMedia(payload), {
+        session.page.evaluate((payload) => window.pixels.probeMedia(payload), {
           url: mediaUrlOf(id),
           fileName: path.basename(source),
           mimeType: current.metadata.mimeType,
@@ -597,7 +597,7 @@ async function main() {
   // The default remains loopback-only because the render service has no auth.
   // Network exposure must be an explicit CLI/environment configuration choice.
   await new Promise((resolve) => server.listen(port, host, resolve))
-  console.log(`FreeCut render service on http://${host}:${port}  (workspace: ${workspace})`)
+  console.log(`Pixels render service on http://${host}:${port}  (workspace: ${workspace})`)
   console.log(`  GET /health  GET /capabilities  GET /projects  POST /render  POST /edit`)
 
   let shuttingDown

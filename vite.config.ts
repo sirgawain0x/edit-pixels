@@ -12,11 +12,11 @@ import { fileURLToPath } from 'node:url'
 // version and old cached chunks are never purged. Uses the content hash (not a timestamp)
 // so identical builds produce an identical SW and avoid needless update churn.
 function serviceWorkerVersionPlugin(): Plugin {
-  const placeholder = '__FREECUT_BUILD_ID__'
+  const placeholder = '__PIXELS_BUILD_ID__'
   let buildId = ''
 
   return {
-    name: 'freecut-sw-version',
+    name: 'pixels-sw-version',
     apply: 'build',
     writeBundle(options, bundle) {
       const mainEntry = Object.values(bundle).find(
@@ -128,7 +128,7 @@ export default defineConfig({
     chunkSizeWarningLimit: 1200,
     rollupOptions: {
       // Multi-entry: the editor app (index.html) plus the headless render
-      // harness (headless.html), a UI-less entry that exposes window.freecut
+      // harness (headless.html), a UI-less entry that exposes window.pixels
       // for the Node/Playwright headless render+edit CLI.
       input: {
         main: fileURLToPath(new URL('./index.html', import.meta.url)),
@@ -142,7 +142,7 @@ export default defineConfig({
             normalizedId.endsWith('/src/features/workspace-gate/workspace-gate-splash.tsx') ||
             normalizedId.endsWith('/src/features/workspace-gate/use-pathname.ts')
           const isAppShellComponent =
-            normalizedId.endsWith('/src/components/brand/freecut-logo.tsx') ||
+            normalizedId.endsWith('/src/components/brand/pixels-logo.tsx') ||
             normalizedId.endsWith('/src/components/ui/accordion.tsx') ||
             normalizedId.endsWith('/src/components/ui/button.tsx') ||
             normalizedId.endsWith('/src/components/ui/button-variants.ts') ||

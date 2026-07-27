@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 const root = path.resolve(import.meta.dirname, '..')
-const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'freecut-lifecycle-e2e-'))
+const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'pixels-lifecycle-e2e-'))
 const port = 20_000 + Math.floor(Math.random() * 20_000)
 
 function generateToneWav(filePath) {
@@ -115,7 +115,7 @@ try {
   assert.equal(didExit, true, 'service did not exit after SIGTERM')
   // Windows TerminateProcess does not run Node exit hooks. The test owns this
   // workspace and has confirmed the writer PID exited, so its lock is stale.
-  fs.rmSync(path.join(workspace, '.freecut-headless', 'writer.lock'), { force: true })
+  fs.rmSync(path.join(workspace, '.pixels-headless', 'writer.lock'), { force: true })
 }
 
 try {

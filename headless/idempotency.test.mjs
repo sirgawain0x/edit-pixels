@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { withIdempotency } from './lib/idempotency.mjs'
 
-const workspace = () => fs.mkdtempSync(path.join(os.tmpdir(), 'freecut-idempotency-'))
+const workspace = () => fs.mkdtempSync(path.join(os.tmpdir(), 'pixels-idempotency-'))
 const request = (key, overrides = {}) => ({
   key,
   method: 'POST',
@@ -28,13 +28,13 @@ test('expired ledgers are deterministically removed before capacity accounting',
     operation,
   )
   assert.equal(result.status, 201)
-  assert.equal(fs.readdirSync(path.join(root, '.freecut-headless', 'idempotency')).length, 1)
+  assert.equal(fs.readdirSync(path.join(root, '.pixels-headless', 'idempotency')).length, 1)
 })
 
 test('capacity exhaustion is structured and does not evict a live pending ledger', async (t) => {
   const root = workspace()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
-  const dir = path.join(root, '.freecut-headless', 'idempotency')
+  const dir = path.join(root, '.pixels-headless', 'idempotency')
   fs.mkdirSync(dir, { recursive: true })
   const pendingFile = path.join(dir, `${'0'.repeat(64)}.json`)
   fs.writeFileSync(

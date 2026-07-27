@@ -922,7 +922,7 @@ export function HotkeyEditor() {
   const exportHotkeys = () => {
     try {
       const exportDocument = createHotkeyExportDocument(hotkeyOverrides)
-      const fileName = `freecut-hotkeys-${exportDocument.exportedAt.slice(0, 10)}.json`
+      const fileName = `pixels-hotkeys-${exportDocument.exportedAt.slice(0, 10)}.json`
       downloadJsonFile(`${JSON.stringify(exportDocument, null, 2)}\n`, fileName)
       toast.success(t('projects.settings.hotkeys.downloadedToast', { fileName }))
     } catch {

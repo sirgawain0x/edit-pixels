@@ -10,7 +10,7 @@ import { Separator } from '@/components/ui/separator'
 import { Plus, Upload, FolderOpen, File, Github, BookOpen } from 'lucide-react'
 import { PixelsLogo } from '@/components/brand/pixels-logo'
 import { DiscordIcon } from '@/components/brand/discord-icon'
-import { DISCORD_INVITE_URL } from '@/config/community'
+import { DISCORD_INVITE_URL, GITHUB_REPO_URL } from '@/config/community'
 import { ProjectList } from '@/features/projects/components/project-list'
 import { EditProjectForm } from '@/features/projects/components/project-form'
 import {
@@ -33,12 +33,14 @@ import { cleanupBlobUrls } from '@/features/media-library/utils/media-resolver'
 import type { Project } from '@/types/project'
 import type { ProjectFormData } from '@/features/projects/utils/validation'
 import type { ImportProgress } from '@/features/project-bundle/types/bundle'
-import { BUNDLE_EXTENSION } from '@/features/project-bundle/types/bundle'
+import { BUNDLE_EXTENSION, BUNDLE_FILENAME_RE } from '@/features/project-bundle/types/bundle'
 import { LegacyMigrationBanner } from '@/features/projects/components/legacy-migration-banner'
 import { LegacyMigrationErrors } from '@/features/projects/components/legacy-migration-errors'
 import { TrashSection } from '@/features/projects/components/trash-section'
 import { WorkspaceIndicator } from '@/features/workspace-gate'
 import { LanguageSwitcher } from '@/shared/ui/language-switcher'
+import { WalletConnectButton } from '@/components/wallet-connect-button'
+import { useWalletContext } from '@/context/wallet-context'
 
 export const Route = createFileRoute('/projects/')({
   component: ProjectsIndex,
@@ -54,6 +56,17 @@ export const Route = createFileRoute('/projects/')({
 function ProjectsIndex() {
   const navigate = useNavigate()
   const { t } = useTranslation()
+  const {
+    configured: walletConfigured,
+    ready: walletReady,
+    authenticated,
+    wallet,
+    connect,
+  } = useWalletContext()
+  const walletConnected = Boolean(authenticated && wallet)
+  // Wait for Privy to finish initializing before treating the user as disconnected.
+  const requireWalletForNewProject = walletConfigured && walletReady && !walletConnected
+  const walletInitializing = walletConfigured && !walletReady
   const [editingProject, setEditingProject] = useState<Project | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -63,30 +76,29 @@ function ProjectsIndex() {
   const [projectNameFromFile, setProjectNameFromFile] = useState<string | null>(null)
   const [destinationDir, setDestinationDir] = useState<FileSystemDirectoryHandle | null>(null)
   const [destinationName, setDestinationName] = useState<string | null>(null)
-  const [useProjectsFolder, setUseProjectsFolder] = useState(true) // Create FreeCutProjects subfolder
+  const [useProjectsFolder, setUseProjectsFolder] = useState(true) // Create PixelsProjects subfolder
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [importProgress, setImportProgress] = useState<ImportProgress | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
   const [isImporting, setIsImporting] = useState(false)
 
-  const PROJECTS_FOLDER_NAME = 'FreeCutProjects'
+  const PROJECTS_FOLDER_NAME = 'PixelsProjects'
 
   // Extract project name from bundle filename
-  // Handles both "myproject.freecut.zip" and browser-renamed "myproject.freecut (1).zip"
+  // Handles ".pixels.zip" / legacy ".freecut.zip" and browser-renamed " (N)" variants
   const extractProjectName = (fileName: string): string => {
     // Remove .zip extension first
     let name = fileName.replace(/\.zip$/i, '')
     // Remove browser duplicate suffix like " (1)", " (2)", etc.
     name = name.replace(/\s*\(\d+\)$/, '')
-    // Remove .freecut suffix
-    name = name.replace(/\.freecut$/i, '')
+    // Remove .pixels or legacy .freecut suffix
+    name = name.replace(/\.(?:pixels|freecut)$/i, '')
     return name
   }
 
-  // Check if file is a valid bundle (handles browser-renamed files like "project.freecut (1).zip")
+  // Check if file is a valid bundle (current or legacy FreeCut extension)
   const isValidBundleFile = (fileName: string): boolean => {
-    // Match: anything.freecut.zip or anything.freecut (N).zip
-    return /\.freecut(\s*\(\d+\))?\.zip$/i.test(fileName)
+    return BUNDLE_FILENAME_RE.test(fileName)
   }
 
   const isLoading = useProjectsLoading()
@@ -116,7 +128,7 @@ function ProjectsIndex() {
     // Reset file input for next selection
     event.target.value = ''
 
-    // Validate file extension (handles browser-renamed files like "project.freecut (1).zip")
+    // Validate file extension (handles browser-renamed files like "project.pixels (1).zip")
     if (!isValidBundleFile(file.name)) {
       setImportError(t('projects.import.invalidFile', { extension: BUNDLE_EXTENSION }))
       setImportDialogOpen(true)
@@ -138,7 +150,7 @@ function ProjectsIndex() {
   const handleSelectDestination = async () => {
     try {
       const dirHandle = await window.showDirectoryPicker({
-        id: 'freecut-import',
+        id: 'pixels-import',
         mode: 'readwrite',
         startIn: 'documents',
       })
@@ -171,7 +183,7 @@ function ProjectsIndex() {
     setImportProgress({ percent: 0, stage: 'validating' })
 
     try {
-      // If useProjectsFolder is enabled, create/get the FreeCutProjects subfolder first
+      // If useProjectsFolder is enabled, create/get the PixelsProjects subfolder first
       let finalDestination = destinationDir
       if (useProjectsFolder) {
         try {
@@ -179,7 +191,7 @@ function ProjectsIndex() {
             create: true,
           })
         } catch (err) {
-          logger.error('Failed to create FreeCutProjects folder:', err)
+          logger.error('Failed to create PixelsProjects folder:', err)
           throw new Error(t('projects.import.createFolderFailed', { folder: PROJECTS_FOLDER_NAME }))
         }
       }
@@ -290,7 +302,7 @@ function ProjectsIndex() {
               </Button>
               <Button variant="outline" size="lg" className="gap-2 px-4" asChild>
                 <a
-                  href="https://github.com/walterlow/freecut"
+                  href={GITHUB_REPO_URL}
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label={t('projects.viewOnGitHub')}
@@ -303,6 +315,7 @@ function ProjectsIndex() {
               <Separator orientation="vertical" className="h-6" />
 
               <WorkspaceIndicator />
+              <WalletConnectButton size="lg" className="h-10 px-4" />
               <Button
                 variant="outline"
                 size="lg"
@@ -312,12 +325,33 @@ function ProjectsIndex() {
                 <Upload className="w-4 h-4" />
                 {t('projects.importProject')}
               </Button>
-              <Link to="/projects/new">
-                <Button size="lg" className="gap-2 px-4">
+              {walletInitializing ? (
+                <Button size="lg" className="gap-2 px-4" disabled>
                   <Plus className="w-4 h-4" />
                   {t('projects.newProject')}
                 </Button>
-              </Link>
+              ) : requireWalletForNewProject ? (
+                <Button
+                  size="lg"
+                  className="gap-2 px-4"
+                  onClick={() => {
+                    toast.message('Connect your wallet to continue', {
+                      description: 'Wallet connection is required before creating a project.',
+                    })
+                    connect()
+                  }}
+                >
+                  <Plus className="w-4 h-4" />
+                  {t('projects.newProject')}
+                </Button>
+              ) : (
+                <Link to="/projects/new">
+                  <Button size="lg" className="gap-2 px-4">
+                    <Plus className="w-4 h-4" />
+                    {t('projects.newProject')}
+                  </Button>
+                </Link>
+              )}
             </div>
 
             {/* Hidden file input for import */}
@@ -482,7 +516,7 @@ function ProjectsIndex() {
                   )}
                 </Button>
 
-                {/* FreeCutProjects subfolder option */}
+                {/* PixelsProjects subfolder option */}
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"

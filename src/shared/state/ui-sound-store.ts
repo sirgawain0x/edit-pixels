@@ -37,7 +37,7 @@ export const useUiSoundStore = create<UiSoundState>()(
       setVoice: (voice) => set({ voice }),
     }),
     {
-      name: 'freecut-ui-sound',
+      name: 'pixels-ui-sound',
       partialize: (state) => ({
         enabled: state.enabled,
         volume: state.volume,

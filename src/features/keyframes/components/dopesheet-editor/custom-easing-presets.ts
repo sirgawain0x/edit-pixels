@@ -5,7 +5,7 @@ import type { EasingPreset } from './easings-dev-presets'
  * user tweaks in one project is available in every project. Shape mirrors the
  * built-in {@link EasingPreset} catalog so both render through the same grid.
  */
-const STORAGE_KEY = 'freecut-easing-presets'
+const STORAGE_KEY = 'pixels-easing-presets'
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)

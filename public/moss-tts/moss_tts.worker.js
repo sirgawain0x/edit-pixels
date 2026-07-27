@@ -1,9 +1,9 @@
 /* global importScripts */
 
-const HOST_SOURCE = 'freecut-moss-tts-worker';
-const CLIENT_SOURCE = 'freecut-moss-tts-client';
+const HOST_SOURCE = 'pixels-moss-tts-worker';
+const CLIENT_SOURCE = 'pixels-moss-tts-client';
 const TOKENIZER_SOURCE = 'nano-reader-tokenizer-sandbox';
-const MODEL_STORE_KEY = 'freecut-moss-tts';
+const MODEL_STORE_KEY = 'pixels-moss-tts';
 
 let runtimePromise = null;
 let tokenizerWorker = null;
@@ -74,7 +74,7 @@ async function postTokenizerRequest(action, data = {}) {
   });
 }
 
-self.__freecutMossTokenizerBridge = postTokenizerRequest;
+self.__pixelsMossTokenizerBridge = postTokenizerRequest;
 
 async function getRuntimeFactory() {
   const module = await import('./browser_onnx_runtime.js');
@@ -108,14 +108,14 @@ async function getRuntime({ requestId, threadCount = 4, warmup = false }) {
 
   const runtime = await runtimePromise;
 
-  if (warmup && !runtime.__freecutWarmedUp) {
+  if (warmup && !runtime.__pixelsWarmedUp) {
     postToMain({
       type: 'progress',
       requestId,
       stage: 'Warming up MOSS Nano worker...',
     });
     await runtime.warmup();
-    runtime.__freecutWarmedUp = true;
+    runtime.__pixelsWarmedUp = true;
   }
 
   return runtime;

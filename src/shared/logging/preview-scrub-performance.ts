@@ -134,7 +134,7 @@ interface CompletedRender {
 
 const SHOULD_PROFILE_PREVIEW_SCRUB = import.meta.env.DEV || import.meta.env.MODE === 'perf'
 const MAX_PERF_SAMPLES = 3000
-const PERF_SNAPSHOT_ELEMENT_ID = 'freecut-preview-scrub-performance'
+const PERF_SNAPSHOT_ELEMENT_ID = 'pixels-preview-scrub-performance'
 const PERF_SNAPSHOT_DEBOUNCE_MS = 100
 
 let requestSequence = 0

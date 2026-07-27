@@ -76,7 +76,7 @@ export function WorkspaceGate({ children }: { children: React.ReactNode }) {
       )
     }, 0)
     setStatus({ kind: 'ready' })
-    window.dispatchEvent(new Event('freecut:ensure-toaster'))
+    window.dispatchEvent(new Event('pixels:ensure-toaster'))
   }, [])
 
   // Initial load: check if we have a saved handle, check its permission.
@@ -130,7 +130,7 @@ export function WorkspaceGate({ children }: { children: React.ReactNode }) {
     setError(null)
     try {
       const handle = await window.showDirectoryPicker({
-        id: 'freecut-workspace',
+        id: 'pixels-workspace',
         mode: 'readwrite',
         startIn: 'documents',
       })

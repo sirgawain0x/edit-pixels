@@ -225,11 +225,46 @@ function localPidIsAlive(pid) {
   }
 }
 
+const HEADLESS_DIR = '.pixels-headless'
+const LEGACY_HEADLESS_DIR = '.freecut-headless'
+
+/**
+ * Resolve the headless state directory, migrating `.freecut-headless` →
+ * `.pixels-headless` when possible so writer locks and idempotency ledgers
+ * stay shared across upgrades.
+ */
+export async function resolveHeadlessDir(workspace) {
+  const next = path.join(workspace, HEADLESS_DIR)
+  const legacy = path.join(workspace, LEGACY_HEADLESS_DIR)
+
+  try {
+    await fs.promises.access(next)
+    return next
+  } catch {
+    // fall through
+  }
+
+  try {
+    await fs.promises.access(legacy)
+    try {
+      await fs.promises.rename(legacy, next)
+      return next
+    } catch {
+      // Rename failed (race or cross-device) — keep using legacy so an existing
+      // writer.lock remains visible to this process.
+      return legacy
+    }
+  } catch {
+    await fs.promises.mkdir(next, { recursive: true })
+    return next
+  }
+}
+
 export async function acquireWriterLock(
   workspace,
   { breakLock = false, staleGraceMs = 60_000 } = {},
 ) {
-  const dir = path.join(workspace, '.freecut-headless')
+  const dir = await resolveHeadlessDir(workspace)
   await fs.promises.mkdir(dir, { recursive: true })
   const lockPath = path.join(dir, 'writer.lock')
   let handle
@@ -307,7 +342,7 @@ export async function acquireWriterLock(
 }
 
 export async function assertAtomicReplace(workspace) {
-  const dir = path.join(workspace, '.freecut-headless')
+  const dir = await resolveHeadlessDir(workspace)
   await fs.promises.mkdir(dir, { recursive: true })
   const file = path.join(dir, 'atomic-test')
   try {

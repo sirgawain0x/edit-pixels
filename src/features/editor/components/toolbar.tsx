@@ -18,7 +18,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { DiscordIcon } from '@/components/brand/discord-icon'
-import { DISCORD_INVITE_URL } from '@/config/community'
+import { DISCORD_INVITE_URL, GITHUB_REPO_URL } from '@/config/community'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -231,7 +231,7 @@ export const Toolbar = memo(function Toolbar({
         {/* Socials */}
         <Button variant="outline" size="icon" className="h-7 w-7" asChild>
           <a
-            href="https://github.com/walterlow/freecut"
+            href={GITHUB_REPO_URL}
             target="_blank"
             rel="noopener noreferrer"
             data-tooltip={t('toolbar.viewOnGitHub')}

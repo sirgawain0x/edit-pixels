@@ -10,8 +10,10 @@ import { PixelsLogo } from '@/components/brand/pixels-logo'
 import { Button } from '@/components/ui/button'
 import { Github } from 'lucide-react'
 import { DiscordIcon } from '@/components/brand/discord-icon'
-import { DISCORD_INVITE_URL } from '@/config/community'
+import { DISCORD_INVITE_URL, GITHUB_REPO_URL } from '@/config/community'
 import type { ProjectFormData } from '@/features/projects/utils/validation'
+import { WalletConnectButton } from '@/components/wallet-connect-button'
+import { useWalletContext } from '@/context/wallet-context'
 
 const logger = createLogger('NewProject')
 
@@ -32,8 +34,25 @@ function NewProject() {
   const { t } = useTranslation()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const createProject = useCreateProject()
+  const {
+    configured: walletConfigured,
+    ready: walletReady,
+    authenticated,
+    wallet,
+    connect,
+  } = useWalletContext()
+  const walletConnected = Boolean(authenticated && wallet)
+  const requireWallet = walletConfigured && walletReady && !walletConnected
 
   const handleSubmit = async (data: ProjectFormData) => {
+    if (requireWallet) {
+      toast.message('Connect your wallet to continue', {
+        description: 'Wallet connection is required before creating a project.',
+      })
+      connect()
+      return
+    }
+
     setIsSubmitting(true)
 
     try {
@@ -65,6 +84,7 @@ function NewProject() {
             <PixelsLogo variant="full" size="md" className="hover:opacity-80 transition-opacity" />
           </Link>
           <div className="flex items-center gap-3">
+            <WalletConnectButton size="lg" className="h-10 px-4" />
             <Button variant="outline" size="lg" className="gap-2" asChild>
               <a href={DISCORD_INVITE_URL} target="_blank" rel="noopener noreferrer">
                 <DiscordIcon className="w-4 h-4" />
@@ -73,7 +93,7 @@ function NewProject() {
             </Button>
             <Button variant="outline" size="icon" className="h-10 w-10" asChild>
               <a
-                href="https://github.com/walterlow/freecut"
+                href={GITHUB_REPO_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 data-tooltip={t('projects.viewOnGitHub')}
@@ -88,6 +108,11 @@ function NewProject() {
 
       {/* Content */}
       <div className="max-w-7xl mx-auto px-6 py-8">
+        {requireWallet ? (
+          <div className="mb-6 rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
+            Connect your wallet to create a project and use AI features.
+          </div>
+        ) : null}
         <InlineCreateProjectForm onSubmit={handleSubmit} isSubmitting={isSubmitting} />
       </div>
     </div>

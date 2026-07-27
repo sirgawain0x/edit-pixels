@@ -1,4 +1,4 @@
-const LAST_EDITOR_PROJECT_ID_KEY = 'freecut-last-editor-project-id'
+const LAST_EDITOR_PROJECT_ID_KEY = 'pixels-last-editor-project-id'
 
 function safeDecodeURIComponent(value: string): string {
   try {
@@ -38,6 +38,6 @@ export function getEditorProjectReloadPathWithCacheBust(): string {
     nextUrl.pathname = `/editor/${encodeURIComponent(projectId)}`
   }
 
-  nextUrl.searchParams.set('__freecut_updated', Date.now().toString())
+  nextUrl.searchParams.set('__pixels_updated', Date.now().toString())
   return `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`
 }

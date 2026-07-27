@@ -23,6 +23,7 @@ import {
 import { verifySnapshotChecksum } from './json-export-service'
 import { createProject, getAllMedia, associateMediaWithProject } from '@/infrastructure/storage'
 import { migrateProject } from '@/shared/projects/migrations'
+import { PROJECT_JSON_ACCEPT } from '../types/bundle'
 
 /**
  * Validate a snapshot without importing
@@ -445,7 +446,7 @@ export async function showImportFilePicker(
   // Create file input
   const input = document.createElement('input')
   input.type = 'file'
-  input.accept = '.json,.freecut.json'
+  input.accept = PROJECT_JSON_ACCEPT
 
   return new Promise((resolve) => {
     input.onchange = async () => {

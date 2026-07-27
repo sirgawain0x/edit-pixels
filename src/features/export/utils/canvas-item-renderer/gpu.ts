@@ -327,15 +327,15 @@ export function renderPreviewVideoGpuEffectsToCanvas(
     if (!import.meta.env.DEV) return
     if (typeof window === 'undefined') return
     const debugWindow = window as Window & {
-      __FREECUT_GPU_EFFECT_FAST_PATH__?: {
+      __PIXELS_GPU_EFFECT_FAST_PATH__?: {
         hits: number
         skips: Record<string, number>
         last: Record<string, unknown> | null
       }
     }
     const stats =
-      debugWindow.__FREECUT_GPU_EFFECT_FAST_PATH__ ??
-      (debugWindow.__FREECUT_GPU_EFFECT_FAST_PATH__ = {
+      debugWindow.__PIXELS_GPU_EFFECT_FAST_PATH__ ??
+      (debugWindow.__PIXELS_GPU_EFFECT_FAST_PATH__ = {
         hits: 0,
         skips: {},
         last: null,
@@ -1632,5 +1632,5 @@ export function shouldLogTransitionGpuDiagnostics(): boolean {
     return true
   }
   if (typeof localStorage === 'undefined') return false
-  return localStorage.getItem('freecut.debugGpuTransitions') === '1'
+  return localStorage.getItem('pixels.debugGpuTransitions') === '1'
 }

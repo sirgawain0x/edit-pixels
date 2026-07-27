@@ -13,7 +13,7 @@ import {
 import { PixelsLogo } from '@/components/brand/pixels-logo'
 import { DiscordIcon } from '@/components/brand/discord-icon'
 import { Button } from '@/components/ui/button'
-import { DISCORD_INVITE_URL } from '@/config/community'
+import { DISCORD_INVITE_URL, GITHUB_REPO_URL } from '@/config/community'
 import {
   Accordion,
   AccordionContent,
@@ -192,11 +192,7 @@ function LandingPage() {
             </Button>
 
             <Button asChild variant="outline" size="lg" className="gap-2">
-              <a
-                href="https://github.com/walterlow/freecut"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
+              <a href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer">
                 <Star className="h-4 w-4" />
                 {t('projects.landing.starOnGitHub')}
               </a>
@@ -361,11 +357,7 @@ function LandingPage() {
             </Button>
 
             <Button asChild variant="outline" size="lg" className="gap-2">
-              <a
-                href="https://github.com/walterlow/freecut"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
+              <a href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer">
                 <Star className="h-4 w-4" />
                 {t('projects.landing.starOnGitHub')}
               </a>

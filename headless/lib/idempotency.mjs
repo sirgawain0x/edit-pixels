@@ -1,7 +1,7 @@
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import { atomicWriteFile, withResourceLock } from './lifecycle-store.mjs'
+import { atomicWriteFile, withResourceLock, resolveHeadlessDir } from './lifecycle-store.mjs'
 import { HttpError } from './http-security.mjs'
 
 const IDEMPOTENCY_LIMITS = {
@@ -78,7 +78,8 @@ export async function withIdempotency(
   operation,
 ) {
   validateIdempotencyKey(key)
-  const dir = path.join(workspace, '.freecut-headless', 'idempotency')
+  const headlessDir = await resolveHeadlessDir(workspace)
+  const dir = path.join(headlessDir, 'idempotency')
   const keyHash = hash(key)
   const file = path.join(dir, `${keyHash}.json`)
   const requestHash = hash(requestBytes)

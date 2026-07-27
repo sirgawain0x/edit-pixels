@@ -1,5 +1,5 @@
 {
-  "name": "Creative Pixels",
+  "name": "Pixels",
   "short_name": "Pixels",
   "id": "/",
   "description": "AI-powered video creation by Creative Platform.",
@@ -36,7 +36,7 @@
       "sizes": "2048x1536",
       "type": "image/png",
       "form_factor": "wide",
-      "label": "Creative Pixels video editor timeline"
+      "label": "Pixels video editor timeline"
     }
   ]
 }
