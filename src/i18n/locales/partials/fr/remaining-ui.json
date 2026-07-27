@@ -186,7 +186,7 @@
         "savedToLibrary": "« {{fileName}} » a été enregistré dans la bibliothèque multimédia.",
         "savedAndAdded": "« {{fileName}} » a été enregistré et ajouté à la timeline."
       },
-      "defaultTtsPrompt": "Welcome to freecut. This voice was generated locally in the browser.",
+      "defaultTtsPrompt": "Welcome to {{appName}}. This voice was generated locally in the browser.",
       "musicPresets": {
         "lofiChillLabel": "Lo-fi Chill",
         "lofiChillPrompt": "Warm lo-fi beat with dusty drums, mellow bass, and a dreamy synth lead",

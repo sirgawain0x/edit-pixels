@@ -11,7 +11,7 @@
  * ```
  * {workspace}/
  * ├── README.md
- * ├── .freecut-workspace.json
+ * ├── .pixels-workspace.json
  * ├── index.json
  * ├── projects/
  * │   └── {id}/
@@ -55,7 +55,7 @@
 export const WORKSPACE_SCHEMA_VERSION = '2.0'
 
 export const README_FILENAME = 'README.md'
-export const MARKER_FILENAME = '.freecut-workspace.json'
+export const MARKER_FILENAME = '.pixels-workspace.json'
 export const INDEX_FILENAME = 'index.json'
 
 export const PROJECTS_DIR = 'projects'
@@ -83,10 +83,10 @@ const PROJECT_ANIMATION_PRESETS_FILENAME = 'animation-presets.json'
  * `trash.ts`) permanently removes projects whose `deletedAt` is older than
  * the configured TTL.
  *
- * Naming choice: `.freecut-trashed.json` makes the state self-explanatory
+ * Naming choice: `.pixels-trashed.json` makes the state self-explanatory
  * when browsing the workspace folder externally with a file manager.
  */
-const PROJECT_TRASHED_MARKER_FILENAME = '.freecut-trashed.json'
+const PROJECT_TRASHED_MARKER_FILENAME = '.pixels-trashed.json'
 
 const MEDIA_METADATA_FILENAME = 'metadata.json'
 export const MEDIA_THUMBNAIL_FILENAME = 'thumbnail.jpg'
@@ -155,7 +155,7 @@ export function projectExportFilePath(id: string, fileName: string): string[] {
   return [...projectExportsDir(id), sanitizeWorkspaceFileName(fileName)]
 }
 
-/** Segments for `projects/{id}/.freecut-trashed.json`. */
+/** Segments for `projects/{id}/.pixels-trashed.json`. */
 export function projectTrashedMarkerPath(id: string): string[] {
   return [...projectDir(id), PROJECT_TRASHED_MARKER_FILENAME]
 }

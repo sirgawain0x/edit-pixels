@@ -10,7 +10,7 @@ import {
   ExternalLink,
   BookOpen,
 } from 'lucide-react'
-import { FreeCutLogo } from '@/components/brand/freecut-logo'
+import { PixelsLogo } from '@/components/brand/pixels-logo'
 import { DiscordIcon } from '@/components/brand/discord-icon'
 import { Button } from '@/components/ui/button'
 import { DISCORD_INVITE_URL } from '@/config/community'
@@ -148,7 +148,7 @@ function LandingPage() {
 
         <div className="relative z-10 flex flex-col items-center text-center animate-fade-in">
           <div className="mb-6 flex items-center gap-3">
-            <FreeCutLogo size="lg" />
+            <PixelsLogo size="lg" />
             <span className="rounded-full bg-primary/15 px-3 py-1 text-xs font-medium text-primary">
               {t('projects.landing.beta')}
             </span>

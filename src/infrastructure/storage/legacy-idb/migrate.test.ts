@@ -262,8 +262,8 @@ describe('legacy-idb migration round trip', () => {
     expect(status.migrated).toBe(true)
     expect(typeof status.at).toBe('number')
 
-    // Marker is stored in the workspace root at .freecut-workspace.json.
-    const markerText = await readFileText(root, '.freecut-workspace.json')
+    // Marker is stored in the workspace root at .pixels-workspace.json.
+    const markerText = await readFileText(root, '.pixels-workspace.json')
     expect(markerText).not.toBeNull()
     const marker = JSON.parse(markerText!)
     expect(marker.migratedFromLegacyAt).toBe(status.at)

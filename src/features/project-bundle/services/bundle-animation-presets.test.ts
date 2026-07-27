@@ -1,6 +1,6 @@
 /**
  * Round-trip coverage for animation presets travelling inside the project
- * bundle (.freecut.zip). Exercises the real export → import seam in memory:
+ * bundle (.pixels.zip). Exercises the real export → import seam in memory:
  * the export collects the presets sidecar + manifest entry, the import
  * validates + sanitizes + restores it.
  */
@@ -132,7 +132,7 @@ function makePresets(): AnimationPreset[] {
 function fileFromBytes(bytes: Uint8Array): File {
   const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
   return {
-    name: 'test.freecut.zip',
+    name: 'test.pixels.zip',
     type: 'application/zip',
     arrayBuffer: async () => buffer,
   } as unknown as File

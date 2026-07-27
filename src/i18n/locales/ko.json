@@ -5,8 +5,8 @@
     "reloadWithoutSaving": "저장하지 않고 다시 로드",
     "dockPanel": "패널 도킹",
     "installPrompt": {
-      "label": "FreeCut 설치",
-      "title": "FreeCut 설치",
+      "label": "{{appName}} 설치",
+      "title": "{{appName}} 설치",
       "description": "데스크톱이나 홈 화면에서 실행하세요.",
       "install": "설치",
       "notNow": "나중에",
@@ -27,7 +27,8 @@
     "clearing": "지우는 중...",
     "queueing": "대기열에 추가 중...",
     "partial": "일부",
-    "untitledProject": "제목 없는 프로젝트"
+    "untitledProject": "제목 없는 프로젝트",
+    "appName": "Creative Pixels"
   },
   "language": {
     "label": "언어",

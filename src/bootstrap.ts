@@ -1,4 +1,4 @@
-const APP_SHELL_CACHE_PREFIX = 'freecut-app-shell-'
+const APP_SHELL_CACHE_PREFIX = 'pixels-app-shell-'
 
 async function removeProductionAppShellFromDevelopment(): Promise<boolean> {
   if (!import.meta.env.DEV) return false

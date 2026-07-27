@@ -8,7 +8,7 @@ const logger = createLogger('ProjectsIndex')
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Plus, Upload, FolderOpen, File, Github, BookOpen } from 'lucide-react'
-import { FreeCutLogo } from '@/components/brand/freecut-logo'
+import { PixelsLogo } from '@/components/brand/pixels-logo'
 import { DiscordIcon } from '@/components/brand/discord-icon'
 import { DISCORD_INVITE_URL } from '@/config/community'
 import { ProjectList } from '@/features/projects/components/project-list'
@@ -265,7 +265,7 @@ function ProjectsIndex() {
         <div className="panel-header border-b border-border" data-no-marquee>
           <div className="max-w-[1920px] mx-auto px-6 py-5 flex items-center justify-between">
             <Link to="/">
-              <FreeCutLogo
+              <PixelsLogo
                 variant="full"
                 size="md"
                 className="hover:opacity-80 transition-opacity"

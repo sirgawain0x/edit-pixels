@@ -132,7 +132,7 @@ export async function hasLegacyData(): Promise<boolean> {
 }
 
 /**
- * Migration marker read from `.freecut-workspace.json`.
+ * Migration marker read from `.pixels-workspace.json`.
  * Presence of `migratedFromLegacyAt` indicates migration has run.
  */
 export async function getMigrationStatus(): Promise<{
@@ -160,10 +160,10 @@ async function markMigrated(): Promise<void> {
   await writeJsonAtomic(root, [MARKER_FILENAME], updated)
 }
 
-/** Marker file kept alongside `.freecut-workspace.json` when migration had
+/** Marker file kept alongside `.pixels-workspace.json` when migration had
  *  per-store errors. Its presence drives a "retry failed items" UI. Cleared
  *  by a successful re-run. */
-const MIGRATION_ERRORS_FILENAME = '.freecut-migration-errors.json'
+const MIGRATION_ERRORS_FILENAME = '.pixels-migration-errors.json'
 
 interface PersistedMigrationErrors {
   recordedAt: number

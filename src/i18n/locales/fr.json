@@ -5,8 +5,8 @@
     "reloadWithoutSaving": "Recharger sans enregistrer",
     "dockPanel": "Ancrer le panneau",
     "installPrompt": {
-      "label": "Installer FreeCut",
-      "title": "Installer FreeCut",
+      "label": "Installer {{appName}}",
+      "title": "Installer {{appName}}",
       "description": "Lancez-le depuis votre bureau ou écran d’accueil.",
       "install": "Installer",
       "notNow": "Pas maintenant",
@@ -27,7 +27,8 @@
     "clearing": "Effacement...",
     "queueing": "Mise en file...",
     "partial": "Partiel",
-    "untitledProject": "Projet sans titre"
+    "untitledProject": "Projet sans titre",
+    "appName": "Creative Pixels"
   },
   "language": {
     "label": "Langue",

@@ -5,8 +5,8 @@
     "reloadWithoutSaving": "Kaydetmeden Yeniden Yükle",
     "dockPanel": "Paneli sabitle",
     "installPrompt": {
-      "label": "FreeCut’ı yükle",
-      "title": "FreeCut’ı yükle",
+      "label": "{{appName}}’ı yükle",
+      "title": "{{appName}}’ı yükle",
       "description": "Masaüstünden veya ana ekrandan aç.",
       "install": "Yükle",
       "notNow": "Şimdi değil",
@@ -27,7 +27,8 @@
     "clearing": "Temizleniyor...",
     "queueing": "Sıraya alınıyor...",
     "partial": "Kısmi",
-    "untitledProject": "Adsız Proje"
+    "untitledProject": "Adsız Proje",
+    "appName": "Creative Pixels"
   },
   "language": {
     "label": "Dil",
