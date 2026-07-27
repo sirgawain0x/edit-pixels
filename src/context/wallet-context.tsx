@@ -58,7 +58,7 @@ export function useWalletContext(): WalletContextValue {
 
 const PRIVY_APP_ID = import.meta.env.VITE_PRIVY_APP_ID
 const PRIVY_CLIENT_ID = import.meta.env.VITE_PRIVY_CLIENT_ID
-export const isPrivyConfigured = Boolean(PRIVY_APP_ID)
+const isPrivyConfigured = Boolean(PRIVY_APP_ID)
 
 function WalletContextInner({ children }: { children: ReactNode }) {
   const { ready, authenticated, user, login, logout, connectWallet, getAccessToken } = usePrivy()

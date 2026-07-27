@@ -29,55 +29,53 @@ export const Route = createFileRoute('/projects/new')({
   },
 })
 
+function useWalletCreateGate() {
+  const { configured, ready, authenticated, wallet, connect } = useWalletContext()
+  const requireWallet = configured && ready && !(authenticated && wallet)
+
+  const promptConnect = () => {
+    toast.message('Connect your wallet to continue', {
+      description: 'Wallet connection is required before creating a project.',
+    })
+    connect()
+  }
+
+  return { requireWallet, promptConnect }
+}
+
 function NewProject() {
   const navigate = useNavigate()
   const { t } = useTranslation()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const createProject = useCreateProject()
-  const {
-    configured: walletConfigured,
-    ready: walletReady,
-    authenticated,
-    wallet,
-    connect,
-  } = useWalletContext()
-  const walletConnected = Boolean(authenticated && wallet)
-  const requireWallet = walletConfigured && walletReady && !walletConnected
+  const { requireWallet, promptConnect } = useWalletCreateGate()
 
   const handleSubmit = async (data: ProjectFormData) => {
     if (requireWallet) {
-      toast.message('Connect your wallet to continue', {
-        description: 'Wallet connection is required before creating a project.',
-      })
-      connect()
+      promptConnect()
       return
     }
 
     setIsSubmitting(true)
-
     try {
       const result = await createProject(data)
-
       if (result.success && result.project) {
-        // Navigate to editor with new project
         navigate({
           to: '/editor/$projectId',
           params: { projectId: result.project.id },
         })
-      } else {
-        toast.error(t('projects.toasts.createFailed'), { description: result.error })
-        setIsSubmitting(false)
+        return
       }
+      toast.error(t('projects.toasts.createFailed'), { description: result.error })
     } catch (error) {
       logger.error('Failed to create project:', error)
       toast.error(t('projects.toasts.createFailed'), { description: t('projects.tryAgain') })
-      setIsSubmitting(false)
     }
+    setIsSubmitting(false)
   }
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <div className="panel-header border-b border-border">
         <div className="max-w-7xl mx-auto px-6 py-5 flex items-center justify-between">
           <Link to="/">
@@ -106,7 +104,6 @@ function NewProject() {
         </div>
       </div>
 
-      {/* Content */}
       <div className="max-w-7xl mx-auto px-6 py-8">
         {requireWallet ? (
           <div className="mb-6 rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
