@@ -43,6 +43,22 @@ function useWalletCreateGate() {
   return { requireWallet, promptConnect }
 }
 
+async function createProjectOrToast(
+  createProject: ReturnType<typeof useCreateProject>,
+  data: ProjectFormData,
+  t: (key: string) => string,
+): Promise<string | null> {
+  try {
+    const result = await createProject(data)
+    if (result.success && result.project) return result.project.id
+    toast.error(t('projects.toasts.createFailed'), { description: result.error })
+  } catch (error) {
+    logger.error('Failed to create project:', error)
+    toast.error(t('projects.toasts.createFailed'), { description: t('projects.tryAgain') })
+  }
+  return null
+}
+
 function NewProject() {
   const navigate = useNavigate()
   const { t } = useTranslation()
@@ -57,19 +73,10 @@ function NewProject() {
     }
 
     setIsSubmitting(true)
-    try {
-      const result = await createProject(data)
-      if (result.success && result.project) {
-        navigate({
-          to: '/editor/$projectId',
-          params: { projectId: result.project.id },
-        })
-        return
-      }
-      toast.error(t('projects.toasts.createFailed'), { description: result.error })
-    } catch (error) {
-      logger.error('Failed to create project:', error)
-      toast.error(t('projects.toasts.createFailed'), { description: t('projects.tryAgain') })
+    const projectId = await createProjectOrToast(createProject, data, t)
+    if (projectId) {
+      navigate({ to: '/editor/$projectId', params: { projectId } })
+      return
     }
     setIsSubmitting(false)
   }
