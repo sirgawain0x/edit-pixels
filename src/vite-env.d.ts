@@ -11,6 +11,7 @@ interface ImportMetaEnv {
   readonly VITE_CRTVAIX_ADDRESS?: string
   readonly VITE_SUPERFLUID_RECEIVER?: string
   readonly VITE_PIXELS_PREMIUM_LOCK_ADDRESS?: string
+  readonly VITE_ONRAMP_API_URL?: string
 }
 
 interface ImportMeta {
