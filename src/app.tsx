@@ -6,6 +6,7 @@ import { ErrorBoundary } from '@/app/error-boundary'
 import { PwaInstallPrompt } from '@/app/pwa-install-prompt'
 import { RouteErrorScreen } from '@/app/route-error'
 import { WorkspaceGate } from '@/features/workspace-gate/workspace-gate'
+import { WalletProvider } from '@/context/wallet-context'
 import { routeTree } from './routeTree.gen'
 
 // Route errors (thrown from beforeLoad/loader) never reach the React
@@ -77,9 +78,11 @@ export function App() {
   return (
     <ErrorBoundary level="app">
       <TooltipProvider delayDuration={300}>
-        <WorkspaceGate>
-          <RouterProvider router={router} />
-        </WorkspaceGate>
+        <WalletProvider>
+          <WorkspaceGate>
+            <RouterProvider router={router} />
+          </WorkspaceGate>
+        </WalletProvider>
         <GlobalTooltip />
         <PwaInstallPrompt />
         {showToaster && (
