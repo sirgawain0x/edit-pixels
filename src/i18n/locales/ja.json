@@ -5,8 +5,8 @@
     "reloadWithoutSaving": "保存せずに再読み込み",
     "dockPanel": "パネルをドック",
     "installPrompt": {
-      "label": "FreeCut をインストール",
-      "title": "FreeCut をインストール",
+      "label": "{{appName}} をインストール",
+      "title": "{{appName}} をインストール",
       "description": "デスクトップまたはホーム画面から起動できます。",
       "install": "インストール",
       "notNow": "今はしない",
@@ -27,7 +27,8 @@
     "clearing": "クリア中...",
     "queueing": "キューに追加中...",
     "partial": "一部",
-    "untitledProject": "無題のプロジェクト"
+    "untitledProject": "無題のプロジェクト",
+    "appName": "Creative Pixels"
   },
   "language": {
     "label": "言語",

@@ -18,7 +18,7 @@ import { createLogger } from '@/shared/logging/logger'
 
 const logger = createLogger('HandlesDB')
 
-const HANDLES_DB_NAME = 'freecut-handles-db'
+const HANDLES_DB_NAME = 'pixels-handles-db'
 const HANDLES_DB_VERSION = 1
 const HANDLES_STORE = 'handles'
 

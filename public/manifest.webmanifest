@@ -1,8 +1,8 @@
 {
-  "name": "FreeCut",
-  "short_name": "FreeCut",
+  "name": "Creative Pixels",
+  "short_name": "Pixels",
   "id": "/",
-  "description": "A browser-based video editor.",
+  "description": "AI-powered video creation by Creative Platform.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -36,7 +36,7 @@
       "sizes": "2048x1536",
       "type": "image/png",
       "form_factor": "wide",
-      "label": "FreeCut video editor timeline"
+      "label": "Creative Pixels video editor timeline"
     }
   ]
 }

@@ -5,8 +5,8 @@
     "reloadWithoutSaving": "不保存直接重新加载",
     "dockPanel": "停靠面板",
     "installPrompt": {
-      "label": "安装 FreeCut",
-      "title": "安装 FreeCut",
+      "label": "安装 {{appName}}",
+      "title": "安装 {{appName}}",
       "description": "从桌面或主屏幕启动。",
       "install": "安装",
       "notNow": "暂不",
@@ -27,7 +27,8 @@
     "clearing": "清除中...",
     "queueing": "正在排队...",
     "partial": "部分",
-    "untitledProject": "未命名项目"
+    "untitledProject": "未命名项目",
+    "appName": "Creative Pixels"
   },
   "language": {
     "label": "语言",
