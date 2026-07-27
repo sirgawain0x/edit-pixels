@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { SWITCHABLE_CHAINS } from '@/config/chains'
+import { useUsdcBalance } from '@/hooks/use-usdc-balance'
 import { cn } from '@/shared/ui/cn'
 
 function truncateAddress(address: string): string {
@@ -43,6 +44,7 @@ export function WalletConnectButton({
   const { ready, authenticated, connect, disconnect, wallet, chain, switchChain, isConnecting } =
     useWalletContext()
   const address = wallet?.address
+  const { formatted: usdcFormatted } = useUsdcBalance(chain, address as `0x${string}` | undefined)
   const [copied, setCopied] = useState(false)
 
   const handleCopyAddress = useCallback(() => {
@@ -106,6 +108,11 @@ export function WalletConnectButton({
             {copied && <span className="sr-only">Copied</span>}
           </DropdownMenuItem>
         )}
+
+        <DropdownMenuItem disabled className="text-muted-foreground">
+          USDC: {usdcFormatted}
+        </DropdownMenuItem>
+
         <div className="px-2 py-1.5">
           <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Network</label>
           <Select
