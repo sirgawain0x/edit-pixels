@@ -8,6 +8,8 @@ interface ImportMetaEnv {
   readonly VITE_ALCHEMY_POLICY_ID?: string
   readonly VITE_ALCHEMY_GAS_POLICY_TYPE?: string
   readonly VITE_ALCHEMY_GAS_MAX_USDC6?: string
+  readonly VITE_CRTVAIX_ADDRESS?: string
+  readonly VITE_SUPERFLUID_RECEIVER?: string
 }
 
 interface ImportMeta {

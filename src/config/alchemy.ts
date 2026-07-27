@@ -3,5 +3,6 @@ export const ALCHEMY_POLICY_ID = import.meta.env.VITE_ALCHEMY_POLICY_ID as strin
 export const ALCHEMY_GAS_POLICY_TYPE = (import.meta.env.VITE_ALCHEMY_GAS_POLICY_TYPE ?? 'none') as
   | 'none'
   | 'usdc'
+  | 'erc20'
   | 'sponsored'
 export const ALCHEMY_GAS_MAX_USDC6 = Number(import.meta.env.VITE_ALCHEMY_GAS_MAX_USDC6 ?? '1000000')
