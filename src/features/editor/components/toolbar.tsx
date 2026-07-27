@@ -41,6 +41,7 @@ import { LanguageSwitcher } from '@/shared/ui/language-switcher'
 import { useDebugStore } from '@/features/editor/stores/debug-store'
 import { useItemsStore, useTimelineStore } from '@/features/editor/deps/timeline-store'
 import { useMediaLibraryStore } from '@/features/editor/deps/media-library'
+import { LiveAiPopover } from '../deps/live-ai'
 import { WalletConnectButton } from '@/components/wallet-connect-button'
 
 const SAVE_ANIMATION_MIN_MS = 1800
@@ -350,6 +351,8 @@ export const Toolbar = memo(function Toolbar({
         )}
 
         <WalletConnectButton size="sm" compact className="h-7 min-h-0" />
+
+        <LiveAiPopover />
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

@@ -10,6 +10,7 @@ interface ImportMetaEnv {
   readonly VITE_ALCHEMY_GAS_MAX_USDC6?: string
   readonly VITE_CRTVAIX_ADDRESS?: string
   readonly VITE_SUPERFLUID_RECEIVER?: string
+  readonly VITE_PIXELS_PREMIUM_LOCK_ADDRESS?: string
 }
 
 interface ImportMeta {
