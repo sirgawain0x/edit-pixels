@@ -102,7 +102,7 @@ export function WalletConnectButton({
             {!compact && <span className="hidden sm:inline">{displayText}</span>}
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="min-w-[12rem]">
+        <DropdownMenuContent align="end" className="min-w-48">
           {address && (
             <DropdownMenuItem
               onClick={handleCopyAddress}
@@ -154,7 +154,7 @@ export function WalletConnectButton({
               <SelectTrigger className="h-8 w-full text-xs">
                 <SelectValue placeholder="Select network" />
               </SelectTrigger>
-              <SelectContent className="z-[10000]">
+              <SelectContent className="z-50">
                 {SWITCHABLE_CHAINS.map((c) => (
                   <SelectItem key={c.id} value={c.id.toString()} className="text-xs">
                     {c.name}
