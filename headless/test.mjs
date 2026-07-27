@@ -158,7 +158,7 @@ async function main() {
     )
   }
 
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'freecut-headless-regression-'))
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pixels-headless-regression-'))
   const probeSource = path.join(tempDir, 'probe.svg')
   fs.writeFileSync(
     probeSource,
@@ -182,7 +182,7 @@ async function main() {
     })
 
     await page.goto(server.harnessUrl, { waitUntil: 'load', timeout: 60_000 })
-    await page.waitForFunction(() => Boolean(window.freecut?.ready), { timeout: 30_000 })
+    await page.waitForFunction(() => Boolean(window.pixels?.ready), { timeout: 30_000 })
 
     const probeContract = await page.evaluate(async (url) => {
       const originalBlob = Response.prototype.blob
@@ -192,7 +192,7 @@ async function main() {
         throw new Error('response.blob must not be used')
       }
       try {
-        const probe = await window.freecut.probeMedia({
+        const probe = await window.pixels.probeMedia({
           url,
           fileName: 'probe.svg',
           mimeType: 'image/svg+xml',
@@ -200,7 +200,7 @@ async function main() {
         const root = await navigator.storage.getDirectory()
         const leftovers = []
         for await (const name of root.keys()) {
-          if (name.startsWith('.freecut-probe-')) leftovers.push(name)
+          if (name.startsWith('.pixels-probe-')) leftovers.push(name)
         }
         return { blobCalled, leftovers, mimeType: probe.mimeType }
       } finally {
@@ -219,7 +219,7 @@ async function main() {
     const downloadPromise = page.waitForEvent('download', { timeout: 120_000 })
     downloadPromise.catch(() => {})
     const summary = await page.evaluate(
-      (input) => window.freecut.renderTimeline(input),
+      (input) => window.pixels.renderTimeline(input),
       TEXT_TIMELINE,
     )
     const outPath = path.join(tempDir, 'render.webm')
@@ -245,7 +245,7 @@ async function main() {
     // the codecs installed on the CI host.
     console.log('\nForced codec fallback:')
     await page.evaluate(() => {
-      globalThis.__freecutSupportedCodecsOverride = ['vp9']
+      globalThis.__pixelsSupportedCodecsOverride = ['vp9']
     })
     const fallbackInput = structuredClone(TEXT_TIMELINE)
     fallbackInput.settings.codec = 'avc'
@@ -254,7 +254,7 @@ async function main() {
     const fallbackDownloadPromise = page.waitForEvent('download', { timeout: 120_000 })
     fallbackDownloadPromise.catch(() => {})
     const fallbackSummary = await page.evaluate(
-      (input) => window.freecut.renderTimeline(input),
+      (input) => window.pixels.renderTimeline(input),
       fallbackInput,
     )
     const fallbackOutPath = path.join(tempDir, 'fallback.webm')
@@ -283,12 +283,12 @@ async function main() {
     )
     check('fallback bytes have WebM signature', fallbackSignature === '1a45dfa3', fallbackSignature)
     await page.evaluate(() => {
-      delete globalThis.__freecutSupportedCodecsOverride
+      delete globalThis.__pixelsSupportedCodecsOverride
     })
 
     // --- Edit path ---
     console.log('\nEdit:')
-    const edit = await page.evaluate((input) => window.freecut.editProject(input), {
+    const edit = await page.evaluate((input) => window.pixels.editProject(input), {
       project: SAMPLE_PROJECT,
       ops: [
         {
@@ -319,7 +319,7 @@ async function main() {
 
     const referencedEdit = await page.evaluate(
       (project) =>
-        window.freecut.editProject({
+        window.pixels.editProject({
           project,
           ops: [
             { callerId: 'created', op: 'addText', text: 'referenced', from: 0 },
@@ -343,7 +343,7 @@ async function main() {
 
     const missingTargetError = await page.evaluate(async (project) => {
       try {
-        await window.freecut.editProject({
+        await window.pixels.editProject({
           project,
           ops: [{ op: 'updateItem', id: 'missing', updates: { label: 'nope' } }],
         })
@@ -360,7 +360,7 @@ async function main() {
 
     const missingRemoveError = await page.evaluate(async (project) => {
       try {
-        await window.freecut.editProject({
+        await window.pixels.editProject({
           project,
           ops: [{ op: 'removeItems', ids: ['text-1', 'missing'] }],
         })
@@ -394,7 +394,7 @@ async function main() {
     console.log('\nEdited project render:')
     const editedDownloadPromise = page.waitForEvent('download', { timeout: 120_000 })
     editedDownloadPromise.catch(() => {})
-    const editedSummary = await page.evaluate((input) => window.freecut.renderProject(input), {
+    const editedSummary = await page.evaluate((input) => window.pixels.renderProject(input), {
       project: reopenedProject,
       settings: textProjectRenderSettings(reopenedProject),
       outputFileName: 'regression-edited.webm',

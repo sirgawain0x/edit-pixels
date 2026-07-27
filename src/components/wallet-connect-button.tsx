@@ -41,8 +41,17 @@ export function WalletConnectButton({
   compact = false,
   className,
 }: WalletConnectButtonProps) {
-  const { ready, authenticated, connect, disconnect, wallet, chain, switchChain, isConnecting } =
-    useWalletContext()
+  const {
+    ready,
+    authenticated,
+    configured,
+    connect,
+    disconnect,
+    wallet,
+    chain,
+    switchChain,
+    isConnecting,
+  } = useWalletContext()
   const address = wallet?.address
   const { formatted: usdcFormatted } = useUsdcBalance(chain, address as `0x${string}` | undefined)
   const { formatted: crtvaiFormatted, symbol: crtvaiSymbol } = useCrtvaiBalance(
@@ -60,7 +69,7 @@ export function WalletConnectButton({
     })
   }, [address])
 
-  const isInitializing = !ready || isConnecting
+  const isInitializing = configured && (!ready || isConnecting)
   const isConnected = Boolean(authenticated && wallet)
 
   if (isInitializing) {
@@ -78,7 +87,8 @@ export function WalletConnectButton({
         size={size}
         className={cn('gap-2', className)}
         onClick={() => connect()}
-        aria-label={connectLabel}
+        aria-label={configured ? connectLabel : 'Wallet auth not configured'}
+        title={configured ? undefined : 'Set VITE_PRIVY_APP_ID to enable wallet connect'}
       >
         <Wallet className="h-4 w-4 shrink-0" />
         {!compact && <span className="hidden sm:inline">{connectLabel}</span>}

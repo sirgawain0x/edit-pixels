@@ -15,7 +15,7 @@ import zh from './locales/zh.json'
 
 const log = createLogger('i18n')
 
-export const I18N_STORAGE_KEY = 'freecut-language'
+export const I18N_STORAGE_KEY = 'pixels-language'
 
 type LocaleTree = Record<string, unknown>
 
@@ -79,6 +79,24 @@ const resources = Object.fromEntries(
   ]),
 )
 
+function resolveAppName(): string {
+  const name = i18n.t('common.appName', { defaultValue: 'Pixels' })
+  return name === 'common.appName' ? 'Pixels' : name
+}
+
+function syncAppNameDefaultVariable(): void {
+  const interpolation = i18n.options.interpolation ?? {}
+  i18n.options.interpolation = {
+    ...interpolation,
+    // React already escapes values to prevent XSS.
+    escapeValue: false,
+    defaultVariables: {
+      ...(typeof interpolation.defaultVariables === 'object' ? interpolation.defaultVariables : {}),
+      appName: resolveAppName(),
+    },
+  }
+}
+
 void i18n
   .use(LanguageDetector)
   .use(initReactI18next)
@@ -90,6 +108,9 @@ void i18n
     interpolation: {
       // React already escapes values to prevent XSS.
       escapeValue: false,
+      defaultVariables: {
+        appName: 'Pixels',
+      },
     },
     detection: {
       order: ['localStorage', 'navigator'],
@@ -98,6 +119,9 @@ void i18n
       convertDetectedLanguage: resolveSupportedLanguage,
     },
     returnEmptyString: false,
+  })
+  .then(() => {
+    syncAppNameDefaultVariable()
   })
   .catch((err) => {
     log.error('Failed to initialize i18n', err)
@@ -109,7 +133,10 @@ function syncDocumentLanguage(lng: string): void {
 }
 
 syncDocumentLanguage(i18n.resolvedLanguage ?? i18n.language ?? DEFAULT_LANGUAGE)
-i18n.on('languageChanged', syncDocumentLanguage)
+i18n.on('languageChanged', (lng) => {
+  syncDocumentLanguage(lng)
+  syncAppNameDefaultVariable()
+})
 
 // Track which languages have had their partials fully loaded.
 const loadedLanguages = new Set<string>([DEFAULT_LANGUAGE])
@@ -142,9 +169,7 @@ export const i18nReady: Promise<void> = (async () => {
   const persistedLanguage =
     typeof localStorage === 'undefined' ? null : localStorage.getItem(I18N_STORAGE_KEY)
   const detectedLanguage = typeof navigator === 'undefined' ? DEFAULT_LANGUAGE : navigator.language
-  const initial = resolveSupportedLanguage(
-    persistedLanguage ?? detectedLanguage,
-  )
+  const initial = resolveSupportedLanguage(persistedLanguage ?? detectedLanguage)
   if (initial !== DEFAULT_LANGUAGE) await loadLanguageResources(initial)
 })().catch((err) => {
   log.error('Failed to preload language resources', err)

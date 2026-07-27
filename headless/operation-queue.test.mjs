@@ -64,7 +64,7 @@ test('never-resolving evaluation times out and recreates the page', async () => 
 })
 
 test('missing render download is covered by the whole-operation deadline', async () => {
-  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'freecut-queue-test-'))
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pixels-queue-test-'))
   const page = {
     waitForEvent: never,
     evaluate: async () => ({ warnings: [] }),

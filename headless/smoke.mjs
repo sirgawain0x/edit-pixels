@@ -78,7 +78,7 @@ const main = async () => {
     page.on('console', (m) => console.log(`  [page:${m.type()}]`, m.text()))
     page.on('pageerror', (e) => console.error('  [pageerror]', e.message))
 
-    await page.exposeBinding('__freecutProgress', (_src, progress) => {
+    await page.exposeBinding('__pixelsProgress', (_src, progress) => {
       const pct = typeof progress?.progress === 'number' ? progress.progress.toFixed(0) : '?'
       const frame = progress?.currentFrame ?? '?'
       const total = progress?.totalFrames ?? '?'
@@ -88,12 +88,12 @@ const main = async () => {
     })
 
     await page.goto(HARNESS_URL, { waitUntil: 'load', timeout: 60_000 })
-    await page.waitForFunction(() => Boolean(window.freecut?.ready), { timeout: 30_000 })
+    await page.waitForFunction(() => Boolean(window.pixels?.ready), { timeout: 30_000 })
     console.log('Harness ready. Rendering...')
 
     const downloadPromise = page.waitForEvent('download', { timeout: 300_000 })
     const summary = await page.evaluate(
-      (renderInput) => window.freecut.renderTimeline(renderInput),
+      (renderInput) => window.pixels.renderTimeline(renderInput),
       input,
     )
     process.stdout.write('\n')

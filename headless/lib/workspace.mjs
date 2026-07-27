@@ -1,4 +1,4 @@
-// Read a FreeCut workspace folder from disk (plain fs, no File System Access
+// Read a Pixels workspace folder from disk (plain fs, no File System Access
 // API). Locates a project's JSON and maps the media it references to source
 // files on disk, mirroring workspace-fs's `media/{id}/{filename}` layout.
 import fs from 'node:fs'

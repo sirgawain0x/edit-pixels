@@ -56,16 +56,21 @@ function summary(overrides = {}) {
     mimeType: 'video/mp4',
     fileSize: 6,
     durationSeconds: 1,
-    fileName: 'freecut-export.mp4',
+    fileName: 'pixels-export.mp4',
     effectiveSettings: structuredClone(requestedSettings),
     warnings: [],
     ...overrides,
   }
 }
 
-test('supported settings remain requested settings without fallback warning', async (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'freecut-render-contract-'))
+function withTempDir(t) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pixels-render-contract-'))
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
+  return dir
+}
+
+test('supported settings remain requested settings without fallback warning', async (t) => {
+  const dir = withTempDir(t)
   const result = await renderJob(fakePage(summary()), job(dir), { onWarn: () => {} })
   assert.equal(result.effectiveSettings.codec, 'avc')
   assert.equal(result.effectiveSettings.container, 'mp4')
@@ -74,8 +79,7 @@ test('supported settings remain requested settings without fallback warning', as
 })
 
 test('software WebGPU rejects GPU-effect projects before browser rendering', async (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'freecut-render-contract-'))
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
+  const dir = withTempDir(t)
   const page = fakePage(summary())
   const effectProject = {
     id: 'project-1',
@@ -93,8 +97,7 @@ test('software WebGPU rejects GPU-effect projects before browser rendering', asy
 })
 
 test('fallback metadata controls extension, MIME, summary, and output signature', async (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'freecut-render-contract-'))
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
+  const dir = withTempDir(t)
   const fallbackWarning = {
     code: 'CODEC_FALLBACK',
     message: 'Requested video codec avc is unsupported; using vp9/webm',
@@ -103,7 +106,7 @@ test('fallback metadata controls extension, MIME, summary, and output signature'
   const page = fakePage(
     summary({
       mimeType: 'video/webm',
-      fileName: 'freecut-export.webm',
+      fileName: 'pixels-export.webm',
       effectiveSettings: {
         ...requestedSettings,
         codec: 'vp9',
@@ -124,8 +127,7 @@ test('fallback metadata controls extension, MIME, summary, and output signature'
 })
 
 test('strict missing media rejects before browser rendering and writes no output', async (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'freecut-render-contract-'))
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
+  const dir = withTempDir(t)
   const page = fakePage(summary())
   await assert.rejects(
     renderJob(page, job(dir, { missing: ['media-404'] }), { onWarn: () => {} }),
@@ -136,8 +138,7 @@ test('strict missing media rejects before browser rendering and writes no output
 })
 
 test('permissive missing media succeeds with a structured warning', async (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'freecut-render-contract-'))
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
+  const dir = withTempDir(t)
   const result = await renderJob(fakePage(summary()), job(dir, { missing: ['media-404'] }), {
     allowMissingMedia: true,
     onWarn: () => {},
@@ -148,8 +149,7 @@ test('permissive missing media succeeds with a structured warning', async (t) =>
 })
 
 test('unsupported audio is visible in render JSON and the HTTP warning header', async (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'freecut-render-contract-'))
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
+  const dir = withTempDir(t)
   const media = [
     {
       mediaId: 'clip-1',

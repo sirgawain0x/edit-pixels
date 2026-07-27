@@ -1,7 +1,7 @@
-// FreeCut headless edit CLI.
+// Pixels headless edit CLI.
 //
 // Applies a list of edit ops to a project by driving the real timeline action
-// modules inside headless Chrome (via window.freecut.editProject), then writes
+// modules inside headless Chrome (via window.pixels.editProject), then writes
 // the edited project back out. No rendering, no media needed.
 //
 // Usage:
@@ -97,8 +97,8 @@ async function main() {
       }
     })
     await page.goto(harnessUrl, { waitUntil: 'load', timeout: 60_000 })
-    await page.waitForFunction(() => Boolean(window.freecut?.ready), { timeout: 30_000 })
-    result = await page.evaluate((payload) => window.freecut.editProject(payload), {
+    await page.waitForFunction(() => Boolean(window.pixels?.ready), { timeout: 30_000 })
+    result = await page.evaluate((payload) => window.pixels.editProject(payload), {
       project,
       ops,
       media,

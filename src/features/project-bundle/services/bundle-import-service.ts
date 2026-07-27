@@ -1,7 +1,7 @@
 /**
  * Project Bundle Import Service
  *
- * Imports a .freecut.zip bundle (ZIP archive) and creates a project with media.
+ * Imports a .pixels.zip bundle (ZIP archive) and creates a project with media.
  * Media files are extracted to a user-selected directory and referenced via
  * FileSystemFileHandle for local-first storage.
  */
@@ -37,7 +37,7 @@ const logger = createLogger('BundleImportService')
 /**
  * Import a project bundle
  *
- * @param file - The .freecut.zip bundle file to import
+ * @param file - The .pixels.zip bundle file to import
  * @param destinationDirectory - Directory where media files will be extracted (must be provided by caller)
  * @param options - Import options (new name, etc.)
  * @param onProgress - Progress callback

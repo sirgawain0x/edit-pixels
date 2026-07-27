@@ -136,7 +136,7 @@ test('CLI rejects unknown options and normalizes aliases', () => {
 })
 
 test('project listings expose distinct actionable directory ids', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'freecut-contract-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pixels-contract-'))
   try {
     for (const dir of ['one', 'two']) {
       const projectDir = path.join(root, 'projects', dir)

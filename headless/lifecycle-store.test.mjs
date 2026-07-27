@@ -9,12 +9,13 @@ import {
   createProjectResource,
   getProjectResource,
   listProjectResources,
+  resolveHeadlessDir,
   revisionOf,
   saveProjectResource,
   stageLocalMedia,
 } from './lib/lifecycle-store.mjs'
 
-const tempWorkspace = () => fs.mkdtempSync(path.join(os.tmpdir(), 'freecut-lifecycle-'))
+const tempWorkspace = () => fs.mkdtempSync(path.join(os.tmpdir(), 'pixels-lifecycle-'))
 const project = (id = 'p1') => ({
   id,
   name: 'One',
@@ -86,7 +87,7 @@ test('exclusive writer lock refuses a second writer', async (t) => {
 test('writer lock automatically recovers an old lock with a confirmed-dead local PID', async (t) => {
   const root = tempWorkspace()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
-  const lockDir = path.join(root, '.freecut-headless')
+  const lockDir = path.join(root, '.pixels-headless')
   fs.mkdirSync(lockDir, { recursive: true })
   fs.writeFileSync(
     path.join(lockDir, 'writer.lock'),
@@ -94,6 +95,21 @@ test('writer lock automatically recovers an old lock with a confirmed-dead local
   )
   const release = await acquireWriterLock(root, { staleGraceMs: 1 })
   await release()
+})
+
+test('resolveHeadlessDir migrates legacy .freecut-headless to .pixels-headless', async (t) => {
+  const root = tempWorkspace()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const legacy = path.join(root, '.freecut-headless')
+  fs.mkdirSync(legacy, { recursive: true })
+  fs.writeFileSync(
+    path.join(legacy, 'writer.lock'),
+    JSON.stringify({ pid: process.pid, token: 'legacy', createdAt: Date.now() }),
+  )
+  const resolved = await resolveHeadlessDir(root)
+  assert.equal(resolved, path.join(root, '.pixels-headless'))
+  assert.equal(fs.existsSync(legacy), false)
+  assert.equal(fs.existsSync(path.join(resolved, 'writer.lock')), true)
 })
 
 test('media staging streams supported files and rejects traversal ids', async (t) => {

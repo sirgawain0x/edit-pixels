@@ -145,7 +145,7 @@ const main = async () => {
     page.on('pageerror', (e) => console.error('  [pageerror]', e.message))
 
     let lastPct = -1
-    await page.exposeBinding('__freecutProgress', (_src, progress) => {
+    await page.exposeBinding('__pixelsProgress', (_src, progress) => {
       const pct = Math.floor(progress?.progress ?? 0)
       if (pct !== lastPct) {
         lastPct = pct
@@ -154,12 +154,12 @@ const main = async () => {
     })
 
     await page.goto(HARNESS_URL, { waitUntil: 'load', timeout: 60_000 })
-    await page.waitForFunction(() => Boolean(window.freecut?.ready), { timeout: 30_000 })
+    await page.waitForFunction(() => Boolean(window.pixels?.ready), { timeout: 30_000 })
     console.log('Harness ready. Rendering...')
 
     const downloadPromise = page.waitForEvent('download', { timeout: 300_000 })
     const summary = await page.evaluate(
-      (renderInput) => window.freecut.renderTimeline(renderInput),
+      (renderInput) => window.pixels.renderTimeline(renderInput),
       buildInput(mediaUrl),
     )
     process.stdout.write('\n')

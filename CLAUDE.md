@@ -1,4 +1,4 @@
-# FreeCut Web
+# Pixels Web
 
 Browser-based multi-track video editor. React 19 + TypeScript + Vite.
 

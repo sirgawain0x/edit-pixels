@@ -12,7 +12,7 @@ import './index.css'
 
 const log = createLogger('App')
 const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000
-const ACCEPTED_APP_UPDATE_SIGNATURE_KEY = 'freecut-accepted-app-update-signature'
+const ACCEPTED_APP_UPDATE_SIGNATURE_KEY = 'pixels-accepted-app-update-signature'
 
 let updateToastVisible = false
 
@@ -64,7 +64,7 @@ async function showUpdateAvailableToast(
   }
 
   updateToastVisible = true
-  window.dispatchEvent(new Event('freecut:ensure-toaster'))
+  window.dispatchEvent(new Event('pixels:ensure-toaster'))
   let toast: typeof import('sonner').toast
   try {
     ;({ toast } = await import('sonner'))
@@ -135,7 +135,7 @@ async function checkForAppShellUpdate() {
   }
   appShellUpdateCheckInFlight = true
   try {
-    const response = await fetch(`/?__freecut_update_check=${Date.now()}`, {
+    const response = await fetch(`/?__pixels_update_check=${Date.now()}`, {
       cache: 'no-store',
       headers: {
         'Cache-Control': 'no-cache',

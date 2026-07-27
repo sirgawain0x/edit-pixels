@@ -72,9 +72,9 @@ export function App() {
 
   useEffect(() => {
     const show = () => setShowToaster(true)
-    window.addEventListener('freecut:ensure-toaster', show)
+    window.addEventListener('pixels:ensure-toaster', show)
     return () => {
-      window.removeEventListener('freecut:ensure-toaster', show)
+      window.removeEventListener('pixels:ensure-toaster', show)
     }
   }, [])
 

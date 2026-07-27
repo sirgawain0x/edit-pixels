@@ -630,11 +630,11 @@ export const LoadedEditor = memo(function LoadedEditor({
         .substring(0, 100)
       try {
         const handle = await window.showSaveFilePicker({
-          suggestedName: `${safeName}.freecut.zip`,
+          suggestedName: `${safeName}.pixels.zip`,
           types: [
             {
               description: i18n.t('editor.editor.projectBundle'),
-              accept: { 'application/zip': ['.freecut.zip'] },
+              accept: { 'application/zip': ['.pixels.zip'] },
             },
           ],
         })

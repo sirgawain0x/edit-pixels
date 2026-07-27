@@ -1,7 +1,7 @@
 /**
  * Project Bundle Types
  *
- * Defines the format for exportable/importable project bundles (.freecut.zip)
+ * Defines the format for exportable/importable project bundles (.pixels.zip)
  */
 
 import type { Project, ProjectTimeline } from '@/types/project'
@@ -23,8 +23,22 @@ type BundleTimeline = Omit<ProjectTimeline, 'items' | 'compositions'> & {
 // Bundle format version
 export const BUNDLE_VERSION = '1.0'
 
-// Bundle file extension
-export const BUNDLE_EXTENSION = '.freecut.zip'
+// Bundle file extension (new exports)
+export const BUNDLE_EXTENSION = '.pixels.zip'
+
+/** Legacy FreeCut bundle extension — still accepted on import. */
+const LEGACY_BUNDLE_EXTENSION = '.freecut.zip'
+const LEGACY_BUNDLE_JSON_EXTENSION = LEGACY_BUNDLE_EXTENSION.replace(/\.zip$/i, '.json')
+const BUNDLE_JSON_EXTENSION = BUNDLE_EXTENSION.replace(/\.zip$/i, '.json')
+
+/** Match current or legacy bundle filenames, including browser " (N)" renames. */
+export const BUNDLE_FILENAME_RE = new RegExp(
+  `\\.(?:${BUNDLE_EXTENSION.slice(1).replace(/\.zip$/i, '')}|${LEGACY_BUNDLE_EXTENSION.slice(1).replace(/\.zip$/i, '')})(?:\\s*\\(\\d+\\))?\\.zip$`,
+  'i',
+)
+
+/** Match current or legacy JSON project filenames. */
+export const PROJECT_JSON_ACCEPT = `.json,${BUNDLE_JSON_EXTENSION},${LEGACY_BUNDLE_JSON_EXTENSION}`
 
 /**
  * Manifest file structure (manifest.json in bundle)

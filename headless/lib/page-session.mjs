@@ -36,9 +36,9 @@ export class PageSession {
     try {
       const page = await context.newPage()
       page.on('pageerror', this.onPageError)
-      await page.exposeBinding('__freecutProgress', () => {})
+      await page.exposeBinding('__pixelsProgress', () => {})
       await page.goto(this.harnessUrl, { waitUntil: 'load', timeout: 60_000 })
-      await page.waitForFunction(() => Boolean(window.freecut?.ready), { timeout: 30_000 })
+      await page.waitForFunction(() => Boolean(window.pixels?.ready), { timeout: 30_000 })
       this.#context = context
       this.#page = page
       return page

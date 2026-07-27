@@ -16,11 +16,11 @@ AI generation, and export all run in the browser.
 
 ## Product Purpose
 
-FreeCut is a browser-based, local-first, multi-track video editor. It exists to
+Pixels is a browser-based, local-first, multi-track video editor. It exists to
 give serious editors a real NLE that runs entirely in the browser, with a
 workspace folder on their own disk as the source of truth (projects, media
 metadata, thumbnails, waveforms, transcripts, scene cuts, caches all as plain
-files). Success is an editor who would otherwise open Premiere choosing FreeCut
+files). Success is an editor who would otherwise open Premiere choosing Pixels
 for a real cut, and never noticing the browser, because playback is
 frame-accurate, scrubbing is responsive, and the tools they reach for by muscle
 memory are all there.
@@ -36,7 +36,7 @@ projects expert confidence by being legible, predictable, and fast.
 ## Anti-references
 
 - **Consumer-cute editors** (CapCut, iMovie): playful mascots, rounded candy
-  buttons, emoji, gamified flourishes. FreeCut is a pro tool, not a toy.
+  buttons, emoji, gamified flourishes. Pixels is a pro tool, not a toy.
 - **Flashy SaaS dashboards**: gradient heroes, glassmorphism, big-number metric
   cards, marketing-grade decoration inside the working UI.
 - **Cramped legacy NLE chrome**: dense to the point of noise, beveled gray

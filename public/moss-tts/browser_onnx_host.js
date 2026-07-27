@@ -1,8 +1,8 @@
 import { createBrowserOnnxTtsRuntime } from './browser_onnx_runtime.js';
 
-const HOST_SOURCE = 'freecut-moss-tts-host';
-const CLIENT_SOURCE = 'freecut-moss-tts-client';
-const MODEL_STORE_KEY = 'freecut-moss-tts';
+const HOST_SOURCE = 'pixels-moss-tts-host';
+const CLIENT_SOURCE = 'pixels-moss-tts-client';
+const MODEL_STORE_KEY = 'pixels-moss-tts';
 
 let runtime = null;
 let operationChain = Promise.resolve();

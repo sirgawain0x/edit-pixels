@@ -55,9 +55,9 @@ describe('formatRouteErrorDetails', () => {
     const error = new ProjectNotFoundError('project-123')
     error.stack = 'ProjectNotFoundError: Project not found: project-123\n    at loader'
 
-    expect(formatRouteErrorDetails(error, 'https://freecut.example/editor/project-123')).toBe(
+    expect(formatRouteErrorDetails(error, 'https://pixels.example/editor/project-123')).toBe(
       [
-        'Page: https://freecut.example/editor/project-123',
+        'Page: https://pixels.example/editor/project-123',
         'Error: ProjectNotFoundError: Project not found: project-123',
         '',
         'Stack:',

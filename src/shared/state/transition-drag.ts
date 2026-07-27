@@ -6,7 +6,7 @@ import type {
   WipeDirection,
 } from '@/types/transition'
 
-export const TRANSITION_DRAG_MIME = 'application/x-freecut-transition'
+export const TRANSITION_DRAG_MIME = 'application/x-pixels-transition'
 
 export interface DraggedTransitionDescriptor {
   presentation: TransitionPresentation

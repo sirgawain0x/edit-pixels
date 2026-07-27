@@ -22,25 +22,25 @@ describe('last editor project routing', () => {
     window.history.replaceState({}, '', '/editor/project-123?view=timeline#clip')
 
     expect(getEditorProjectReloadPathWithCacheBust()).toBe(
-      '/editor/project-123?view=timeline&__freecut_updated=123#clip',
+      '/editor/project-123?view=timeline&__pixels_updated=123#clip',
     )
   })
 
   it('routes back to the last editor project when the update reload starts from the root page', () => {
     vi.spyOn(Date, 'now').mockReturnValue(456)
     rememberLastEditorProjectId('project-123')
-    window.history.replaceState({}, '', '/?__freecut_updated=1780200314697')
+    window.history.replaceState({}, '', '/?__pixels_updated=1780200314697')
 
     expect(getEditorProjectReloadPathWithCacheBust()).toBe(
-      '/editor/project-123?__freecut_updated=456',
+      '/editor/project-123?__pixels_updated=456',
     )
   })
 
   it('does not route non-root update reloads to the last editor project', () => {
     vi.spyOn(Date, 'now').mockReturnValue(456)
     rememberLastEditorProjectId('project-123')
-    window.history.replaceState({}, '', '/projects?__freecut_updated=1780200314697')
+    window.history.replaceState({}, '', '/projects?__pixels_updated=1780200314697')
 
-    expect(getEditorProjectReloadPathWithCacheBust()).toBe('/projects?__freecut_updated=456')
+    expect(getEditorProjectReloadPathWithCacheBust()).toBe('/projects?__pixels_updated=456')
   })
 })
