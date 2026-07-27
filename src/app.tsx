@@ -1,5 +1,6 @@
 import { Suspense, lazy, useEffect, useState } from 'react'
 import { RouterProvider, createRouter } from '@tanstack/react-router'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { GlobalTooltip } from '@/components/ui/global-tooltip'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { ErrorBoundary } from '@/app/error-boundary'
@@ -16,6 +17,15 @@ const router = createRouter({ routeTree, defaultErrorComponent: RouteErrorScreen
 const LazyToaster = lazy(async () => {
   const { Toaster } = await import('@/components/ui/sonner')
   return { default: Toaster }
+})
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
 })
 
 declare module '@tanstack/react-router' {
@@ -77,20 +87,22 @@ export function App() {
   // children components mount — never see an uninitialized workspace root.
   return (
     <ErrorBoundary level="app">
-      <TooltipProvider delayDuration={300}>
-        <WalletProvider>
-          <WorkspaceGate>
-            <RouterProvider router={router} />
-          </WorkspaceGate>
-        </WalletProvider>
-        <GlobalTooltip />
-        <PwaInstallPrompt />
-        {showToaster && (
-          <Suspense fallback={null}>
-            <LazyToaster />
-          </Suspense>
-        )}
-      </TooltipProvider>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider delayDuration={300}>
+          <WalletProvider>
+            <WorkspaceGate>
+              <RouterProvider router={router} />
+            </WorkspaceGate>
+          </WalletProvider>
+          <GlobalTooltip />
+          <PwaInstallPrompt />
+          {showToaster && (
+            <Suspense fallback={null}>
+              <LazyToaster />
+            </Suspense>
+          )}
+        </TooltipProvider>
+      </QueryClientProvider>
     </ErrorBoundary>
   )
 }
