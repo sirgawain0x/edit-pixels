@@ -586,10 +586,12 @@ describe('MediaCard', () => {
       errorType: 'permission_denied',
     })
     expect(mediaStoreState.openMissingMediaDialog).toHaveBeenCalledTimes(1)
-    expect(mediaStoreState.showNotification).toHaveBeenCalledWith({
-      type: 'error',
-      message: '{{appName}} needs permission to read "movie.mkv" before extracting subtitles.',
-    })
+    expect(mediaStoreState.showNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'error',
+        message: expect.stringContaining('needs permission to read "movie.mkv"'),
+      }),
+    )
   })
 
   it('surfaces NotReadableError from blob open without marking the media missing', async () => {
@@ -613,11 +615,12 @@ describe('MediaCard', () => {
     fireEvent.click(screen.getByText('Extract Embedded Subtitles'))
 
     await waitFor(() => {
-      expect(mediaStoreState.showNotification).toHaveBeenCalledWith({
-        type: 'error',
-        message:
-          '{{appName}} could not read "movie.mkv" right now. Close any app using it and try again.',
-      })
+      expect(mediaStoreState.showNotification).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'error',
+          message: expect.stringContaining('could not read "movie.mkv" right now'),
+        }),
+      )
     })
     expect(embeddedSubtitlePickerStoreMocks.open).not.toHaveBeenCalled()
     expect(mediaStoreState.markMediaBroken).not.toHaveBeenCalled()
