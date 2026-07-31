@@ -3,9 +3,6 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "engines": {
-    "node": ">=22.0.0 <23.0.0"
-  },
   "scripts": {
     "dev": "vp dev --host",
     "dev:quiet": "vp dev --host --mode perf",
@@ -49,6 +46,7 @@
     "headless:test:media": "node headless/media-test.mjs",
     "headless:test:portable": "npm run headless:test:node && npm run headless:test:chrome && npm run headless:test:media",
     "headless:gpu:probe": "node headless/probe.mjs",
+    "headless:mcp": "node headless/mcp-server.mjs",
     "changelog:append": "node scripts/changelog-append.mjs",
     "changelog:rollup": "node scripts/changelog-rollup.mjs",
     "prepare": "vp config"
@@ -65,6 +63,7 @@
     "@mediabunny/ac3": "1.50.8",
     "@mediabunny/mp3-encoder": "1.50.8",
     "@mediabunny/prores": "1.50.8",
+    "@modelcontextprotocol/sdk": "1.30.0",
     "@privy-io/react-auth": "^3.32.2",
     "@privy-io/server-auth": "^1.32.5",
     "@radix-ui/react-accordion": "1.2.12",
@@ -140,6 +139,9 @@
   "overrides": {
     "esbuild": "0.28.1",
     "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=22.0.0 <23.0.0"
   },
   "packageManager": "npm@11.8.0"
 }

@@ -597,7 +597,8 @@ async function main() {
   // The default remains loopback-only because the render service has no auth.
   // Network exposure must be an explicit CLI/environment configuration choice.
   await new Promise((resolve) => server.listen(port, host, resolve))
-  console.log(`Pixels render service on http://${host}:${port}  (workspace: ${workspace})`)
+  const actualPort = server.address().port
+  console.log(`Pixels render service on http://${host}:${actualPort}  (workspace: ${workspace})`)
   console.log(`  GET /health  GET /capabilities  GET /projects  POST /render  POST /edit`)
 
   let shuttingDown

@@ -228,7 +228,48 @@ npm run headless:test       # Build once, then run the complete portable headles
 npm run routes              # Regenerate the TanStack Router route tree
 ```
 
-`npm run verify` runs the complete quality gate, including architecture and
+### MCP server for AI agents
+
+Pixels ships a headless lifecycle API and a stdio MCP server so AI agents can create, edit, and render Pixels projects programmatically. See `docs/agent-prompt.md` for a ready-to-use agent prompt.
+
+```bash
+# Run the MCP server directly for a workspace
+npm run headless:mcp -- --workspace /path/to/pixels-workspace
+
+# Or build the harness once, then connect
+npm run build
+npm run headless:mcp -- --workspace /path/to/pixels-workspace
+```
+
+Tools exposed:
+
+- `pixels_capabilities` — supported operations, effects, codecs, schemas
+- `pixels_list_projects` / `pixels_get_project`
+- `pixels_create_project` / `pixels_update_project`
+- `pixels_edit_project` — apply timeline ops (`addText`, `addClip`, `addTrack`, `moveItem`, `split`, `trimStart`, `trimEnd`, `addEffect`, `setTransform`, `removeItems`, etc.)
+- `pixels_list_media` / `pixels_get_media` / `pixels_import_media`
+- `pixels_render_project` — export the project to MP4/WebM/audio
+
+Example workflow:
+
+```bash
+npm run headless:mcp -- --workspace ./tmp-workspace
+# Then ask an MCP client:
+#   Create a 1920x1080 Pixels project named "Demo",
+#   import ./clip.mp4, add it to track 1 at frame 0,
+#   then render the first 5 seconds to demo.mp4.
+```
+
+### No-code / hosted agent option: Pinata
+
+If you don't have your own AI agent, use a hosted Pinata agent instead. Gawain's agent templates on the Pinata marketplace already know how to drive the Pixels MCP server:
+
+- https://agents.pinata.cloud/landing/marketplace/tbini922
+- https://agents.pinata.cloud/landing/marketplace/tmernpdi
+
+Deploy one of these templates, point it at your local Pixels MCP server, and edit/render video conversationally without installing your own agent stack.
+
+`verify` runs the complete quality gate, including architecture and
 dead-code checks scoped to the current diff, all Node headless contracts, the
 built-harness Chrome regression, every public edit operation, and generated
 media/audio rendering. Real-GPU effects remain an explicit operator/release
