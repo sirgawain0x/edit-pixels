@@ -260,6 +260,15 @@ npm run headless:mcp -- --workspace ./tmp-workspace
 #   then render the first 5 seconds to demo.mp4.
 ```
 
+### No-code / hosted agent option: Pinata
+
+If you don't have your own AI agent, use a hosted Pinata agent instead. Gawain's agent templates on the Pinata marketplace already know how to drive the Pixels MCP server:
+
+- https://agents.pinata.cloud/landing/marketplace/tbini922
+- https://agents.pinata.cloud/landing/marketplace/tmernpdi
+
+Deploy one of these templates, point it at your local Pixels MCP server, and edit/render video conversationally without installing your own agent stack.
+
 `verify` runs the complete quality gate, including architecture and
 dead-code checks scoped to the current diff, all Node headless contracts, the
 built-harness Chrome regression, every public edit operation, and generated

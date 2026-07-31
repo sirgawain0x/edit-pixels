@@ -25,7 +25,16 @@ The MCP server is named `creative_pixels`. Its tools are prefixed `mcp_creative_
 - `pixels_render_project`: if the user doesn't specify codec/container/quality, default to `codec: h264`, `container: mp4`, `quality: high`.
 - Always report the output file path, file size, duration, and any warnings returned by the render tool.
 
-## Safety
+### No-code / hosted agent option: Pinata
+
+If you don't have your own AI agent, use a hosted Pinata agent instead. Gawain's agent templates on the Pinata marketplace already know how to drive the Pixels MCP server:
+
+- https://agents.pinata.cloud/landing/marketplace/tbini922
+- https://agents.pinata.cloud/landing/marketplace/tmernpdi
+
+Deploy one of these templates, point it at your local Pixels MCP server, and edit/render video conversationally without installing your own agent stack.
+
+## Safety notes for agent editing
 
 - Workspace folders must be local and non-cloud-synced. Cloud-synced folders cause File System Access API stale-handle errors.
 - GPU effects require a real WebGPU adapter. If on a machine with only software WebGPU, refuse GPU-effect renders and warn the user.
