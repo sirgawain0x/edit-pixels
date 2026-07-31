@@ -6,7 +6,7 @@ const page = {
   title: 'Troubleshooting',
   description: 'Fixes for browser, workspace, media, WebGPU, local AI, and export problems.',
   category: 'Reference',
-  related: ['workspaces', 'export'],
+  related: ['workspaces', 'export', 'ai-agents-mcp'],
   sections: [
     {
       title: 'Browser and workspace',

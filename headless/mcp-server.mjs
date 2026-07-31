@@ -135,19 +135,37 @@ function getFreePort() {
   })
 }
 
+async function probeHealth(url) {
+  const response = await fetch(`${url}/health`, { signal: AbortSignal.timeout(2_000) })
+  return response.ok
+}
+
 async function waitForHealth(url, { timeoutMs = 120_000 } = {}) {
   const deadline = Date.now() + timeoutMs
-  let lastError
+  let lastError = 'timeout'
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(`${url}/health`, { signal: AbortSignal.timeout(2_000) })
-      if (response.ok) return
+      if (await probeHealth(url)) return
     } catch (error) {
-      lastError = error
+      lastError = String(error)
     }
     await new Promise((resolve) => setTimeout(resolve, 250))
   }
-  throw new Error(`Pixels service did not become healthy: ${lastError?.message ?? 'timeout'}`)
+  throw new Error(`Pixels service did not become healthy: ${lastError}`)
+}
+
+function parseBodyText(text) {
+  if (!text) return null
+  try {
+    return JSON.parse(text)
+  } catch {
+    return { raw: text }
+  }
+}
+
+function httpErrorFrom(data, status) {
+  if (data && data.error) return data.error
+  return { code: 'HTTP_ERROR', message: `HTTP ${status}` }
 }
 
 /** Low-level HTTP helper. */
@@ -155,22 +173,25 @@ async function pixelsFetch(serviceUrl, method, route, body) {
   const init = {
     method,
     headers: { 'Content-Type': 'application/json' },
-    ...(body ? { body: JSON.stringify(body) } : {}),
   }
-  const url = `${serviceUrl}${route}`
-  const response = await fetch(url, init)
-  const text = await response.text()
-  let data
-  try {
-    data = text ? JSON.parse(text) : null
-  } catch {
-    data = { raw: text }
+  if (body) init.body = JSON.stringify(body)
+  const response = await fetch(`${serviceUrl}${route}`, init)
+  const data = parseBodyText(await response.text())
+  if (response.ok) return data
+  const error = httpErrorFrom(data, response.status)
+  throw new Error(`Pixels ${route} failed: ${error.code} — ${error.message}`)
+}
+
+function pickDefined(source, keys) {
+  const out = {}
+  for (const key of keys) {
+    if (source[key] !== undefined) out[key] = source[key]
   }
-  if (!response.ok) {
-    const error = data?.error ?? { code: 'HTTP_ERROR', message: `HTTP ${response.status}` }
-    throw new Error(`Pixels ${route} failed: ${error.code} — ${error.message}`)
-  }
-  return data
+  return out
+}
+
+function textResult(data) {
+  return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -332,139 +353,166 @@ const RESOURCE_TEMPLATES = [
 /* Handlers                                                                   */
 /* -------------------------------------------------------------------------- */
 
-async function handleTool(serviceUrl, name, args) {
-  switch (name) {
-    case 'pixels_capabilities': {
-      const data = await pixelsFetch(serviceUrl, 'GET', '/v1/capabilities')
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] }
-    }
-    case 'pixels_list_projects': {
-      const data = await pixelsFetch(serviceUrl, 'GET', '/v1/projects')
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] }
-    }
-    case 'pixels_get_project': {
-      const data = await pixelsFetch(serviceUrl, 'GET', `/v1/projects/${encodeURIComponent(args.projectId)}`)
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] }
-    }
-    case 'pixels_create_project': {
-      const body = {
-        id: args.id,
-        name: args.name,
-        ...(args.description !== undefined ? { description: args.description } : {}),
-        ...(args.width !== undefined ? { width: args.width } : {}),
-        ...(args.height !== undefined ? { height: args.height } : {}),
-        ...(args.fps !== undefined ? { fps: args.fps } : {}),
-        ...(args.backgroundColor !== undefined ? { backgroundColor: args.backgroundColor } : {}),
-      }
-      const data = await pixelsFetch(serviceUrl, 'POST', '/v1/projects', body)
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] }
-    }
-    case 'pixels_update_project': {
-      const body = {
-        ...(args.name !== undefined ? { name: args.name } : {}),
-        ...(args.description !== undefined ? { description: args.description } : {}),
-        ...(args.width !== undefined ? { width: args.width } : {}),
-        ...(args.height !== undefined ? { height: args.height } : {}),
-        ...(args.fps !== undefined ? { fps: args.fps } : {}),
-        ...(args.backgroundColor !== undefined ? { backgroundColor: args.backgroundColor } : {}),
-        ...(args.expectedRevision !== undefined ? { expectedRevision: args.expectedRevision } : {}),
-        ...(args.force !== undefined ? { force: args.force } : {}),
-      }
-      const data = await pixelsFetch(
-        serviceUrl,
-        'PATCH',
-        `/v1/projects/${encodeURIComponent(args.projectId)}`,
-        body,
-      )
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] }
-    }
-    case 'pixels_edit_project': {
-      const body = {
-        ops: args.ops,
-        persist: Boolean(args.persist),
-        ...(args.expectedRevision !== undefined ? { expectedRevision: args.expectedRevision } : {}),
-        ...(args.force !== undefined ? { force: args.force } : {}),
-      }
-      const data = await pixelsFetch(
-        serviceUrl,
-        'POST',
-        `/v1/projects/${encodeURIComponent(args.projectId)}/edit`,
-        body,
-      )
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] }
-    }
-    case 'pixels_list_media': {
-      const data = await pixelsFetch(serviceUrl, 'GET', '/v1/media')
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] }
-    }
-    case 'pixels_get_media': {
-      const data = await pixelsFetch(serviceUrl, 'GET', `/v1/media/${encodeURIComponent(args.mediaId)}`)
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] }
-    }
-    case 'pixels_import_media': {
-      const filePath = path.resolve(args.filePath)
-      if (!fs.existsSync(filePath)) throw new Error(`Media file not found: ${filePath}`)
-      const data = await pixelsFetch(serviceUrl, 'POST', '/v1/media/import', {
-        file: filePath,
-        ...(args.mediaId ? { id: args.mediaId } : {}),
-        ...(args.projectId ? { project: args.projectId } : {}),
-      })
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] }
-    }
-    case 'pixels_render_project': {
-      const outDir = path.join(os.tmpdir(), 'pixels-mcp-outputs')
-      fs.mkdirSync(outDir, { recursive: true })
-      const outPath =
-        args.outputPath ?? path.join(outDir, `render-${process.pid}-${Date.now()}.out`)
-      const body = {
-        project: args.projectId,
-        ...(args.codec !== undefined ? { codec: args.codec } : {}),
-        ...(args.container !== undefined ? { container: args.container } : {}),
-        ...(args.resolution !== undefined ? { resolution: args.resolution } : {}),
-        ...(args.fps !== undefined ? { fps: args.fps } : {}),
-        ...(args.quality !== undefined ? { quality: args.quality } : {}),
-        ...(args.inSec !== undefined ? { inSec: args.inSec } : {}),
-        ...(args.outSec !== undefined ? { outSec: args.outSec } : {}),
-        ...(args.duration !== undefined ? { duration: args.duration } : {}),
-        ...(args.audioOnly !== undefined ? { audioOnly: args.audioOnly } : {}),
-      }
-      const data = await pixelsFetch(serviceUrl, 'POST', '/v1/render', body)
-      if (!data?.ok) throw new Error(`Render failed: ${JSON.stringify(data)}`)
-      // /v1/render returns the binary directly when rendered inline, but our
-      // proxy schema asks for the same HTTP endpoint. Download from the response
-      // blob and write to the requested output path.
-      const response = await fetch(`${serviceUrl}/v1/render`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      if (!response.ok) throw new Error(`Render download failed: HTTP ${response.status}`)
-      const finalPath = `${outPath}.${data.effectiveSettings?.container ?? 'mp4'}`
-      const buffer = Buffer.from(await response.arrayBuffer())
-      fs.writeFileSync(finalPath, buffer)
-      return {
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify(
-              {
-                ok: true,
-                outputPath: finalPath,
-                fileSize: buffer.length,
-                durationSeconds: data.durationSeconds,
-                effectiveSettings: data.effectiveSettings,
-                warnings: data.warnings,
-              },
-              null,
-              2,
-            ),
-          },
-        ],
-      }
-    }
-    default:
-      throw new Error(`Unknown tool: ${name}`)
+async function toolCapabilities(serviceUrl) {
+  return textResult(await pixelsFetch(serviceUrl, 'GET', '/v1/capabilities'))
+}
+
+async function toolListProjects(serviceUrl) {
+  return textResult(await pixelsFetch(serviceUrl, 'GET', '/v1/projects'))
+}
+
+async function toolGetProject(serviceUrl, args) {
+  return textResult(
+    await pixelsFetch(serviceUrl, 'GET', `/v1/projects/${encodeURIComponent(args.projectId)}`),
+  )
+}
+
+async function toolCreateProject(serviceUrl, args) {
+  const body = {
+    id: args.id,
+    name: args.name,
+    ...pickDefined(args, ['description', 'width', 'height', 'fps', 'backgroundColor']),
   }
+  return textResult(await pixelsFetch(serviceUrl, 'POST', '/v1/projects', body))
+}
+
+async function toolUpdateProject(serviceUrl, args) {
+  const body = pickDefined(args, [
+    'name',
+    'description',
+    'width',
+    'height',
+    'fps',
+    'backgroundColor',
+    'expectedRevision',
+    'force',
+  ])
+  return textResult(
+    await pixelsFetch(
+      serviceUrl,
+      'PATCH',
+      `/v1/projects/${encodeURIComponent(args.projectId)}`,
+      body,
+    ),
+  )
+}
+
+async function toolEditProject(serviceUrl, args) {
+  const body = {
+    ops: args.ops,
+    persist: Boolean(args.persist),
+    ...pickDefined(args, ['expectedRevision', 'force']),
+  }
+  return textResult(
+    await pixelsFetch(
+      serviceUrl,
+      'POST',
+      `/v1/projects/${encodeURIComponent(args.projectId)}/edit`,
+      body,
+    ),
+  )
+}
+
+async function toolListMedia(serviceUrl) {
+  return textResult(await pixelsFetch(serviceUrl, 'GET', '/v1/media'))
+}
+
+async function toolGetMedia(serviceUrl, args) {
+  return textResult(
+    await pixelsFetch(serviceUrl, 'GET', `/v1/media/${encodeURIComponent(args.mediaId)}`),
+  )
+}
+
+async function toolImportMedia(serviceUrl, args) {
+  const filePath = path.resolve(args.filePath)
+  if (!fs.existsSync(filePath)) throw new Error(`Media file not found: ${filePath}`)
+  const body = { file: filePath, ...pickDefined({ id: args.mediaId, project: args.projectId }, ['id', 'project']) }
+  return textResult(await pixelsFetch(serviceUrl, 'POST', '/v1/media/import', body))
+}
+
+function buildRenderBody(args) {
+  return {
+    project: args.projectId,
+    ...pickDefined(args, [
+      'codec',
+      'container',
+      'resolution',
+      'fps',
+      'quality',
+      'inSec',
+      'outSec',
+      'duration',
+      'audioOnly',
+    ]),
+  }
+}
+
+async function downloadRenderBinary(serviceUrl, body) {
+  const response = await fetch(`${serviceUrl}/v1/render`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!response.ok) throw new Error(`Render download failed: HTTP ${response.status}`)
+  return Buffer.from(await response.arrayBuffer())
+}
+
+function defaultRenderOutPath() {
+  const outDir = path.join(os.tmpdir(), 'pixels-mcp-outputs')
+  fs.mkdirSync(outDir, { recursive: true })
+  return path.join(outDir, `render-${process.pid}-${Date.now()}.out`)
+}
+
+function assertRenderOk(data) {
+  if (data && data.ok) return
+  throw new Error(`Render failed: ${JSON.stringify(data)}`)
+}
+
+function renderContainer(data) {
+  const settings = data.effectiveSettings
+  if (settings && settings.container) return settings.container
+  return 'mp4'
+}
+
+async function toolRenderProject(serviceUrl, args) {
+  let outPath = args.outputPath
+  if (!outPath) outPath = defaultRenderOutPath()
+  const body = buildRenderBody(args)
+  const data = await pixelsFetch(serviceUrl, 'POST', '/v1/render', body)
+  assertRenderOk(data)
+  // /v1/render returns the binary directly when rendered inline, but our
+  // proxy schema asks for the same HTTP endpoint. Download from the response
+  // blob and write to the requested output path.
+  const buffer = await downloadRenderBinary(serviceUrl, body)
+  const finalPath = `${outPath}.${renderContainer(data)}`
+  fs.writeFileSync(finalPath, buffer)
+  return textResult({
+    ok: true,
+    outputPath: finalPath,
+    fileSize: buffer.length,
+    durationSeconds: data.durationSeconds,
+    effectiveSettings: data.effectiveSettings,
+    warnings: data.warnings,
+  })
+}
+
+const TOOL_HANDLERS = {
+  pixels_capabilities: toolCapabilities,
+  pixels_list_projects: toolListProjects,
+  pixels_get_project: toolGetProject,
+  pixels_create_project: toolCreateProject,
+  pixels_update_project: toolUpdateProject,
+  pixels_edit_project: toolEditProject,
+  pixels_list_media: toolListMedia,
+  pixels_get_media: toolGetMedia,
+  pixels_import_media: toolImportMedia,
+  pixels_render_project: toolRenderProject,
+}
+
+async function handleTool(serviceUrl, name, args) {
+  const handler = TOOL_HANDLERS[name]
+  if (!handler) throw new Error(`Unknown tool: ${name}`)
+  return handler(serviceUrl, args)
 }
 
 async function handleResource(serviceUrl, uri) {

@@ -6,7 +6,7 @@ const page = {
   title: 'Reference',
   description: 'Supported formats and a glossary of the terms used across this guide.',
   category: 'Reference',
-  related: ['concepts', 'keyboard-shortcuts'],
+  related: ['concepts', 'keyboard-shortcuts', 'ai-agents-mcp'],
   sections: [
     {
       title: 'Formats',

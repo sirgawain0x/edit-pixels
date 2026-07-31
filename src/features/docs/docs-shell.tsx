@@ -418,7 +418,7 @@ function Figure({ figure }: { figure: { src: string; alt: string; caption?: stri
   )
 }
 
-/** Renders inline `**bold**`, `` `code` ``, and `[text](page-slug)` links inside doc strings. */
+/** Renders inline `**bold**`, `` `code` ``, and `[text](slug-or-url)` links inside doc strings. */
 function RichText({ text }: { text: string }) {
   const tokens = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)]+\))/g).filter(Boolean)
 
@@ -444,14 +444,27 @@ function RichText({ text }: { text: string }) {
         }
         const link = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(token)
         if (link) {
-          const [, label, slug] = link
+          const label = link[1]
+          const target = link[2]
+          if (!label || !target) {
+            return <span key={index}>{token}</span>
+          }
+          const linkClassName = 'font-medium text-primary underline-offset-2 hover:underline'
+          if (/^https?:\/\//i.test(target)) {
+            return (
+              <a
+                key={index}
+                href={target}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={linkClassName}
+              >
+                {label}
+              </a>
+            )
+          }
           return (
-            <Link
-              key={index}
-              to="/docs/$slug"
-              params={{ slug: slug as string }}
-              className="font-medium text-primary underline-offset-2 hover:underline"
-            >
+            <Link key={index} to="/docs/$slug" params={{ slug: target }} className={linkClassName}>
               {label}
             </Link>
           )

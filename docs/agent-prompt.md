@@ -27,12 +27,21 @@ The MCP server is named `creative_pixels`. Its tools are prefixed `mcp_creative_
 
 ### No-code / hosted agent option: Pinata
 
-If you don't have your own AI agent, use a hosted Pinata agent instead. Gawain's agent templates on the Pinata marketplace already know how to drive the Pixels MCP server:
+If you don't have your own AI agent, deploy a Creative AI Digital Twin template on Pinata. These are digital-twin agents (alignment, avatars, studio/broadcast) that can also drive Creative Pixels MCP **when connected** to your local server:
 
-- https://agents.pinata.cloud/landing/marketplace/tbini922
-- https://agents.pinata.cloud/landing/marketplace/tmernpdi
+- [Creative AI Digital Twin](https://agents.pinata.cloud/landing/marketplace/tmernpdi) — full Creative TV / Livepeer template
+- [Creative AI Digital Twin Lite](https://agents.pinata.cloud/landing/marketplace/tbini922) — YouTube / Twitch–focused lite template
 
-Deploy one of these templates, point it at your local Pixels MCP server, and edit/render video conversationally without installing your own agent stack.
+Deploy a template, start `npm run headless:mcp -- --workspace <dir>`, point the agent's MCP config at that stdio server, then edit/render conversationally.
+
+### OpenClaw vs Hermes packaging
+
+Use **this same prompt** (and the same `pixels_*` tools) on both runtimes. Only packaging differs:
+
+- **OpenClaw** (typical Pinata listing): containerized workspace with `manifest.json`, `workspace/skills/creative-pixels-mcp.md`, and `.openclaw/openclaw.json`.
+- **Hermes**: procedural `SKILL.md`, `manifest.json` with `"template.platform": "hermes"`, and `references/creative-pixels-mcp.md`; wire local MCP via a stdio client config (Hermes / Claude Desktop).
+
+Template sources live under `openclaw/` and `hermes/` in the Creative agent-templates repo.
 
 ## Safety notes for agent editing
 
