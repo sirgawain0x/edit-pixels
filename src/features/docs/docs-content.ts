@@ -11,8 +11,8 @@ export interface DocFigure {
 
 /**
  * Rich content blocks a section can render. Text in `paragraph`, `list`, `steps`,
- * and `note` supports inline markup: `**bold**` for UI labels and `` `code` `` for
- * keys and file names (see RichText in docs-shell).
+ * and `note` supports inline markup: `**bold**` for UI labels, `` `code` `` for
+ * keys and file names, and `[label](slug-or-url)` links (see RichText in docs-shell).
  */
 export type DocBlock =
   | { kind: 'paragraph'; text: string }

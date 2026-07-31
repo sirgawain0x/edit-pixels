@@ -230,7 +230,7 @@ npm run routes              # Regenerate the TanStack Router route tree
 
 ### MCP server for AI agents
 
-Pixels ships a headless lifecycle API and a stdio MCP server so AI agents can create, edit, and render Pixels projects programmatically. See `docs/agent-prompt.md` for a ready-to-use agent prompt.
+Pixels ships a headless lifecycle API and a stdio MCP server so AI agents can create, edit, and render Pixels projects programmatically. See `docs/agent-prompt.md` for a ready-to-use agent prompt (shared by OpenClaw and Hermes), and the in-app [AI Agents and MCP](https://create.creativeplatform.xyz/docs/ai-agents-mcp) guide for setup and runtime packaging.
 
 ```bash
 # Run the MCP server directly for a workspace
@@ -262,12 +262,12 @@ npm run headless:mcp -- --workspace ./tmp-workspace
 
 ### No-code / hosted agent option: Pinata
 
-If you don't have your own AI agent, use a hosted Pinata agent instead. Gawain's agent templates on the Pinata marketplace already know how to drive the Pixels MCP server:
+If you don't have your own AI agent, deploy a Creative AI Digital Twin template on Pinata. These digital-twin agents can also drive the Pixels MCP server **when connected**:
 
-- https://agents.pinata.cloud/landing/marketplace/tbini922
-- https://agents.pinata.cloud/landing/marketplace/tmernpdi
+- [Creative AI Digital Twin](https://agents.pinata.cloud/landing/marketplace/tmernpdi) — full Creative TV / Livepeer template
+- [Creative AI Digital Twin Lite](https://agents.pinata.cloud/landing/marketplace/tbini922) — YouTube / Twitch–focused lite template
 
-Deploy one of these templates, point it at your local Pixels MCP server, and edit/render video conversationally without installing your own agent stack.
+Deploy a template, start `npm run headless:mcp -- --workspace <dir>`, point the agent's MCP config at that stdio server, then edit/render conversationally. See the in-app [AI Agents and MCP](https://create.creativeplatform.xyz/docs/ai-agents-mcp) guide for OpenClaw vs Hermes packaging (same MCP prompt; different manifests and config files).
 
 `verify` runs the complete quality gate, including architecture and
 dead-code checks scoped to the current diff, all Node headless contracts, the

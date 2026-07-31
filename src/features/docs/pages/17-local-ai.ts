@@ -7,7 +7,7 @@ const page = {
   description:
     'In-browser text to speech, music generation, and transcription, with local model caching.',
   category: 'Creative Tools',
-  related: ['scene-browser', 'text-captions-subtitles', 'audio'],
+  related: ['scene-browser', 'text-captions-subtitles', 'audio', 'ai-agents-mcp'],
   sections: [
     {
       title: 'How local AI works',
@@ -24,6 +24,11 @@ const page = {
           kind: 'note',
           tone: 'info',
           text: 'Some tools require Chrome or Edge 113+ (or Safari 26+) and WebGPU support. The first model download can be large.',
+        },
+        {
+          kind: 'note',
+          tone: 'tip',
+          text: 'For agent-driven create/edit/render outside the editor UI, see [AI Agents and MCP](ai-agents-mcp).',
         },
       ],
     },
