@@ -230,7 +230,7 @@ npm run routes              # Regenerate the TanStack Router route tree
 
 ### MCP server for AI agents
 
-Pixels ships a headless lifecycle API and a stdio MCP server so AI agents can create, edit, and render Pixels projects programmatically.
+Pixels ships a headless lifecycle API and a stdio MCP server so AI agents can create, edit, and render Pixels projects programmatically. See `docs/agent-prompt.md` for a ready-to-use agent prompt.
 
 ```bash
 # Run the MCP server directly for a workspace
