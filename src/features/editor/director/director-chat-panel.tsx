@@ -1,19 +1,110 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Info, Loader2, Send, Sparkles, Trash2, Wrench, X } from 'lucide-react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { Clapperboard, Loader2, Send, Square, Trash2, Wrench } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/shared/ui/cn'
 import { useDirectorStore } from './director-store'
 
-const SUGGESTIONS: { key: string; text: string }[] = [
-  { key: 'storyboard', text: 'Storyboard a beat-synced music video for this track' },
-  { key: 'mood', text: 'Research visual references for a dark synthwave mood' },
-  { key: 'cuts', text: 'Propose cut points every 4 bars at 120 BPM' },
+const SUGGESTIONS: { key: string; text: string; label: string }[] = [
+  {
+    key: 'storyboard',
+    label: 'Storyboard',
+    text: 'Storyboard a beat-synced music video for this track',
+  },
+  {
+    key: 'mood',
+    label: 'Mood board',
+    text: 'Research visual references for a dark synthwave mood',
+  },
+  {
+    key: 'cuts',
+    label: 'Cut points',
+    text: 'Propose cut points every 4 bars at 120 BPM',
+  },
 ]
+
+function statusLabel(
+  phase: string,
+  streamingText: string,
+  runningTools: number,
+  t: (key: string, opts?: { defaultValue: string }) => string,
+): string {
+  if (phase === 'streaming' && runningTools > 0) {
+    return t('director.status.working', { defaultValue: 'Working' })
+  }
+  if (phase === 'streaming' && streamingText) {
+    return t('director.status.writing', { defaultValue: 'Writing' })
+  }
+  if (phase === 'streaming') {
+    return t('director.status.thinking', { defaultValue: 'Thinking' })
+  }
+  return t('director.status.ready', { defaultValue: 'Ready' })
+}
+
+function AgentMark({ variant = 'agent' }: { variant?: 'agent' | 'tool' | 'error' | 'busy' }) {
+  return (
+    <div
+      className={cn(
+        'mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border',
+        variant === 'error' && 'border-destructive/40 bg-destructive/10 text-destructive',
+        variant === 'tool' && 'border-border bg-secondary/40 text-muted-foreground',
+        (variant === 'agent' || variant === 'busy') &&
+          'border-primary/30 bg-primary/10 text-primary',
+      )}
+    >
+      {variant === 'tool' ? (
+        <Wrench className="h-3 w-3" />
+      ) : variant === 'busy' ? (
+        <Loader2 className="h-3 w-3 animate-spin text-primary" />
+      ) : (
+        <Clapperboard className="h-3 w-3" strokeWidth={1.75} />
+      )}
+    </div>
+  )
+}
+
+function DirectorMessage({
+  role,
+  content,
+}: {
+  role: 'user' | 'assistant' | 'tool' | 'error'
+  content: string
+}) {
+  if (role === 'user') {
+    return (
+      <div className="flex justify-end gap-2.5">
+        <div className="max-w-[88%] rounded-2xl rounded-br-md bg-primary px-3 py-2 text-[12px] leading-relaxed whitespace-pre-wrap text-primary-foreground">
+          {content}
+        </div>
+      </div>
+    )
+  }
+
+  const markVariant = role === 'tool' ? 'tool' : role === 'error' ? 'error' : 'agent'
+
+  return (
+    <div className="flex justify-start gap-2.5">
+      <AgentMark variant={markVariant} />
+      <div
+        className={cn(
+          'max-w-[88%] whitespace-pre-wrap text-[12px] leading-relaxed',
+          role === 'assistant' && 'pt-0.5 text-foreground/95',
+          role === 'tool' &&
+            'rounded-md border border-border/80 bg-secondary/25 px-2.5 py-1.5 font-mono text-[11px] text-muted-foreground',
+          role === 'error' &&
+            'rounded-md border border-destructive/40 bg-destructive/10 px-2.5 py-1.5 text-destructive',
+        )}
+      >
+        {content}
+      </div>
+    </div>
+  )
+}
 
 export const DirectorChatPanel = memo(function DirectorChatPanel() {
   const { t } = useTranslation()
+  const reduceMotion = useReducedMotion()
   const messages = useDirectorStore((s) => s.messages)
   const phase = useDirectorStore((s) => s.phase)
   const streamingText = useDirectorStore((s) => s.streamingText)
@@ -24,11 +115,22 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
 
   const [input, setInput] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const busy = phase !== 'idle'
+  const runningTools = toolCalls.filter((call) => call.status === 'running')
+  const isEmpty = messages.length === 0 && phase === 'idle'
+  const status = statusLabel(phase, streamingText, runningTools.length, t)
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
   }, [messages, phase, streamingText, toolCalls])
+
+  useEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 112)}px`
+  }, [input])
 
   const send = useCallback(
     (text: string) => {
@@ -51,151 +153,218 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
   )
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
-        {messages.length === 0 && phase === 'idle' && (
-          <div className="space-y-3">
-            <div className="flex items-start gap-2 rounded-lg border border-border bg-secondary/20 p-2.5">
-              <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                {t('director.empty.intro', {
-                  defaultValue:
-                    'Creative Director plans beat-synced storyboards via Vertex Agent Engine. Traces stream live; timeline edits stay manual for now.',
-                })}
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {SUGGESTIONS.map((suggestion) => (
-                <button
-                  key={suggestion.key}
-                  type="button"
-                  onClick={() => send(suggestion.text)}
-                  className="rounded-full border border-border bg-secondary/30 px-2.5 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
-                >
-                  {suggestion.text}
-                </button>
-              ))}
-            </div>
+    <div className="relative flex h-full min-h-0 flex-col overflow-hidden">
+      {/* Atmosphere — editorial dark, warm primary bleed */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_-10%,oklch(0.68_0.19_45_/_0.14),transparent_55%),linear-gradient(180deg,oklch(0.14_0_0)_0%,oklch(0.12_0_0)_100%)]"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent"
+      />
+
+      {/* Agent identity */}
+      <header className="relative z-10 flex shrink-0 items-center gap-3 border-b border-border/60 px-3 py-2.5">
+        <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-primary/35 bg-primary/10">
+          <Clapperboard className="h-4 w-4 text-primary" strokeWidth={1.75} />
+          <span
+            className={cn(
+              'absolute -right-0.5 -bottom-0.5 h-2.5 w-2.5 rounded-full border-2 border-[oklch(0.14_0_0)]',
+              busy ? 'bg-primary' : 'bg-emerald-400/90',
+              busy && !reduceMotion && 'animate-pulse',
+            )}
+            aria-hidden
+          />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-2">
+            <h2 className="truncate text-[13px] font-semibold tracking-tight text-foreground">
+              {t('director.identity.name', { defaultValue: 'Creative Director' })}
+            </h2>
+            <span className="font-mono text-[10px] tracking-wider text-muted-foreground uppercase">
+              {status}
+            </span>
           </div>
+          <p className="truncate text-[11px] text-muted-foreground">
+            {busy
+              ? t('director.identity.busy', {
+                  defaultValue: 'Planning against Vertex Agent Engine…',
+                })
+              : t('director.identity.idle', {
+                  defaultValue: 'Beat-synced storyboards · research only',
+                })}
+          </p>
+        </div>
+        {messages.length > 0 && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0 text-muted-foreground"
+            onClick={clearChat}
+            disabled={busy}
+            aria-label={t('director.clear', { defaultValue: 'Clear session' })}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
         )}
+      </header>
+
+      {/* Transcript */}
+      <div
+        ref={scrollRef}
+        className="relative z-10 min-h-0 flex-1 space-y-4 overflow-y-auto px-3 py-4"
+      >
+        <AnimatePresence mode="wait">
+          {isEmpty && (
+            <motion.div
+              key="empty"
+              initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={reduceMotion ? undefined : { opacity: 0, y: -6 }}
+              transition={{ duration: 0.35, ease: [0.23, 1, 0.32, 1] }}
+              className="flex min-h-[70%] flex-col justify-center gap-6 py-2"
+            >
+              <div className="space-y-2">
+                <p className="font-mono text-[10px] tracking-[0.2em] text-primary/80 uppercase">
+                  {t('director.empty.eyebrow', { defaultValue: 'Session' })}
+                </p>
+                <h3 className="text-[22px] leading-tight font-semibold tracking-tight text-foreground">
+                  {t('director.empty.title', {
+                    defaultValue: 'Brief the Director',
+                  })}
+                </h3>
+                <p className="max-w-[22rem] text-[12px] leading-relaxed text-muted-foreground">
+                  {t('director.empty.intro', {
+                    defaultValue:
+                      'Describe the cut you want. The Director streams research and storyboards live — timeline edits stay yours.',
+                  })}
+                </p>
+              </div>
+
+              <ul className="space-y-1.5">
+                {SUGGESTIONS.map((suggestion, index) => (
+                  <motion.li
+                    key={suggestion.key}
+                    initial={reduceMotion ? false : { opacity: 0, x: -6 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{
+                      delay: reduceMotion ? 0 : 0.08 + index * 0.05,
+                      duration: 0.3,
+                      ease: [0.23, 1, 0.32, 1],
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => send(suggestion.text)}
+                      className="group flex w-full items-center gap-3 rounded-md border border-border/70 bg-secondary/20 px-3 py-2.5 text-left transition-colors hover:border-primary/40 hover:bg-primary/5"
+                    >
+                      <span className="font-mono text-[10px] text-muted-foreground tabular-nums group-hover:text-primary">
+                        {String(index + 1).padStart(2, '0')}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-[12px] font-medium text-foreground">
+                          {suggestion.label}
+                        </span>
+                        <span className="block truncate text-[11px] text-muted-foreground">
+                          {suggestion.text}
+                        </span>
+                      </span>
+                    </button>
+                  </motion.li>
+                ))}
+              </ul>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {messages.map((message) => (
-          <div
-            key={message.id}
-            className={cn('flex', message.role === 'user' ? 'justify-end' : 'justify-start')}
-          >
-            <div
-              className={cn(
-                'max-w-[85%] whitespace-pre-wrap rounded-lg px-2.5 py-1.5 text-xs leading-relaxed',
-                message.role === 'user' && 'bg-primary text-primary-foreground',
-                message.role === 'assistant' && 'bg-secondary/40 text-foreground',
-                message.role === 'tool' &&
-                  'flex items-center gap-1.5 border border-border bg-secondary/20 text-muted-foreground',
-                message.role === 'error' &&
-                  'border border-destructive/40 bg-destructive/10 text-destructive',
-              )}
-            >
-              {message.role === 'tool' && <Wrench className="h-3 w-3 shrink-0" />}
-              {message.content}
-            </div>
-          </div>
+          <DirectorMessage key={message.id} role={message.role} content={message.content} />
         ))}
 
         {phase === 'streaming' && streamingText && (
-          <div className="flex justify-start">
-            <div className="max-w-[85%] whitespace-pre-wrap rounded-lg bg-secondary/40 px-2.5 py-1.5 text-xs leading-relaxed text-foreground">
+          <div className="flex justify-start gap-2.5">
+            <AgentMark />
+            <div className="max-w-[88%] whitespace-pre-wrap pt-0.5 text-[12px] leading-relaxed text-foreground/95">
               {streamingText}
+              <span
+                className={cn(
+                  'ml-0.5 inline-block h-3 w-[2px] translate-y-0.5 bg-primary align-middle',
+                  !reduceMotion && 'animate-pulse',
+                )}
+                aria-hidden
+              />
             </div>
           </div>
         )}
 
-        {phase === 'streaming' && !streamingText && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            {t('director.status.thinking', { defaultValue: 'Director is planning…' })}
+        {phase === 'streaming' && !streamingText && runningTools.length === 0 && (
+          <div className="flex items-center gap-2.5 text-[12px] text-muted-foreground">
+            <AgentMark variant="busy" />
+            {t('director.status.planning', { defaultValue: 'Director is planning…' })}
           </div>
         )}
 
-        {toolCalls.some((call) => call.status === 'running') && (
-          <div className="flex flex-wrap gap-1.5">
-            {toolCalls
-              .filter((call) => call.status === 'running')
-              .map((call) => (
-                <span
-                  key={call.id}
-                  className="inline-flex items-center gap-1 rounded-md border border-border bg-secondary/30 px-2 py-0.5 text-[11px] text-muted-foreground"
-                >
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  {call.name}
-                </span>
-              ))}
+        {runningTools.length > 0 && (
+          <div className="ml-8 space-y-1.5">
+            {runningTools.map((call) => (
+              <div
+                key={call.id}
+                className="inline-flex items-center gap-2 rounded-md border border-border/70 bg-secondary/30 px-2.5 py-1 font-mono text-[11px] text-muted-foreground"
+              >
+                <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                <span className="text-foreground/80">{call.name}</span>
+              </div>
+            ))}
           </div>
         )}
       </div>
 
-      <div className="shrink-0 border-t border-border p-2.5">
-        <div className="flex items-end gap-1.5">
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-9 w-9 shrink-0 text-muted-foreground"
-                aria-label={t('director.empty.infoLabel', {
-                  defaultValue: 'About Creative Director',
-                })}
-              >
-                <Info className="h-4 w-4" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent align="start" side="top" className="w-64 p-3">
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                {t('director.empty.about', {
-                  defaultValue:
-                    'Streams from the deployed Creative Director Reasoning Engine. Research and storyboards only — mock production tools are labeled as simulations.',
-                })}
-              </p>
-            </PopoverContent>
-          </Popover>
+      {/* Composer */}
+      <div className="relative z-10 shrink-0 border-t border-border/60 bg-[oklch(0.13_0_0_/_0.85)] px-3 py-2.5 backdrop-blur-sm">
+        <label className="sr-only" htmlFor="director-prompt">
+          {t('director.composer.placeholder', { defaultValue: 'Brief the Director…' })}
+        </label>
+        <div className="flex items-end gap-2 rounded-xl border border-border/80 bg-secondary/30 p-1.5 transition-colors focus-within:border-primary/45">
           <textarea
+            id="director-prompt"
+            ref={textareaRef}
             value={input}
             onChange={(event) => setInput(event.target.value)}
             onKeyDown={handleKeyDown}
             rows={1}
             placeholder={t('director.composer.placeholder', {
-              defaultValue: 'Ask the director to storyboard…',
+              defaultValue: 'Brief the Director…',
             })}
-            className="max-h-28 min-h-[2.25rem] flex-1 resize-none rounded-md border border-border bg-secondary/30 px-2.5 py-1.5 text-xs text-foreground outline-none focus:border-primary/50"
+            className="max-h-28 min-h-[2.5rem] flex-1 resize-none bg-transparent px-2 py-2 text-[12px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/70"
           />
           {phase === 'streaming' ? (
-            <Button size="icon" variant="ghost" className="h-9 w-9 shrink-0" onClick={cancel}>
-              <X className="h-4 w-4" />
+            <Button
+              size="icon"
+              variant="secondary"
+              className="h-9 w-9 shrink-0 rounded-lg"
+              onClick={cancel}
+              aria-label={t('director.cancel', { defaultValue: 'Stop' })}
+            >
+              <Square className="h-3.5 w-3.5 fill-current" />
             </Button>
           ) : (
             <Button
               size="icon"
-              className="h-9 w-9 shrink-0"
+              className="h-9 w-9 shrink-0 rounded-lg"
               disabled={busy || !input.trim()}
               onClick={() => send(input)}
+              aria-label={t('director.send', { defaultValue: 'Send brief' })}
             >
               <Send className="h-4 w-4" />
             </Button>
           )}
         </div>
-        {messages.length > 0 && (
-          <div className="mt-1.5 flex justify-end">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 gap-1 px-2 text-[11px] text-muted-foreground"
-              onClick={clearChat}
-              disabled={phase === 'streaming'}
-            >
-              <Trash2 className="h-3 w-3" />
-              {t('director.clear', { defaultValue: 'Clear' })}
-            </Button>
-          </div>
-        )}
+        <p className="mt-1.5 px-0.5 font-mono text-[10px] tracking-wide text-muted-foreground/80">
+          {t('director.composer.hint', {
+            defaultValue: 'Enter to send · Shift+Enter for newline · display only',
+          })}
+        </p>
       </div>
     </div>
   )
