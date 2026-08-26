@@ -56,6 +56,21 @@ export async function consumePaymentTxHash(
   return { ok: true }
 }
 
+/**
+ * Release a reserved/consumed payment hash so a failed pre-delivery request
+ * can be retried. No-op when Redis is unavailable.
+ */
+export async function releasePaymentTxHash(txHash: string): Promise<void> {
+  const normalized = txHash.trim().toLowerCase()
+  if (!normalized.startsWith('0x') || normalized.length < 66) return
+  if (!isRedisConfigured()) return
+
+  const redis = await getRedis()
+  if (!redis) return
+
+  await redis.del(`${PAYMENT_KEY_PREFIX}${normalized}`)
+}
+
 /** Whether production billing can safely enforce one-time payments. */
 export function isPaymentLedgerReady(): boolean {
   return isRedisConfigured()

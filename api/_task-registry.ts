@@ -1,5 +1,6 @@
 /**
  * Bind Evolink task ids to the paying wallet so poll routes stay private.
+ * Requires Upstash/Vercel KV on Vercel — instance memory is local-dev only.
  */
 // fallow-ignore-file complexity
 
@@ -9,6 +10,10 @@ const TASK_KEY_PREFIX = 'pixels:flow:task:'
 const TASK_TTL_SECONDS = 60 * 60 * 24 // 24h
 
 const memoryTasks = new Map<string, { wallet: string; expiresAt: number }>()
+
+function allowMemoryFallback(): boolean {
+  return !process.env.VERCEL
+}
 
 export async function registerGenerativeTask(taskId: string, wallet: string): Promise<void> {
   const id = taskId.trim()
@@ -21,6 +26,10 @@ export async function registerGenerativeTask(taskId: string, wallet: string): Pr
       await redis.set(`${TASK_KEY_PREFIX}${id}`, owner, { ex: TASK_TTL_SECONDS })
       return
     }
+  }
+
+  if (!allowMemoryFallback()) {
+    throw new Error('Task registry unavailable (configure Upstash/Vercel KV)')
   }
 
   memoryTasks.set(id, {
@@ -40,6 +49,8 @@ export async function getGenerativeTaskOwner(taskId: string): Promise<string | n
       return typeof owner === 'string' ? owner.toLowerCase() : null
     }
   }
+
+  if (!allowMemoryFallback()) return null
 
   const entry = memoryTasks.get(id)
   if (!entry) return null

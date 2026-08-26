@@ -14,10 +14,15 @@ const FRAME_KEY_PREFIX = 'pixels:flow:frame:'
 const FRAME_TTL_SECONDS = 60 * 60 // 1 hour
 const MAX_BYTES = 8 * 1024 * 1024
 
+/** Local-dev only — Vercel serverless instances do not share memory. */
 const memoryFrames = new Map<
   string,
   { bytes: Uint8Array; contentType: string; expiresAt: number }
 >()
+
+function allowMemoryFallback(): boolean {
+  return !process.env.VERCEL
+}
 
 function parseDataUri(dataUri: string): { contentType: string; bytes: Uint8Array } {
   const match = /^data:([^;,]+)?(;base64)?,([\s\S]*)$/i.exec(dataUri.trim())
@@ -51,6 +56,10 @@ async function storeFrame(contentType: string, bytes: Uint8Array): Promise<strin
     }
   }
 
+  if (!allowMemoryFallback()) {
+    throw new Error('Frame store unavailable (configure Upstash/Vercel KV)')
+  }
+
   memoryFrames.set(id, {
     contentType,
     bytes,
@@ -77,6 +86,8 @@ async function loadFrame(id: string): Promise<{ contentType: string; bytes: Uint
       }
     }
   }
+
+  if (!allowMemoryFallback()) return null
 
   const entry = memoryFrames.get(id)
   if (!entry) return null

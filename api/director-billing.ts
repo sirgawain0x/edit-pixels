@@ -8,7 +8,11 @@
 import { createPublicClient, http, type Hex } from 'viem'
 import { base } from 'viem/chains'
 import { isPremiumWallet } from './_premium-membership.js'
-import { consumePaymentTxHash, isPaymentLedgerReady } from './_payment-ledger.js'
+import {
+  consumePaymentTxHash,
+  isPaymentLedgerReady,
+  releasePaymentTxHash,
+} from './_payment-ledger.js'
 
 /** Mirrors `DIRECTOR_USDC6_PER_AUDIO_MINUTE_RETAIL` in src/config/billing.ts */
 const DIRECTOR_USDC6_PER_AUDIO_MINUTE_RETAIL = 50_000
@@ -179,4 +183,9 @@ export async function verifyAndConsumeDirectorPayment(options: {
   }
 
   return verified
+}
+
+/** Undo a consumed payment hash after a pre-delivery Director failure. */
+export async function releaseDirectorPayment(txHash: string): Promise<void> {
+  await releasePaymentTxHash(txHash)
 }
