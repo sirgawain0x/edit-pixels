@@ -1,11 +1,10 @@
-import { defineConfig, lazyPlugins } from 'vite-plus'
+import { defineConfig, lazyPlugins, loadEnv } from 'vite-plus'
 import type { Plugin } from 'vite-plus'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { loadEnv } from 'vite'
 import { POST as directorPost } from './api/director'
 
 // Stamps public/sw.js with the hashed entry-chunk filename at build time so the service
@@ -109,6 +108,7 @@ async function handleDirectorDevRequest(
 function directorApiDevPlugin(): Plugin {
   return {
     name: 'pixels-director-api-dev',
+    // fallow-ignore-next-line complexity
     configureServer(server) {
       // Vite only injects VITE_* by default; Director needs GOOGLE_/VERTEX_/GCP_ from .env.local.
       const mode = server.config.mode || 'development'
