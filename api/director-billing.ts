@@ -21,13 +21,14 @@ export interface DirectorBillingQuote {
 
 function billableAudioMinutes(audioDurationSeconds: number): number {
   if (!Number.isFinite(audioDurationSeconds) || audioDurationSeconds <= 0) return 0
-  return Math.max(1, Math.ceil(audioDurationSeconds / 60))
+  return audioDurationSeconds / 60
 }
 
 export function quoteDirectorRetail(audioDurationSeconds: number): DirectorBillingQuote | null {
   const minutes = billableAudioMinutes(audioDurationSeconds)
   if (minutes <= 0) return null
-  const estimatedUsdc6 = minutes * DIRECTOR_USDC6_PER_AUDIO_MINUTE
+  const estimatedUsdc6 = Math.round((audioDurationSeconds * DIRECTOR_USDC6_PER_AUDIO_MINUTE) / 60)
+  if (estimatedUsdc6 <= 0) return null
   return {
     billableMinutes: minutes,
     estimatedUsdc6,

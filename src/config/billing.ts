@@ -29,7 +29,8 @@ export const SPEND_LIMIT_REFRESH_SECONDS = 86_400
 /**
  * Creative Director — USDC-equivalent per minute of timeline audio (retail).
  * Aligns with Live AI retail ($0.25 / 5 min ⇒ $0.05 / min).
- * Billable minutes are ceil(audioSeconds / 60), minimum 1.
+ * Billable minutes are exact (audioSeconds / 60); cost is prorated
+ * round(seconds × ratePerMinute / 60).
  */
 export const DIRECTOR_USDC6_PER_AUDIO_MINUTE_RETAIL = INTERVAL_COST_RETAIL_USDC6 / 5
 
