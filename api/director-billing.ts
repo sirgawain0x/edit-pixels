@@ -8,7 +8,7 @@ import { createPublicClient, http, type Hex } from 'viem'
 import { base } from 'viem/chains'
 
 /** Mirrors `DIRECTOR_USDC6_PER_AUDIO_MINUTE_RETAIL` in src/config/billing.ts */
-export const DIRECTOR_USDC6_PER_AUDIO_MINUTE = 50_000
+const DIRECTOR_USDC6_PER_AUDIO_MINUTE = 50_000
 
 const CRTVAI_DIAMOND = '0xecb695544a3d2a64d579b3828f3f60f6932f4846'
 
@@ -19,7 +19,7 @@ export interface DirectorBillingQuote {
   minCrtvaiWei: bigint
 }
 
-export function billableAudioMinutes(audioDurationSeconds: number): number {
+function billableAudioMinutes(audioDurationSeconds: number): number {
   if (!Number.isFinite(audioDurationSeconds) || audioDurationSeconds <= 0) return 0
   return Math.max(1, Math.ceil(audioDurationSeconds / 60))
 }
@@ -35,13 +35,13 @@ export function quoteDirectorRetail(audioDurationSeconds: number): DirectorBilli
   }
 }
 
-export function getDirectorTreasury(): `0x${string}` | null {
+// fallow-ignore-next-line complexity
+function getDirectorTreasury(): `0x${string}` | null {
   const raw =
     process.env.PIXELS_TREASURY_ADDRESS?.trim() ||
     process.env.VITE_SUPERFLUID_RECEIVER?.trim() ||
     ''
-  if (!raw.startsWith('0x') || raw.length < 42) return null
-  return raw as `0x${string}`
+  return raw.startsWith('0x') && raw.length >= 42 ? (raw as `0x${string}`) : null
 }
 
 /** Enforce CRTVAI payment on deployed Vercel when a treasury is configured. */

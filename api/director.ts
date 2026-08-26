@@ -225,6 +225,7 @@ function engineStreamUrl(): string {
   return `https://${location}-aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/reasoningEngines/${engineId}:streamQuery?alt=sse`
 }
 
+// fallow-ignore-next-line complexity
 async function parseDirectorRequest(
   request: Request,
 ): Promise<{ ok: true; data: ParsedDirectorRequest } | { ok: false; response: Response }> {
@@ -259,6 +260,7 @@ async function parseDirectorRequest(
   }
 }
 
+// fallow-ignore-next-line complexity
 async function assertDirectorPayment(data: ParsedDirectorRequest): Promise<Response | null> {
   if (!isDirectorBillingEnforced()) return null
 

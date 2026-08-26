@@ -3,8 +3,6 @@
  * Director storyboards assume a beat-synced track already on the timeline.
  */
 
-import { useItemsStore } from '@/features/editor/deps/timeline-store-contract'
-import { useTimelineSettingsStore } from '@/features/editor/deps/timeline-store-contract'
 import { hasLinkedAudioCompanion } from '@/shared/utils/linked-media'
 import type { AudioItem, TimelineItem, VideoItem } from '@/types/timeline'
 
@@ -77,13 +75,6 @@ export function buildDirectorTimelineAudioContext(
     clips,
     primary,
   }
-}
-
-export function getDirectorTimelineAudioContext(): DirectorTimelineAudioContext {
-  return buildDirectorTimelineAudioContext(
-    useItemsStore.getState().items,
-    useTimelineSettingsStore.getState().fps || 30,
-  )
 }
 
 /** Appends timeline audio facts the remote Director can use without fetching blobs. */
