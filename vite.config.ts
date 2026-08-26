@@ -5,6 +5,7 @@ import tailwindcss from '@tailwindcss/vite'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { loadEnv } from 'vite'
 import { POST as directorPost } from './api/director'
 
 // Stamps public/sw.js with the hashed entry-chunk filename at build time so the service
@@ -109,6 +110,13 @@ function directorApiDevPlugin(): Plugin {
   return {
     name: 'pixels-director-api-dev',
     configureServer(server) {
+      // Vite only injects VITE_* by default; Director needs GOOGLE_/VERTEX_/GCP_ from .env.local.
+      const mode = server.config.mode || 'development'
+      const loaded = loadEnv(mode, server.config.envDir || process.cwd(), '')
+      for (const [key, value] of Object.entries(loaded)) {
+        if (process.env[key] === undefined) process.env[key] = value
+      }
+
       server.middlewares.use((req, res, next) => {
         const path = req.url?.split('?')[0]
         if (req.method !== 'POST' || path !== '/api/director') {

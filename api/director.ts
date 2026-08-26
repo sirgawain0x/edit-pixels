@@ -2,12 +2,17 @@
 /**
  * Vercel serverless endpoint: proxies Creative Director Agent Engine SSE.
  *
+ * Engine (streamQuery SSE — not the unary :query URL):
+ *   projects/creative-ai-491118/locations/us-central1/reasoningEngines/5922098819817799680
+ * Agent runtime identity (Agent Engine SA — not the caller):
+ *   service-1037240986506@gcp-sa-aiplatform-re.iam.gserviceaccount.com
+ *
  * Auth (no service-account keys):
  * - Production / Vercel: Workload Identity Federation via Vercel OIDC
  *   (`@vercel/oidc` + `ExternalAccountClient`)
  * - Local: Application Default Credentials
- *   (`gcloud auth application-default login`), or the same WIF path after
- *   `vercel env pull` (provides `VERCEL_OIDC_TOKEN`)
+ *   (`gcloud auth application-default login`); GCP_* from `vercel env pull`
+ *   only apply when `VERCEL` is set
  *
  * Body JSON:
  *   prompt     - user message (required)
@@ -19,7 +24,7 @@
 import { getVercelOidcToken } from '@vercel/oidc'
 import { ExternalAccountClient, GoogleAuth } from 'google-auth-library'
 
-const DEFAULT_PROJECT = '1037240986506'
+const DEFAULT_PROJECT = 'creative-ai-491118'
 const DEFAULT_LOCATION = 'us-central1'
 const DEFAULT_ENGINE_ID = '5922098819817799680'
 const CLOUD_PLATFORM_SCOPE = 'https://www.googleapis.com/auth/cloud-platform'
@@ -130,11 +135,15 @@ async function getAccessTokenViaAdc(): Promise<string> {
 }
 
 /**
- * Prefer keyless WIF on Vercel; fall back to ADC for local shells without OIDC.
+ * Prefer keyless WIF on Vercel; use ADC for local `vp dev`.
+ *
+ * `vercel env pull` often copies GCP_* into `.env.local`. Those must not force
+ * the WIF path locally — Vercel OIDC tokens expire and `@vercel/oidc` needs the
+ * Vercel runtime. Only use WIF when `VERCEL` is set.
  */
 async function getAccessToken(): Promise<string> {
   const wif = readWifConfig()
-  if (wif) {
+  if (wif && process.env.VERCEL) {
     return getAccessTokenViaWif(wif)
   }
   return getAccessTokenViaAdc()
@@ -304,10 +313,14 @@ export async function POST(request: Request): Promise<Response> {
     token = await getAccessToken()
   } catch (error) {
     console.error('Director auth error', error)
+    const detail = error instanceof Error ? error.message : String(error)
+    const hint = process.env.VERCEL
+      ? 'Set GCP Workload Identity Federation env vars (Vercel OIDC).'
+      : 'Run `gcloud auth application-default login` (local ADC). GCP_* from `vercel env pull` are ignored off-Vercel.'
     return Response.json(
       {
-        error:
-          'Director not configured: set GCP Workload Identity Federation env vars (Vercel OIDC) or Application Default Credentials locally',
+        error: `Director auth failed: ${hint}`,
+        detail: process.env.VERCEL ? undefined : detail,
       },
       { status: 503 },
     )
