@@ -4,7 +4,7 @@ import { Info, Loader2, Send, Sparkles, Trash2, Wrench, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/shared/ui/cn'
-import { useDirectorStore } from '../director'
+import { useDirectorStore } from './director-store'
 
 const SUGGESTIONS: { key: string; text: string }[] = [
   { key: 'storyboard', text: 'Storyboard a beat-synced music video for this track' },

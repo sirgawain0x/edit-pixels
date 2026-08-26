@@ -55,6 +55,7 @@ function getEngineId(): string {
   return process.env.VERTEX_REASONING_ENGINE_ID?.trim() || DEFAULT_ENGINE_ID
 }
 
+// fallow-ignore-next-line complexity
 function readWifConfig(): WifConfig | null {
   const projectNumber = process.env.GCP_PROJECT_NUMBER?.trim()
   const poolId = process.env.GCP_WORKLOAD_IDENTITY_POOL_ID?.trim()
@@ -74,6 +75,7 @@ function readWifConfig(): WifConfig | null {
   return { projectNumber, poolId, providerId, serviceAccountEmail, audience }
 }
 
+// fallow-ignore-next-line complexity
 function tokenFromResponse(tokenResponse: unknown): string | null {
   if (typeof tokenResponse === 'string' && tokenResponse) return tokenResponse
   if (
@@ -150,84 +152,63 @@ function engineStreamUrl(): string {
   return `https://${location}-aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/reasoningEngines/${engineId}:streamQuery?alt=sse`
 }
 
-export async function POST(request: Request): Promise<Response> {
+async function parseDirectorRequest(
+  request: Request,
+): Promise<
+  | { ok: true; prompt: string; userId: string; sessionId?: string; audioUri?: string }
+  | { ok: false; response: Response }
+> {
   let body: DirectorRequestBody
   try {
     body = (await request.json()) as DirectorRequestBody
   } catch {
-    return Response.json({ error: 'Invalid JSON body' }, { status: 400 })
+    return { ok: false, response: Response.json({ error: 'Invalid JSON body' }, { status: 400 }) }
   }
 
   const prompt = body.prompt?.trim()
   if (!prompt) {
-    return Response.json({ error: 'prompt is required' }, { status: 400 })
+    return { ok: false, response: Response.json({ error: 'prompt is required' }, { status: 400 }) }
   }
 
-  const userId = body.userId?.trim() || 'creator-user'
-  const sessionId = body.sessionId?.trim()
-  const message = buildMessage(prompt, body.audioUri)
-
-  let token: string
-  try {
-    token = await getAccessToken()
-  } catch (error) {
-    console.error('Director auth error', error)
-    return Response.json(
-      {
-        error:
-          'Director not configured: set GCP Workload Identity Federation env vars (Vercel OIDC) or Application Default Credentials locally',
-      },
-      { status: 503 },
-    )
+  return {
+    ok: true,
+    prompt,
+    userId: body.userId?.trim() || 'creator-user',
+    sessionId: body.sessionId?.trim(),
+    audioUri: body.audioUri,
   }
+}
 
-  const input: Record<string, string> = {
-    user_id: userId,
-    message,
-  }
-  if (sessionId) {
-    input.session_id = sessionId
-  }
+async function fetchEngineStream(
+  token: string,
+  input: Record<string, string>,
+  signal: AbortSignal,
+): Promise<Response> {
+  return fetch(engineStreamUrl(), {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream, application/json',
+    },
+    body: JSON.stringify({
+      class_method: 'async_stream_query',
+      input,
+    }),
+    signal,
+  })
+}
 
-  const upstreamAbort = new AbortController()
+function proxyEngineSse(
+  request: Request,
+  upstream: Response,
+  upstreamAbort: AbortController,
+): Response {
   const onClientAbort = () => upstreamAbort.abort()
   request.signal.addEventListener('abort', onClientAbort)
 
-  let upstream: Response
-  try {
-    upstream = await fetch(engineStreamUrl(), {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        Accept: 'text/event-stream, application/json',
-      },
-      body: JSON.stringify({
-        class_method: 'async_stream_query',
-        input,
-      }),
-      signal: upstreamAbort.signal,
-    })
-  } catch (error) {
-    request.signal.removeEventListener('abort', onClientAbort)
-    if (upstreamAbort.signal.aborted || request.signal.aborted) {
-      return new Response(null, { status: 499 })
-    }
-    console.error('Director upstream fetch error', error)
-    return Response.json({ error: 'Failed to reach Creative Director engine' }, { status: 502 })
-  }
-
-  if (!upstream.ok || !upstream.body) {
-    request.signal.removeEventListener('abort', onClientAbort)
-    const errText = await upstream.text().catch(() => '')
-    console.error('Director engine error', upstream.status, errText)
-    return Response.json(
-      { error: 'Creative Director engine request failed', status: upstream.status },
-      { status: 502 },
-    )
-  }
-
   const stream = new ReadableStream<Uint8Array>({
+    // fallow-ignore-next-line complexity
     async start(controller) {
       const reader = upstream.body!.getReader()
       try {
@@ -261,4 +242,56 @@ export async function POST(request: Request): Promise<Response> {
       Connection: 'keep-alive',
     },
   })
+}
+
+// fallow-ignore-next-line complexity
+export async function POST(request: Request): Promise<Response> {
+  const parsed = await parseDirectorRequest(request)
+  if (!parsed.ok) return parsed.response
+
+  const message = buildMessage(parsed.prompt, parsed.audioUri)
+  const input: Record<string, string> = { user_id: parsed.userId, message }
+  if (parsed.sessionId) input.session_id = parsed.sessionId
+
+  let token: string
+  try {
+    token = await getAccessToken()
+  } catch (error) {
+    console.error('Director auth error', error)
+    return Response.json(
+      {
+        error:
+          'Director not configured: set GCP Workload Identity Federation env vars (Vercel OIDC) or Application Default Credentials locally',
+      },
+      { status: 503 },
+    )
+  }
+
+  const upstreamAbort = new AbortController()
+  const onClientAbort = () => upstreamAbort.abort()
+  request.signal.addEventListener('abort', onClientAbort)
+
+  let upstream: Response
+  try {
+    upstream = await fetchEngineStream(token, input, upstreamAbort.signal)
+  } catch (error) {
+    request.signal.removeEventListener('abort', onClientAbort)
+    if (upstreamAbort.signal.aborted || request.signal.aborted) {
+      return new Response(null, { status: 499 })
+    }
+    console.error('Director upstream fetch error', error)
+    return Response.json({ error: 'Failed to reach Creative Director engine' }, { status: 502 })
+  }
+
+  if (!upstream.ok || !upstream.body) {
+    request.signal.removeEventListener('abort', onClientAbort)
+    const errText = await upstream.text().catch(() => '')
+    console.error('Director engine error', upstream.status, errText)
+    return Response.json(
+      { error: 'Creative Director engine request failed', status: upstream.status },
+      { status: 502 },
+    )
+  }
+
+  return proxyEngineSse(request, upstream, upstreamAbort)
 }

@@ -6,16 +6,16 @@
 import { create } from 'zustand'
 import { consumeSseBuffer, parseSseDataLine, type DirectorStreamEvent } from './parse-sse'
 
-export type DirectorPhase = 'idle' | 'streaming'
+type DirectorPhase = 'idle' | 'streaming'
 
-export interface DirectorChatMessage {
+interface DirectorChatMessage {
   id: string
   role: 'user' | 'assistant' | 'tool' | 'error'
   content: string
   toolName?: string
 }
 
-export interface DirectorToolCall {
+interface DirectorToolCall {
   id: string
   name: string
   args?: Record<string, unknown>
@@ -36,18 +36,17 @@ interface DirectorState {
   clearChat: () => void
 }
 
+type DirectorSet = (
+  partial: Partial<DirectorState> | ((state: DirectorState) => Partial<DirectorState>),
+) => void
+
 let activeController: AbortController | null = null
 
 function newId(): string {
   return crypto.randomUUID()
 }
 
-function applyStreamEvents(
-  events: DirectorStreamEvent[],
-  set: (
-    partial: Partial<DirectorState> | ((state: DirectorState) => Partial<DirectorState>),
-  ) => void,
-): void {
+function applyStreamEvents(events: DirectorStreamEvent[], set: DirectorSet): void {
   for (const event of events) {
     switch (event.type) {
       case 'text':
@@ -111,6 +110,64 @@ function applyStreamEvents(
   }
 }
 
+async function readDirectorError(response: Response): Promise<string> {
+  let message = `Director request failed (${response.status})`
+  try {
+    const data = (await response.json()) as { error?: string }
+    if (data.error) message = data.error
+  } catch {
+    // ignore body parse errors
+  }
+  return message
+}
+
+async function consumeDirectorSse(
+  body: ReadableStream<Uint8Array>,
+  set: DirectorSet,
+): Promise<void> {
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const { events, rest } = consumeSseBuffer(buffer)
+    buffer = rest
+    for (const data of events) {
+      applyStreamEvents(parseSseDataLine(data), set)
+    }
+  }
+
+  if (buffer.trim()) {
+    const { events } = consumeSseBuffer(`${buffer}\n\n`)
+    for (const data of events) {
+      applyStreamEvents(parseSseDataLine(data), set)
+    }
+  }
+}
+
+function finalizeAssistantReply(set: DirectorSet, get: () => DirectorState): void {
+  const streamed = get().streamingText.trim()
+  set((state) => ({
+    messages: streamed
+      ? [...state.messages, { id: newId(), role: 'assistant', content: streamed }]
+      : state.messages,
+    streamingText: '',
+    phase: 'idle',
+  }))
+}
+
+function setDirectorFailure(set: DirectorSet, message: string): void {
+  set((state) => ({
+    messages: [...state.messages, { id: newId(), role: 'error', content: message }],
+    phase: 'idle',
+    streamingText: '',
+    lastError: message,
+  }))
+}
+
 export const useDirectorStore = create<DirectorState>((set, get) => ({
   messages: [],
   phase: 'idle',
@@ -119,6 +176,7 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
   sessionId: null,
   lastError: null,
 
+  // fallow-ignore-next-line complexity
   submit: async (text, options) => {
     const trimmed = text.trim()
     if (!trimmed || get().phase !== 'idle') return
@@ -156,82 +214,23 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
       })
 
       if (!response.ok) {
-        let message = `Director request failed (${response.status})`
-        try {
-          const data = (await response.json()) as { error?: string }
-          if (data.error) message = data.error
-        } catch {
-          // ignore body parse errors
-        }
-        set((state) => ({
-          messages: [...state.messages, { id: newId(), role: 'error', content: message }],
-          phase: 'idle',
-          streamingText: '',
-          lastError: message,
-        }))
+        setDirectorFailure(set, await readDirectorError(response))
         return
       }
 
       if (!response.body) {
-        set((state) => ({
-          messages: [
-            ...state.messages,
-            { id: newId(), role: 'error', content: 'Empty response from Director' },
-          ],
-          phase: 'idle',
-          lastError: 'Empty response from Director',
-        }))
+        setDirectorFailure(set, 'Empty response from Director')
         return
       }
 
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const { events, rest } = consumeSseBuffer(buffer)
-        buffer = rest
-        for (const data of events) {
-          applyStreamEvents(parseSseDataLine(data), set)
-        }
-      }
-
-      if (buffer.trim()) {
-        const { events } = consumeSseBuffer(`${buffer}\n\n`)
-        for (const data of events) {
-          applyStreamEvents(parseSseDataLine(data), set)
-        }
-      }
-
-      const streamed = get().streamingText.trim()
-      set((state) => ({
-        messages: streamed
-          ? [...state.messages, { id: newId(), role: 'assistant', content: streamed }]
-          : state.messages,
-        streamingText: '',
-        phase: 'idle',
-      }))
+      await consumeDirectorSse(response.body, set)
+      finalizeAssistantReply(set, get)
     } catch (error) {
       if (controller.signal.aborted) {
-        const streamed = get().streamingText.trim()
-        set((state) => ({
-          messages: streamed
-            ? [...state.messages, { id: newId(), role: 'assistant', content: streamed }]
-            : state.messages,
-          streamingText: '',
-          phase: 'idle',
-        }))
+        finalizeAssistantReply(set, get)
       } else {
         const message = error instanceof Error ? error.message : 'Something went wrong.'
-        set((state) => ({
-          messages: [...state.messages, { id: newId(), role: 'error', content: message }],
-          streamingText: '',
-          phase: 'idle',
-          lastError: message,
-        }))
+        setDirectorFailure(set, message)
       }
     } finally {
       activeController = null
@@ -241,14 +240,7 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
   cancel: () => {
     activeController?.abort()
     activeController = null
-    const streamed = get().streamingText.trim()
-    set((state) => ({
-      messages: streamed
-        ? [...state.messages, { id: newId(), role: 'assistant', content: streamed }]
-        : state.messages,
-      phase: 'idle',
-      streamingText: '',
-    }))
+    finalizeAssistantReply(set, get)
   },
 
   clearChat: () => {

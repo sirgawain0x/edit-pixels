@@ -52,71 +52,79 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return undefined
 }
 
+function mapStringEvent(raw: string): DirectorStreamEvent[] {
+  const trimmed = raw.trim()
+  if (!trimmed || trimmed === '[DONE]') return []
+  try {
+    return mapAdkEvent(JSON.parse(trimmed) as unknown)
+  } catch {
+    return [{ type: 'text', text: trimmed }]
+  }
+}
+
+function readSessionId(event: AdkEventLike): string {
+  if (typeof event.session_id === 'string' && event.session_id) return event.session_id
+  if (typeof event.sessionId === 'string' && event.sessionId) return event.sessionId
+  return ''
+}
+
+function readErrorMessage(event: AdkEventLike): string {
+  if (typeof event.errorMessage === 'string' && event.errorMessage) return event.errorMessage
+  if (typeof event.error === 'string' && event.error) return event.error
+  if (
+    event.error &&
+    typeof event.error === 'object' &&
+    typeof event.error.message === 'string' &&
+    event.error.message
+  ) {
+    return event.error.message
+  }
+  return ''
+}
+
+function mapContentParts(parts: AdkPart[]): DirectorStreamEvent[] {
+  const out: DirectorStreamEvent[] = []
+  for (const part of parts) {
+    if (typeof part.text === 'string' && part.text.length > 0) {
+      out.push({ type: 'text', text: part.text })
+    }
+    if (part.functionCall?.name) {
+      out.push({
+        type: 'tool',
+        name: part.functionCall.name,
+        args: asRecord(part.functionCall.args),
+      })
+    }
+    if (part.functionResponse?.name) {
+      out.push({
+        type: 'tool-result',
+        name: part.functionResponse.name,
+        result: part.functionResponse.response,
+      })
+    }
+  }
+  return out
+}
+
 /** Map one ADK / Agent Engine JSON event into zero or more stream events. */
 export function mapAdkEvent(raw: unknown): DirectorStreamEvent[] {
   if (raw == null) return []
-
-  if (typeof raw === 'string') {
-    const trimmed = raw.trim()
-    if (!trimmed || trimmed === '[DONE]') return []
-    try {
-      return mapAdkEvent(JSON.parse(trimmed) as unknown)
-    } catch {
-      return [{ type: 'text', text: trimmed }]
-    }
-  }
-
-  if (typeof raw !== 'object') {
-    return [{ type: 'text', text: String(raw) }]
-  }
+  if (typeof raw === 'string') return mapStringEvent(raw)
+  if (typeof raw !== 'object') return [{ type: 'text', text: String(raw) }]
 
   const event = raw as AdkEventLike
   const out: DirectorStreamEvent[] = []
+  const sessionId = readSessionId(event)
+  const errorMessage = readErrorMessage(event)
 
-  const sessionId =
-    (typeof event.session_id === 'string' && event.session_id) ||
-    (typeof event.sessionId === 'string' && event.sessionId) ||
-    ''
-  if (sessionId) {
-    out.push({ type: 'session', sessionId })
-  }
-
-  const errorMessage =
-    (typeof event.errorMessage === 'string' && event.errorMessage) ||
-    (typeof event.error === 'string' && event.error) ||
-    (event.error &&
-      typeof event.error === 'object' &&
-      typeof event.error.message === 'string' &&
-      event.error.message) ||
-    ''
-  if (errorMessage) {
-    out.push({ type: 'error', message: errorMessage })
-  }
+  if (sessionId) out.push({ type: 'session', sessionId })
+  if (errorMessage) out.push({ type: 'error', message: errorMessage })
 
   const parts = event.content?.parts
   if (Array.isArray(parts)) {
-    for (const part of parts) {
-      if (typeof part.text === 'string' && part.text.length > 0) {
-        out.push({ type: 'text', text: part.text })
-      }
-      if (part.functionCall?.name) {
-        out.push({
-          type: 'tool',
-          name: part.functionCall.name,
-          args: asRecord(part.functionCall.args),
-        })
-      }
-      if (part.functionResponse?.name) {
-        out.push({
-          type: 'tool-result',
-          name: part.functionResponse.name,
-          result: part.functionResponse.response,
-        })
-      }
-    }
+    out.push(...mapContentParts(parts))
   }
 
-  // Some Agent Engine wrappers nest the ADK event under `event` or `actions`.
   const nested = asRecord(raw)?.['event']
   if (nested && out.length === (sessionId ? 1 : 0) && !errorMessage) {
     out.push(...mapAdkEvent(nested))

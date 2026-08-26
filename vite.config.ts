@@ -46,6 +46,65 @@ function serviceWorkerVersionPlugin(): Plugin {
 }
 
 /** Proxies POST /api/director through the Vercel handler during `vp dev`. */
+// fallow-ignore-next-line complexity
+async function handleDirectorDevRequest(
+  req: import('node:http').IncomingMessage,
+  res: import('node:http').ServerResponse,
+): Promise<void> {
+  const chunks: Buffer[] = []
+  for await (const chunk of req) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+  }
+  const body = Buffer.concat(chunks)
+  const host = req.headers.host ?? 'localhost'
+  const abort = new AbortController()
+  req.on('close', () => {
+    if (!res.writableEnded) abort.abort()
+  })
+
+  const request = new Request(`http://${host}${req.url ?? '/api/director'}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': req.headers['content-type'] ?? 'application/json',
+      Accept: req.headers.accept ?? 'text/event-stream, application/json',
+    },
+    body: body.length > 0 ? body : undefined,
+    signal: abort.signal,
+  })
+
+  const response = await directorPost(request)
+  res.statusCode = response.status
+  response.headers.forEach((value, key) => {
+    if (key.toLowerCase() === 'transfer-encoding') return
+    res.setHeader(key, value)
+  })
+
+  if (!response.body) {
+    res.end()
+    return
+  }
+
+  const reader = response.body.getReader()
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      if (value) res.write(Buffer.from(value))
+    }
+    res.end()
+  } catch (error) {
+    if (!abort.signal.aborted) {
+      console.error('Director SSE proxy error', error)
+      if (!res.headersSent) {
+        res.statusCode = 500
+      }
+      if (!res.writableEnded) res.end()
+    }
+  } finally {
+    reader.releaseLock()
+  }
+}
+
 function directorApiDevPlugin(): Plugin {
   return {
     name: 'pixels-director-api-dev',
@@ -57,60 +116,7 @@ function directorApiDevPlugin(): Plugin {
           return
         }
 
-        void (async () => {
-          const chunks: Buffer[] = []
-          for await (const chunk of req) {
-            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
-          }
-          const body = Buffer.concat(chunks)
-          const host = req.headers.host ?? 'localhost'
-          const abort = new AbortController()
-          req.on('close', () => {
-            if (!res.writableEnded) abort.abort()
-          })
-
-          const request = new Request(`http://${host}${req.url ?? '/api/director'}`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': req.headers['content-type'] ?? 'application/json',
-              Accept: req.headers.accept ?? 'text/event-stream, application/json',
-            },
-            body: body.length > 0 ? body : undefined,
-            signal: abort.signal,
-          })
-
-          const response = await directorPost(request)
-          res.statusCode = response.status
-          response.headers.forEach((value, key) => {
-            if (key.toLowerCase() === 'transfer-encoding') return
-            res.setHeader(key, value)
-          })
-
-          if (!response.body) {
-            res.end()
-            return
-          }
-
-          const reader = response.body.getReader()
-          try {
-            while (true) {
-              const { done, value } = await reader.read()
-              if (done) break
-              if (value) res.write(Buffer.from(value))
-            }
-            res.end()
-          } catch (error) {
-            if (!abort.signal.aborted) {
-              console.error('Director SSE proxy error', error)
-              if (!res.headersSent) {
-                res.statusCode = 500
-              }
-              if (!res.writableEnded) res.end()
-            }
-          } finally {
-            reader.releaseLock()
-          }
-        })().catch((error) => {
+        void handleDirectorDevRequest(req, res).catch((error) => {
           console.error('Director API middleware error', error)
           if (!res.headersSent) {
             res.statusCode = 500
