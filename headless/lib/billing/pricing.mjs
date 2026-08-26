@@ -102,6 +102,28 @@ export function estimateEditCostUsdc6({
   return Math.max(0, Math.round(ops + preview))
 }
 
+/** $0.05 USDC per minute of timeline audio (retail Director rate). */
+export const DIRECTOR_USDC6_PER_AUDIO_MINUTE = INTERVAL_COST_RETAIL_USDC6 / 5
+
+/**
+ * Estimate Creative Director cost from timeline audio duration.
+ * Billable minutes = ceil(seconds / 60), minimum 1.
+ *
+ * @param {object} options
+ * @param {number} options.audioDurationSeconds
+ * @param {number} [options.intervalCostUsdc6]
+ */
+export function estimateDirectorCostUsdc6({
+  audioDurationSeconds,
+  intervalCostUsdc6 = INTERVAL_COST_RETAIL_USDC6,
+}) {
+  const seconds = Number(audioDurationSeconds) || 0
+  if (seconds <= 0) return 0
+  const minutes = Math.max(1, Math.ceil(seconds / 60))
+  const perMinute = intervalCostUsdc6 / 5
+  return Math.round(minutes * perMinute)
+}
+
 /**
  * Convert CRTVAI meToken wei (18 decimals) to usdc6 using the current meToken price.
  *

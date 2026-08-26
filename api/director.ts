@@ -15,14 +15,22 @@
  *   only apply when `VERCEL` is set
  *
  * Body JSON:
- *   prompt     - user message (required)
- *   userId     - session user id (optional)
- *   sessionId  - continue an Agent Engine session (optional)
- *   audioUri   - optional audio context appended to the message
+ *   prompt                - user message (required)
+ *   userId                - session user id (optional)
+ *   sessionId             - continue an Agent Engine session (optional)
+ *   audioUri              - optional audio context appended to the message
+ *   audioDurationSeconds  - timeline audio length (required when billing enforced)
+ *   paymentTxHash         - CRTVAI transfer to treasury (required when billing enforced)
+ *   walletAddress         - payer wallet (required when billing enforced)
  */
 
 import { getVercelOidcToken } from '@vercel/oidc'
 import { ExternalAccountClient, GoogleAuth } from 'google-auth-library'
+import {
+  isDirectorBillingEnforced,
+  quoteDirectorRetail,
+  verifyDirectorPayment,
+} from './director-billing'
 
 const DEFAULT_PROJECT = 'creative-ai-491118'
 const DEFAULT_LOCATION = 'us-central1'
@@ -34,6 +42,19 @@ interface DirectorRequestBody {
   userId?: string
   sessionId?: string
   audioUri?: string
+  audioDurationSeconds?: number
+  paymentTxHash?: string
+  walletAddress?: string
+}
+
+interface ParsedDirectorRequest {
+  prompt: string
+  userId: string
+  sessionId?: string
+  audioUri?: string
+  audioDurationSeconds?: number
+  paymentTxHash?: string
+  walletAddress?: string
 }
 
 interface WifConfig {
@@ -206,10 +227,7 @@ function engineStreamUrl(): string {
 
 async function parseDirectorRequest(
   request: Request,
-): Promise<
-  | { ok: true; prompt: string; userId: string; sessionId?: string; audioUri?: string }
-  | { ok: false; response: Response }
-> {
+): Promise<{ ok: true; data: ParsedDirectorRequest } | { ok: false; response: Response }> {
   let body: DirectorRequestBody
   try {
     body = (await request.json()) as DirectorRequestBody
@@ -222,13 +240,65 @@ async function parseDirectorRequest(
     return { ok: false, response: Response.json({ error: 'prompt is required' }, { status: 400 }) }
   }
 
+  const audioDurationSeconds =
+    typeof body.audioDurationSeconds === 'number' && Number.isFinite(body.audioDurationSeconds)
+      ? body.audioDurationSeconds
+      : undefined
+
   return {
     ok: true,
-    prompt,
-    userId: body.userId?.trim() || 'creator-user',
-    sessionId: body.sessionId?.trim(),
-    audioUri: body.audioUri,
+    data: {
+      prompt,
+      userId: body.userId?.trim() || 'creator-user',
+      sessionId: body.sessionId?.trim(),
+      audioUri: body.audioUri,
+      audioDurationSeconds,
+      paymentTxHash: body.paymentTxHash?.trim(),
+      walletAddress: body.walletAddress?.trim(),
+    },
   }
+}
+
+async function assertDirectorPayment(data: ParsedDirectorRequest): Promise<Response | null> {
+  if (!isDirectorBillingEnforced()) return null
+
+  if (data.audioDurationSeconds == null || data.audioDurationSeconds <= 0) {
+    return Response.json(
+      { error: 'audioDurationSeconds is required for Director billing' },
+      { status: 402 },
+    )
+  }
+
+  const quote = quoteDirectorRetail(data.audioDurationSeconds)
+  if (!quote) {
+    return Response.json({ error: 'Unable to quote Director brief' }, { status: 402 })
+  }
+
+  if (!data.paymentTxHash || !data.walletAddress) {
+    return Response.json(
+      {
+        error: 'Director requires a CRTVAI payment before generation',
+        estimatedUsdc6: quote.estimatedUsdc6,
+        billableMinutes: quote.billableMinutes,
+      },
+      { status: 402 },
+    )
+  }
+
+  const verified = await verifyDirectorPayment({
+    txHash: data.paymentTxHash,
+    from: data.walletAddress,
+    minAmountWei: quote.minCrtvaiWei,
+  })
+
+  if (!verified.ok) {
+    return Response.json(
+      { error: `Director payment rejected: ${verified.reason}` },
+      { status: 402 },
+    )
+  }
+
+  return null
 }
 
 async function fetchEngineStream(
@@ -304,9 +374,12 @@ export async function POST(request: Request): Promise<Response> {
   const parsed = await parseDirectorRequest(request)
   if (!parsed.ok) return parsed.response
 
-  const message = buildMessage(parsed.prompt, parsed.audioUri)
-  const input: Record<string, string> = { user_id: parsed.userId, message }
-  if (parsed.sessionId) input.session_id = parsed.sessionId
+  const paymentError = await assertDirectorPayment(parsed.data)
+  if (paymentError) return paymentError
+
+  const message = buildMessage(parsed.data.prompt, parsed.data.audioUri)
+  const input: Record<string, string> = { user_id: parsed.data.userId, message }
+  if (parsed.data.sessionId) input.session_id = parsed.data.sessionId
 
   let token: string
   try {
