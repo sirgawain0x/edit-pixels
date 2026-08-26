@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { BuyMetokenModal } from '@/features/metoken/components/buy-metoken-modal'
+import { BuyMetokenModal } from '@/features/editor/deps/metoken'
 import { cn } from '@/shared/ui/cn'
 import type { DirectorQuote } from './director-pricing'
 

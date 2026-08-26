@@ -14,13 +14,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { BuyMetokenModal } from '@/features/metoken/components/buy-metoken-modal'
 import { useWalletContext } from '@/context/wallet-context'
 import { useCredits } from '@/features/editor/deps/credits-contract'
+import {
+  getPublicImageUrl,
+  pollTask,
+  proxyFlowRun,
+  proxyGetTask,
+  useGenerativeAuth,
+} from '@/features/editor/deps/generative'
 import {
   importMediaLibraryService,
   useMediaLibraryStore,
 } from '@/features/editor/deps/media-library'
+import { BuyMetokenModal } from '@/features/editor/deps/metoken'
 import {
   getDirectorTreasuryAddress,
   buildDirectorPaymentOp,
@@ -33,13 +40,6 @@ import {
   clampFlowDuration,
 } from '@/config/flow'
 import { quoteFlowGeneration } from './flow-pricing'
-import {
-  getPublicImageUrl,
-  pollTask,
-  proxyFlowRun,
-  proxyGetTask,
-  useGenerativeAuth,
-} from '@/features/generative'
 import { cn } from '@/shared/ui/cn'
 
 type FrameSlot = {

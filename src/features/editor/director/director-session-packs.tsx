@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
-import { BuyMetokenModal } from '@/features/metoken/components/buy-metoken-modal'
+import { BuyMetokenModal } from '@/features/editor/deps/metoken'
 import { DIRECTOR_SESSION_PACKS } from '@/config/credits'
-import { formatUsdc6 } from '@/features/credits/usdc-for-purchase'
+import { formatUsdc6 } from '@/features/editor/deps/credits-contract'
 
 /**
  * Optional Director session packs — mint CRTVAI sized for ~N minutes of retail

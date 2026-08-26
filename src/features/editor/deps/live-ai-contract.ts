@@ -1,4 +1,4 @@
 /**
  * Cross-feature dependency contract: Live AI panel.
  */
-export { LiveAiPopover } from '@/features/live-ai'
+export { LiveAiPopover, usePremiumMembership } from '@/features/live-ai'

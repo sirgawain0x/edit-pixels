@@ -10,7 +10,7 @@ import {
   useItemsStore,
   useTimelineSettingsStore,
 } from '@/features/editor/deps/timeline-store-contract'
-import { usePremiumMembership } from '@/features/live-ai/hooks/use-premium-membership'
+import { usePremiumMembership } from '@/features/editor/deps/live-ai'
 import { useSmartWalletOps } from '@/hooks/use-smart-wallet-ops'
 import { getDirectorTreasuryAddress } from './build-director-payment'
 import { confirmDirectorInvoice } from './confirm-director-invoice'
