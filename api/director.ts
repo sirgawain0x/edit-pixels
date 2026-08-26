@@ -2,24 +2,37 @@
 /**
  * Vercel serverless endpoint: proxies Creative Director Agent Engine SSE.
  *
+ * Engine (streamQuery SSE — not the unary :query URL):
+ *   projects/creative-ai-491118/locations/us-central1/reasoningEngines/5922098819817799680
+ * Agent runtime identity (Agent Engine SA — not the caller):
+ *   service-1037240986506@gcp-sa-aiplatform-re.iam.gserviceaccount.com
+ *
  * Auth (no service-account keys):
  * - Production / Vercel: Workload Identity Federation via Vercel OIDC
  *   (`@vercel/oidc` + `ExternalAccountClient`)
  * - Local: Application Default Credentials
- *   (`gcloud auth application-default login`), or the same WIF path after
- *   `vercel env pull` (provides `VERCEL_OIDC_TOKEN`)
+ *   (`gcloud auth application-default login`); GCP_* from `vercel env pull`
+ *   only apply when `VERCEL` is set
  *
  * Body JSON:
- *   prompt     - user message (required)
- *   userId     - session user id (optional)
- *   sessionId  - continue an Agent Engine session (optional)
- *   audioUri   - optional audio context appended to the message
+ *   prompt                - user message (required)
+ *   userId                - session user id (optional)
+ *   sessionId             - continue an Agent Engine session (optional)
+ *   audioUri              - optional audio context appended to the message
+ *   audioDurationSeconds  - timeline audio length (required when billing enforced)
+ *   paymentTxHash         - CRTVAI transfer to treasury (required when billing enforced)
+ *   walletAddress         - payer wallet (required when billing enforced)
  */
 
 import { getVercelOidcToken } from '@vercel/oidc'
 import { ExternalAccountClient, GoogleAuth } from 'google-auth-library'
+import {
+  isDirectorBillingEnforced,
+  quoteDirectorRetail,
+  verifyDirectorPayment,
+} from './director-billing'
 
-const DEFAULT_PROJECT = '1037240986506'
+const DEFAULT_PROJECT = 'creative-ai-491118'
 const DEFAULT_LOCATION = 'us-central1'
 const DEFAULT_ENGINE_ID = '5922098819817799680'
 const CLOUD_PLATFORM_SCOPE = 'https://www.googleapis.com/auth/cloud-platform'
@@ -29,6 +42,19 @@ interface DirectorRequestBody {
   userId?: string
   sessionId?: string
   audioUri?: string
+  audioDurationSeconds?: number
+  paymentTxHash?: string
+  walletAddress?: string
+}
+
+interface ParsedDirectorRequest {
+  prompt: string
+  userId: string
+  sessionId?: string
+  audioUri?: string
+  audioDurationSeconds?: number
+  paymentTxHash?: string
+  walletAddress?: string
 }
 
 interface WifConfig {
@@ -130,11 +156,15 @@ async function getAccessTokenViaAdc(): Promise<string> {
 }
 
 /**
- * Prefer keyless WIF on Vercel; fall back to ADC for local shells without OIDC.
+ * Prefer keyless WIF on Vercel; use ADC for local `vp dev`.
+ *
+ * `vercel env pull` often copies GCP_* into `.env.local`. Those must not force
+ * the WIF path locally — Vercel OIDC tokens expire and `@vercel/oidc` needs the
+ * Vercel runtime. Only use WIF when `VERCEL` is set.
  */
 async function getAccessToken(): Promise<string> {
   const wif = readWifConfig()
-  if (wif) {
+  if (wif && process.env.VERCEL) {
     return getAccessTokenViaWif(wif)
   }
   return getAccessTokenViaAdc()
@@ -195,12 +225,10 @@ function engineStreamUrl(): string {
   return `https://${location}-aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/reasoningEngines/${engineId}:streamQuery?alt=sse`
 }
 
+// fallow-ignore-next-line complexity
 async function parseDirectorRequest(
   request: Request,
-): Promise<
-  | { ok: true; prompt: string; userId: string; sessionId?: string; audioUri?: string }
-  | { ok: false; response: Response }
-> {
+): Promise<{ ok: true; data: ParsedDirectorRequest } | { ok: false; response: Response }> {
   let body: DirectorRequestBody
   try {
     body = (await request.json()) as DirectorRequestBody
@@ -213,13 +241,66 @@ async function parseDirectorRequest(
     return { ok: false, response: Response.json({ error: 'prompt is required' }, { status: 400 }) }
   }
 
+  const audioDurationSeconds =
+    typeof body.audioDurationSeconds === 'number' && Number.isFinite(body.audioDurationSeconds)
+      ? body.audioDurationSeconds
+      : undefined
+
   return {
     ok: true,
-    prompt,
-    userId: body.userId?.trim() || 'creator-user',
-    sessionId: body.sessionId?.trim(),
-    audioUri: body.audioUri,
+    data: {
+      prompt,
+      userId: body.userId?.trim() || 'creator-user',
+      sessionId: body.sessionId?.trim(),
+      audioUri: body.audioUri,
+      audioDurationSeconds,
+      paymentTxHash: body.paymentTxHash?.trim(),
+      walletAddress: body.walletAddress?.trim(),
+    },
   }
+}
+
+// fallow-ignore-next-line complexity
+async function assertDirectorPayment(data: ParsedDirectorRequest): Promise<Response | null> {
+  if (!isDirectorBillingEnforced()) return null
+
+  if (data.audioDurationSeconds == null || data.audioDurationSeconds <= 0) {
+    return Response.json(
+      { error: 'audioDurationSeconds is required for Director billing' },
+      { status: 402 },
+    )
+  }
+
+  const quote = quoteDirectorRetail(data.audioDurationSeconds)
+  if (!quote) {
+    return Response.json({ error: 'Unable to quote Director brief' }, { status: 402 })
+  }
+
+  if (!data.paymentTxHash || !data.walletAddress) {
+    return Response.json(
+      {
+        error: 'Director requires a CRTVAI payment before generation',
+        estimatedUsdc6: quote.estimatedUsdc6,
+        billableMinutes: quote.billableMinutes,
+      },
+      { status: 402 },
+    )
+  }
+
+  const verified = await verifyDirectorPayment({
+    txHash: data.paymentTxHash,
+    from: data.walletAddress,
+    minAmountWei: quote.minCrtvaiWei,
+  })
+
+  if (!verified.ok) {
+    return Response.json(
+      { error: `Director payment rejected: ${verified.reason}` },
+      { status: 402 },
+    )
+  }
+
+  return null
 }
 
 async function fetchEngineStream(
@@ -295,19 +376,26 @@ export async function POST(request: Request): Promise<Response> {
   const parsed = await parseDirectorRequest(request)
   if (!parsed.ok) return parsed.response
 
-  const message = buildMessage(parsed.prompt, parsed.audioUri)
-  const input: Record<string, string> = { user_id: parsed.userId, message }
-  if (parsed.sessionId) input.session_id = parsed.sessionId
+  const paymentError = await assertDirectorPayment(parsed.data)
+  if (paymentError) return paymentError
+
+  const message = buildMessage(parsed.data.prompt, parsed.data.audioUri)
+  const input: Record<string, string> = { user_id: parsed.data.userId, message }
+  if (parsed.data.sessionId) input.session_id = parsed.data.sessionId
 
   let token: string
   try {
     token = await getAccessToken()
   } catch (error) {
     console.error('Director auth error', error)
+    const detail = error instanceof Error ? error.message : String(error)
+    const hint = process.env.VERCEL
+      ? 'Set GCP Workload Identity Federation env vars (Vercel OIDC).'
+      : 'Run `gcloud auth application-default login` (local ADC). GCP_* from `vercel env pull` are ignored off-Vercel.'
     return Response.json(
       {
-        error:
-          'Director not configured: set GCP Workload Identity Federation env vars (Vercel OIDC) or Application Default Credentials locally',
+        error: `Director auth failed: ${hint}`,
+        detail: process.env.VERCEL ? undefined : detail,
       },
       { status: 503 },
     )

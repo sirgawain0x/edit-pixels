@@ -31,7 +31,20 @@ interface DirectorState {
   sessionId: string | null
   lastError: string | null
 
-  submit: (text: string, options?: { audioUri?: string; userId?: string }) => Promise<void>
+  submit: (
+    text: string,
+    options?: {
+      audioUri?: string
+      userId?: string
+      /** Full prompt sent to the API (defaults to text) */
+      apiPrompt?: string
+      audioDurationSeconds?: number
+      paymentTxHash?: string
+      walletAddress?: string
+    },
+  ) => Promise<void>
+  /** Local UX error (e.g. missing timeline audio) — does not call the API. */
+  reportLocalError: (message: string) => void
   cancel: () => void
   clearChat: () => void
 }
@@ -176,10 +189,21 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
   sessionId: null,
   lastError: null,
 
+  reportLocalError: (message) => {
+    const trimmed = message.trim()
+    if (!trimmed || get().phase !== 'idle') return
+    set((state) => ({
+      messages: [...state.messages, { id: newId(), role: 'error', content: trimmed }],
+      lastError: trimmed,
+    }))
+  },
+
   // fallow-ignore-next-line complexity
   submit: async (text, options) => {
     const trimmed = text.trim()
     if (!trimmed || get().phase !== 'idle') return
+    const apiPrompt = (options?.apiPrompt ?? trimmed).trim()
+    if (!apiPrompt) return
 
     const userMessage: DirectorChatMessage = {
       id: newId(),
@@ -205,10 +229,13 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
           Accept: 'text/event-stream, application/json',
         },
         body: JSON.stringify({
-          prompt: trimmed,
+          prompt: apiPrompt,
           userId: options?.userId,
           sessionId: get().sessionId ?? undefined,
           audioUri: options?.audioUri,
+          audioDurationSeconds: options?.audioDurationSeconds,
+          paymentTxHash: options?.paymentTxHash,
+          walletAddress: options?.walletAddress,
         }),
         signal: controller.signal,
       })

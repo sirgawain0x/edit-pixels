@@ -6,10 +6,12 @@ import fs from 'node:fs'
 import {
   estimateRenderCostUsdc6,
   estimateEditCostUsdc6,
+  estimateDirectorCostUsdc6,
   metokenWeiToUsdc6,
   formatUsdc6,
   INTERVAL_COST_PREMIUM_USDC6,
   INTERVAL_COST_RETAIL_USDC6,
+  DIRECTOR_USDC6_PER_AUDIO_MINUTE,
 } from '../headless/lib/billing/pricing.mjs'
 import { CreditLedger } from '../headless/lib/billing/ledger.mjs'
 
@@ -68,6 +70,19 @@ describe('billing/pricing', () => {
     // 1e18 metoken wei at price 1e12 = 1 usdc6
     const usdc6 = metokenWeiToUsdc6(10n ** 18n, 10n ** 12n)
     assert.strictEqual(usdc6, 1)
+  })
+
+  it('estimates Director cost per minute of timeline audio', () => {
+    assert.strictEqual(DIRECTOR_USDC6_PER_AUDIO_MINUTE, INTERVAL_COST_RETAIL_USDC6 / 5)
+    assert.strictEqual(estimateDirectorCostUsdc6({ audioDurationSeconds: 0 }), 0)
+    assert.strictEqual(
+      estimateDirectorCostUsdc6({ audioDurationSeconds: 30 }),
+      DIRECTOR_USDC6_PER_AUDIO_MINUTE,
+    )
+    assert.strictEqual(
+      estimateDirectorCostUsdc6({ audioDurationSeconds: 90 }),
+      DIRECTOR_USDC6_PER_AUDIO_MINUTE * 2,
+    )
   })
 })
 

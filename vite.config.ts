@@ -1,4 +1,4 @@
-import { defineConfig, lazyPlugins } from 'vite-plus'
+import { defineConfig, lazyPlugins, loadEnv } from 'vite-plus'
 import type { Plugin } from 'vite-plus'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
@@ -108,7 +108,15 @@ async function handleDirectorDevRequest(
 function directorApiDevPlugin(): Plugin {
   return {
     name: 'pixels-director-api-dev',
+    // fallow-ignore-next-line complexity
     configureServer(server) {
+      // Vite only injects VITE_* by default; Director needs GOOGLE_/VERTEX_/GCP_ from .env.local.
+      const mode = server.config.mode || 'development'
+      const loaded = loadEnv(mode, server.config.envDir || process.cwd(), '')
+      for (const [key, value] of Object.entries(loaded)) {
+        if (process.env[key] === undefined) process.env[key] = value
+      }
+
       server.middlewares.use((req, res, next) => {
         const path = req.url?.split('?')[0]
         if (req.method !== 'POST' || path !== '/api/director') {
