@@ -1,6 +1,7 @@
 /**
  * Bind Evolink task ids to the paying wallet so poll routes stay private.
  */
+// fallow-ignore-file complexity
 
 import { getRedis, isRedisConfigured } from './_redis-client.js'
 

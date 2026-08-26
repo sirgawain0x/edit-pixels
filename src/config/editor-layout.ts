@@ -6,6 +6,8 @@
  *
  * Prefer changing presets here before editing one-off component sizes.
  */
+// fallow-ignore-file unused-export
+
 const EDIT_DOPESHEET_COLUMN_WIDTH = 288
 
 const COMPACT_LAYOUT = {

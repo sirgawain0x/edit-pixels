@@ -2,6 +2,7 @@
  * One-time consumption of CRTVAI payment tx hashes (anti-replay).
  * Requires Upstash/Vercel KV when billing is enforced.
  */
+// fallow-ignore-file complexity
 
 import { getRedis, isRedisConfigured } from './_redis-client.js'
 

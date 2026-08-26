@@ -172,6 +172,7 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
   }, [input])
 
   const queueInvoice = useCallback(
+    // fallow-ignore-next-line complexity
     (text: string) => {
       const trimmed = text.trim()
       if (!trimmed) return

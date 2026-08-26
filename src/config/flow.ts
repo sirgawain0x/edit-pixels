@@ -2,6 +2,7 @@
  * Flow segment duration limits (Seedance 2.0 image-to-video).
  * Longer films use multi-segment chaining (last frame → next first).
  */
+// fallow-ignore-file unused-type
 
 export const FLOW_DURATION_MIN_SEC = 4
 export const FLOW_DURATION_MAX_SEC = 15

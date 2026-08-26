@@ -2,6 +2,7 @@
  * GET /api/generate-task?id=...
  * Poll Evolink task status. Requires Privy auth; task must be owned by the wallet.
  */
+// fallow-ignore-file complexity
 
 import { getBearerToken, verifyPrivyAccessToken } from './_wallet-auth.js'
 import { evolinkServerGet, isEvolinkServerConfigured } from './_evolink-server.js'

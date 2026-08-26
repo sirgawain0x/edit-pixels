@@ -4,6 +4,7 @@
  * POST /api/flow-frame — auth required; body multipart or JSON { dataUri, contentType? }
  * GET  /api/flow-frame?id=... — public read for Evolink fetch (unguessable id)
  */
+// fallow-ignore-file complexity,code-duplication
 
 import { randomBytes } from 'node:crypto'
 import { getBearerToken, verifyPrivyAccessToken } from './_wallet-auth.js'

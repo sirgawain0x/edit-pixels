@@ -1,4 +1,4 @@
-// fallow-ignore-file unused-file,unused-export,complexity
+// fallow-ignore-file complexity
 import { createLogger } from '@/shared/logging/logger'
 import type { EvolinkTaskDetail, EvolinkTaskStatus } from '../types'
 

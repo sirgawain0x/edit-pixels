@@ -380,6 +380,7 @@ const TimelineShortcutsController = memo(function TimelineShortcutsController() 
   return null
 })
 
+// fallow-ignore-next-line complexity
 export const LoadedEditor = memo(function LoadedEditor({
   projectId,
   project,

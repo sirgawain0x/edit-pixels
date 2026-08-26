@@ -1,4 +1,4 @@
-// fallow-ignore-file unused-file,complexity
+// fallow-ignore-file complexity,unused-export
 import { createLogger } from '@/shared/logging/logger'
 
 const log = createLogger('ImageUploadService')

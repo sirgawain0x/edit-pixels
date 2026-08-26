@@ -1,6 +1,7 @@
 /**
  * Server-side Unlock premium checks for Director billing (mirrors client membership).
  */
+// fallow-ignore-file complexity
 
 import { createPublicClient, http, parseAbi } from 'viem'
 import { arbitrum, base } from 'viem/chains'

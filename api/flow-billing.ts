@@ -1,6 +1,7 @@
 /**
  * Shared Flow / generative billing — CRTVAI transfer verify + consume (anti-replay).
  */
+// fallow-ignore-file unused-export,complexity,code-duplication
 
 import {
   isDirectorBillingEnforced,

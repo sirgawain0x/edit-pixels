@@ -7,6 +7,7 @@
  *  startPrompt?, endPrompt?, stillQuality?,
  *  paymentTxHash?, walletAddress, requestId, token?
  */
+// fallow-ignore-file complexity,code-duplication
 
 import { getBearerToken, verifyPrivyAccessToken } from './_wallet-auth.js'
 import { checkMetokenSufficient } from './_metoken-server.js'

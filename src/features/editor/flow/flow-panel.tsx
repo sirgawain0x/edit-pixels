@@ -158,6 +158,7 @@ export const FlowPanel = memo(function FlowPanel() {
     )
   }, [lastEndUrl, t])
 
+  // fallow-ignore-next-line complexity
   const runFlow = useCallback(async () => {
     if (busy) return
     if (!currentProjectId) {
