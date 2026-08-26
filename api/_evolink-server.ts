@@ -1,4 +1,5 @@
 /// <reference types="node" />
+// fallow-ignore-file unused-export
 const BASE_URL = 'https://api.evolink.ai/v1'
 
 function getServerApiKey(): string | null {

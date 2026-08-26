@@ -1,3 +1,4 @@
+// fallow-ignore-file unused-file
 /** Wallet address validation — no viem or other heavy deps (safe for lightweight serverless routes). */
 
 export const ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/

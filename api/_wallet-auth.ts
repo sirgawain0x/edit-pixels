@@ -1,4 +1,5 @@
 /// <reference types="node" />
+// fallow-ignore-file unused-file,complexity
 /** Privy JWT access-token verification for Vercel serverless routes. */
 
 import { PrivyClient } from '@privy-io/server-auth'

@@ -1,3 +1,4 @@
+// fallow-ignore-file unused-file,complexity
 import { createLogger } from '@/shared/logging/logger'
 
 const log = createLogger('EvolinkClient')

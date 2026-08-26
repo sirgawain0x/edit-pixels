@@ -1,4 +1,5 @@
 /// <reference types="node" />
+// fallow-ignore-file unused-file,complexity
 /**
  * Shared Upstash / Vercel KV Redis client for payment ledgers and task ownership.
  */

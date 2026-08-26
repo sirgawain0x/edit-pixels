@@ -7,6 +7,9 @@
   "functions": {
     "api/director.ts": {
       "maxDuration": 300
+    },
+    "api/generate-task.ts": {
+      "maxDuration": 30
     }
   },
   "rewrites": [

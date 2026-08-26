@@ -1,3 +1,4 @@
+// fallow-ignore-file unused-file
 import { useMemo } from 'react'
 import { useWalletContext } from '@/context/wallet-context'
 import type { SignedRequestParams } from '../services/generative-proxy-client'

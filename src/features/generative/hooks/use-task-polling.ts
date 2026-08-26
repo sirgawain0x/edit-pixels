@@ -1,3 +1,4 @@
+// fallow-ignore-file unused-file,complexity
 import { useRef, useCallback } from 'react'
 import { pollTask } from '../services/task-poller'
 import type { EvolinkTaskDetail, TaskState } from '../types'

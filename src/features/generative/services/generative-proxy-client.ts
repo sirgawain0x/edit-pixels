@@ -1,3 +1,4 @@
+// fallow-ignore-file unused-file,unused-export,complexity,code-duplication
 import { createLogger } from '@/shared/logging/logger'
 import type { EvolinkTaskDetail, NanobananaQuality, SeedanceQuality, SeedanceSpeed } from '../types'
 

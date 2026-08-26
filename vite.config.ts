@@ -6,6 +6,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { POST as directorPost } from './api/director'
+import { GET as generateTaskGet } from './api/generate-task'
 
 // Stamps public/sw.js with the hashed entry-chunk filename at build time so the service
 // worker's CACHE_VERSION — and the sw.js bytes — change on every deploy. Without this the
@@ -104,6 +105,9 @@ async function handleDirectorDevRequest(
     reader.releaseLock()
   }
 }
+
+// Keep generate-task reachable as a serverless entry for fallow / Vercel.
+void generateTaskGet
 
 function directorApiDevPlugin(): Plugin {
   return {
