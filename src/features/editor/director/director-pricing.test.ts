@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   billableAudioMinutes,
+  estimateDirectorUsdc6,
+  formatAudioDurationLabel,
   quoteDirectorBrief,
   quoteDirectorBriefRetail,
 } from './director-pricing'
@@ -15,11 +17,19 @@ describe('billableAudioMinutes', () => {
     expect(billableAudioMinutes(-1)).toBe(0)
   })
 
-  it('ceil-rounds partial minutes with a 1-minute floor', () => {
-    expect(billableAudioMinutes(1)).toBe(1)
+  it('uses exact fractional minutes from seconds', () => {
+    expect(billableAudioMinutes(1)).toBeCloseTo(1 / 60)
     expect(billableAudioMinutes(60)).toBe(1)
-    expect(billableAudioMinutes(61)).toBe(2)
+    expect(billableAudioMinutes(250)).toBeCloseTo(250 / 60)
     expect(billableAudioMinutes(180)).toBe(3)
+  })
+})
+
+describe('formatAudioDurationLabel', () => {
+  it('formats minutes and seconds', () => {
+    expect(formatAudioDurationLabel(250)).toBe('4m 10s')
+    expect(formatAudioDurationLabel(60)).toBe('1m')
+    expect(formatAudioDurationLabel(45)).toBe('45s')
   })
 })
 
@@ -28,14 +38,31 @@ describe('quoteDirectorBrief', () => {
     expect(quoteDirectorBrief({ audioDurationSeconds: 0 })).toBeNull()
   })
 
-  it('prices retail per billable minute of audio', () => {
+  it('prorates retail cost by exact audio seconds', () => {
     const quote = quoteDirectorBrief({ audioDurationSeconds: 90 })
     expect(quote).not.toBeNull()
-    expect(quote!.billableMinutes).toBe(2)
+    expect(quote!.billableMinutes).toBe(1.5)
     expect(quote!.tier).toBe('retail')
-    expect(quote!.estimatedUsdc6).toBe(2 * DIRECTOR_USDC6_PER_AUDIO_MINUTE_RETAIL)
-    expect(quote!.formattedUsd).toBe('$0.10')
-    expect(quote!.crtvaiWei).toBeGreaterThan(0n)
+    expect(quote!.estimatedUsdc6).toBe(
+      estimateDirectorUsdc6(90, DIRECTOR_USDC6_PER_AUDIO_MINUTE_RETAIL),
+    )
+    expect(quote!.estimatedUsdc6).toBe(
+      Math.round((90 * DIRECTOR_USDC6_PER_AUDIO_MINUTE_RETAIL) / 60),
+    )
+    expect(quote!.formattedUsd).toBe('$0.07')
+  })
+
+  it('charges 250s as ~4m 10s not a rounded-up 5 minutes', () => {
+    const quote = quoteDirectorBrief({ audioDurationSeconds: 250 })
+    expect(quote!.formattedDuration).toBe('4m 10s')
+    expect(quote!.billableMinutes).toBeCloseTo(4 + 10 / 60)
+    // Not ceil(250/60)=5 → $0.25
+    expect(quote!.estimatedUsdc6).toBe(
+      Math.round((250 * DIRECTOR_USDC6_PER_AUDIO_MINUTE_RETAIL) / 60),
+    )
+    expect(quote!.estimatedUsdc6).toBe(208_333)
+    expect(quote!.formattedUsd).toBe('$0.21')
+    expect(quote!.crtvaiDisplay).toBeCloseTo(0.208333, 5)
   })
 
   it('applies premium rate when requested', () => {

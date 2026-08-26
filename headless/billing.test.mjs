@@ -72,16 +72,20 @@ describe('billing/pricing', () => {
     assert.strictEqual(usdc6, 1)
   })
 
-  it('estimates Director cost per minute of timeline audio', () => {
+  it('estimates Director cost prorated by timeline audio seconds', () => {
     assert.strictEqual(DIRECTOR_USDC6_PER_AUDIO_MINUTE, INTERVAL_COST_RETAIL_USDC6 / 5)
     assert.strictEqual(estimateDirectorCostUsdc6({ audioDurationSeconds: 0 }), 0)
     assert.strictEqual(
       estimateDirectorCostUsdc6({ audioDurationSeconds: 30 }),
-      DIRECTOR_USDC6_PER_AUDIO_MINUTE,
+      Math.round((30 * DIRECTOR_USDC6_PER_AUDIO_MINUTE) / 60),
     )
     assert.strictEqual(
-      estimateDirectorCostUsdc6({ audioDurationSeconds: 90 }),
-      DIRECTOR_USDC6_PER_AUDIO_MINUTE * 2,
+      estimateDirectorCostUsdc6({ audioDurationSeconds: 250 }),
+      Math.round((250 * DIRECTOR_USDC6_PER_AUDIO_MINUTE) / 60),
+    )
+    assert.notStrictEqual(
+      estimateDirectorCostUsdc6({ audioDurationSeconds: 250 }),
+      DIRECTOR_USDC6_PER_AUDIO_MINUTE * 5,
     )
   })
 })

@@ -49,7 +49,8 @@ export function DirectorInvoiceCard({
         <div className="flex justify-between gap-3">
           <dt className="text-muted-foreground">Audio</dt>
           <dd className="text-foreground">
-            {quote.audioDurationSeconds.toFixed(1)}s · {quote.billableMinutes} min
+            {quote.formattedDuration} ({quote.audioDurationSeconds.toFixed(1)}s ·{' '}
+            {quote.billableMinutes.toFixed(2)} min)
           </dd>
         </div>
         <div className="flex justify-between gap-3">

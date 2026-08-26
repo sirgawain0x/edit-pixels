@@ -107,7 +107,7 @@ export const DIRECTOR_USDC6_PER_AUDIO_MINUTE = INTERVAL_COST_RETAIL_USDC6 / 5
 
 /**
  * Estimate Creative Director cost from timeline audio duration.
- * Billable minutes = ceil(seconds / 60), minimum 1.
+ * Prorates by exact seconds: round(seconds × (intervalCost/5) / 60).
  *
  * @param {object} options
  * @param {number} options.audioDurationSeconds
@@ -119,9 +119,8 @@ export function estimateDirectorCostUsdc6({
 }) {
   const seconds = Number(audioDurationSeconds) || 0
   if (seconds <= 0) return 0
-  const minutes = Math.max(1, Math.ceil(seconds / 60))
   const perMinute = intervalCostUsdc6 / 5
-  return Math.round(minutes * perMinute)
+  return Math.round((seconds * perMinute) / 60)
 }
 
 /**
