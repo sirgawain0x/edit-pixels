@@ -1,4 +1,4 @@
-// fallow-ignore-file unused-file,unused-export,unused-type
+// fallow-ignore-file unused-export,unused-type
 // ---------------------------------------------------------------------------
 // Evolink.ai shared types
 // ---------------------------------------------------------------------------

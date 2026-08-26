@@ -1,4 +1,4 @@
-// fallow-ignore-file unused-file
+// fallow-ignore-file unused-export,unused-type
 export {
   proxyFlowRun,
   proxyGetTask,

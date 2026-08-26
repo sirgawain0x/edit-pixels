@@ -50,6 +50,8 @@ import {
 } from '@/features/editor/deps/export-contract'
 import { getEditorLayout, getEditorLayoutCssVars } from '@/config/editor-layout'
 import { EDITOR_WORKSPACE_TIMELINE_SIZE, type EditorWorkspaceId } from '@/config/editor-workspaces'
+import { useEditorViewportMode } from '@/features/editor/hooks/use-editor-viewport-mode'
+import { EditorOverlayChrome } from './editor-overlay-chrome'
 import {
   createProjectUpgradeBackup,
   formatProjectUpgradeBackupName,
@@ -378,6 +380,7 @@ const TimelineShortcutsController = memo(function TimelineShortcutsController() 
   return null
 })
 
+// fallow-ignore-next-line complexity
 export const LoadedEditor = memo(function LoadedEditor({
   projectId,
   project,
@@ -394,9 +397,14 @@ export const LoadedEditor = memo(function LoadedEditor({
   const [bundleFileHandle, setBundleFileHandle] = useState<FileSystemFileHandle | undefined>()
   const editorDensity = useSettingsStore((s) => s.editorDensity)
   const snapEnabledPreference = useSettingsStore((s) => s.snapEnabled)
-  const editorLayout = getEditorLayout(editorDensity)
+  const { mode: viewportMode, densityPreset: viewportDensity, isDesktop } = useEditorViewportMode()
+  // Viewport density wins on tablet/phone so chrome fits; desktop keeps user setting.
+  const effectiveDensity = isDesktop ? editorDensity : viewportDensity
+  const editorLayout = getEditorLayout(effectiveDensity)
   const editorLayoutCssVars = getEditorLayoutCssVars(editorLayout)
   const syncSidebarLayout = useEditorStore((s) => s.syncSidebarLayout)
+  const setLeftSidebarOpen = useEditorStore((s) => s.setLeftSidebarOpen)
+  const setRightSidebarOpen = useEditorStore((s) => s.setRightSidebarOpen)
   const propertiesFullColumn = useEditorStore((s) => s.propertiesFullColumn)
   const mediaFullColumn = useEditorStore((s) => s.mediaFullColumn)
   const workspace = useEditorStore((s) => s.workspace)
@@ -541,6 +549,13 @@ export const LoadedEditor = memo(function LoadedEditor({
     syncSidebarLayout(editorLayout)
   }, [editorLayout, syncSidebarLayout])
 
+  // Compact viewports: start with sidebars closed so preview stays full-bleed.
+  useEffect(() => {
+    if (isDesktop) return
+    setLeftSidebarOpen(false)
+    setRightSidebarOpen(false)
+  }, [isDesktop, setLeftSidebarOpen, setRightSidebarOpen, viewportMode])
+
   // Apply the per-workspace timeline split when switching workspaces:
   // snapshot the outgoing workspace's split, then restore the incoming
   // workspace's saved split (or its preset default on first visit).
@@ -665,11 +680,15 @@ export const LoadedEditor = memo(function LoadedEditor({
   // Color replaces the default editor shell. Motion deliberately keeps it and
   // swaps the preview/timeline surfaces while retaining the shared sidebars.
   const hidesDefaultSidebars = isColorWorkspace
+  const useOverlaySidebars = !isDesktop && !hidesDefaultSidebars
+  // Phone: taller preview / shorter timeline for light edit.
+  const phoneTimelineDefault = viewportMode === 'phone' ? 22 : editorLayout.timelineDefaultSize
 
   return (
     <div
       className="h-screen bg-background flex flex-col overflow-hidden"
       style={editorLayoutCssVars as import('react').CSSProperties}
+      data-editor-viewport={viewportMode}
       role="application"
       aria-label={t('editor.editor.appLabel')}
     >
@@ -691,8 +710,8 @@ export const LoadedEditor = memo(function LoadedEditor({
 
       {/* Main Layout: Full-height sidebar + vertical split */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Sidebar - Media Library (full column mode) */}
-        {mediaFullColumn && !hidesDefaultSidebars && (
+        {/* Left Sidebar - Media Library (full column mode, desktop only) */}
+        {mediaFullColumn && !hidesDefaultSidebars && isDesktop && (
           <InteractionLockRegion locked={isMaskEditingActive}>
             <ErrorBoundary level="feature">
               <MediaSidebar />
@@ -730,13 +749,13 @@ export const LoadedEditor = memo(function LoadedEditor({
           >
             {/* Top - Preview + Properties (inline mode) */}
             <ResizablePanel
-              defaultSize={100 - editorLayout.timelineDefaultSize}
+              defaultSize={100 - phoneTimelineDefault}
               minSize={100 - editorLayout.timelineMaxSize}
               maxSize={100 - editorLayout.timelineMinSize}
             >
               <div className="h-full flex overflow-hidden relative">
-                {/* Left Sidebar - Media Library (inline with preview) */}
-                {!mediaFullColumn && (
+                {/* Left Sidebar - Media Library (inline with preview, desktop) */}
+                {!mediaFullColumn && isDesktop && (
                   <InteractionLockRegion locked={isMaskEditingActive}>
                     <ErrorBoundary level="feature">
                       <MediaSidebar />
@@ -753,8 +772,8 @@ export const LoadedEditor = memo(function LoadedEditor({
                   )}
                 </ErrorBoundary>
 
-                {/* Right Sidebar - Properties (inline with preview) */}
-                {!propertiesFullColumn && (
+                {/* Right Sidebar - Properties (inline with preview, desktop) */}
+                {!propertiesFullColumn && isDesktop && (
                   <InteractionLockRegion locked={isMaskEditingActive}>
                     <ErrorBoundary level="feature">
                       <PropertiesSidebar />
@@ -772,7 +791,7 @@ export const LoadedEditor = memo(function LoadedEditor({
             {/* Bottom - Timeline */}
             <ResizablePanel
               ref={timelinePanelRef}
-              defaultSize={editorLayout.timelineDefaultSize}
+              defaultSize={phoneTimelineDefault}
               minSize={editorLayout.timelineMinSize}
               maxSize={editorLayout.timelineMaxSize}
             >
@@ -788,7 +807,7 @@ export const LoadedEditor = memo(function LoadedEditor({
                         </Suspense>
                       )}
                     </div>
-                    <AudioMeterPanel />
+                    {viewportMode !== 'phone' && <AudioMeterPanel />}
                   </div>
                 </ErrorBoundary>
               </InteractionLockRegion>
@@ -796,8 +815,8 @@ export const LoadedEditor = memo(function LoadedEditor({
           </ResizablePanelGroup>
         )}
 
-        {/* Right Sidebar - Properties (full column mode) */}
-        {propertiesFullColumn && !hidesDefaultSidebars && (
+        {/* Right Sidebar - Properties (full column mode, desktop only) */}
+        {propertiesFullColumn && !hidesDefaultSidebars && isDesktop && (
           <InteractionLockRegion locked={isMaskEditingActive}>
             <ErrorBoundary level="feature">
               <PropertiesSidebar />
@@ -805,6 +824,8 @@ export const LoadedEditor = memo(function LoadedEditor({
           </InteractionLockRegion>
         )}
       </div>
+
+      {useOverlaySidebars && <EditorOverlayChrome mode={viewportMode} />}
 
       <Suspense fallback={null}>
         {/* Export Dialog */}

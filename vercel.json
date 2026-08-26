@@ -8,6 +8,18 @@
     "api/director.ts": {
       "maxDuration": 300
     },
+    "api/flow-run.ts": {
+      "maxDuration": 300
+    },
+    "api/flow-frame.ts": {
+      "maxDuration": 30
+    },
+    "api/generate-video.ts": {
+      "maxDuration": 60
+    },
+    "api/generate-image.ts": {
+      "maxDuration": 60
+    },
     "api/generate-task.ts": {
       "maxDuration": 30
     }

@@ -28,9 +28,11 @@ import { getVercelOidcToken } from '@vercel/oidc'
 import { ExternalAccountClient, GoogleAuth } from 'google-auth-library'
 import {
   isDirectorBillingEnforced,
-  quoteDirectorRetail,
-  verifyDirectorPayment,
+  quoteDirectorForWallet,
+  releaseDirectorPayment,
+  verifyAndConsumeDirectorPayment,
 } from './director-billing'
+import { probeAudioDurationSeconds } from './_audio-duration'
 
 const DEFAULT_PROJECT = 'creative-ai-491118'
 const DEFAULT_LOCATION = 'us-central1'
@@ -261,46 +263,109 @@ async function parseDirectorRequest(
 }
 
 // fallow-ignore-next-line complexity
-async function assertDirectorPayment(data: ParsedDirectorRequest): Promise<Response | null> {
-  if (!isDirectorBillingEnforced()) return null
-
-  if (data.audioDurationSeconds == null || data.audioDurationSeconds <= 0) {
-    return Response.json(
-      { error: 'audioDurationSeconds is required for Director billing' },
-      { status: 402 },
-    )
+async function resolveBillableAudioSeconds(
+  data: ParsedDirectorRequest,
+): Promise<{ ok: true; seconds: number } | { ok: false; response: Response }> {
+  const claimed = data.audioDurationSeconds
+  if (claimed == null || claimed <= 0) {
+    return {
+      ok: false,
+      response: Response.json(
+        { error: 'audioDurationSeconds is required for Director billing' },
+        { status: 402 },
+      ),
+    }
   }
 
-  const quote = quoteDirectorRetail(data.audioDurationSeconds)
+  const audioUri = data.audioUri?.trim()
+  if (!audioUri) {
+    return { ok: true, seconds: claimed }
+  }
+
+  if (!/^https:\/\//i.test(audioUri)) {
+    return {
+      ok: false,
+      response: Response.json(
+        { error: 'audioUri must be an https URL when provided for Director billing' },
+        { status: 402 },
+      ),
+    }
+  }
+
+  const measured = await probeAudioDurationSeconds(audioUri)
+  if (measured == null) {
+    return {
+      ok: false,
+      response: Response.json(
+        { error: 'Unable to verify audio duration from audioUri' },
+        { status: 402 },
+      ),
+    }
+  }
+
+  // Reject underbilling; allow 1s client/server skew.
+  if (claimed + 1 < measured) {
+    return {
+      ok: false,
+      response: Response.json(
+        {
+          error: 'audioDurationSeconds understates audioUri duration',
+          claimedSeconds: claimed,
+          measuredSeconds: measured,
+        },
+        { status: 402 },
+      ),
+    }
+  }
+
+  return { ok: true, seconds: Math.max(claimed, measured) }
+}
+
+// fallow-ignore-next-line complexity
+async function assertDirectorPayment(
+  data: ParsedDirectorRequest,
+): Promise<{ error: Response } | { paymentTxHash: string | null }> {
+  if (!isDirectorBillingEnforced()) return { paymentTxHash: null }
+
+  const billable = await resolveBillableAudioSeconds(data)
+  if (!billable.ok) return { error: billable.response }
+
+  const quote = await quoteDirectorForWallet(billable.seconds, data.walletAddress)
   if (!quote) {
-    return Response.json({ error: 'Unable to quote Director brief' }, { status: 402 })
+    return { error: Response.json({ error: 'Unable to quote Director brief' }, { status: 402 }) }
   }
 
   if (!data.paymentTxHash || !data.walletAddress) {
-    return Response.json(
-      {
-        error: 'Director requires a CRTVAI payment before generation',
-        estimatedUsdc6: quote.estimatedUsdc6,
-        billableMinutes: quote.billableMinutes,
-      },
-      { status: 402 },
-    )
+    return {
+      error: Response.json(
+        {
+          error: 'Director requires a CRTVAI payment before generation',
+          estimatedUsdc6: quote.estimatedUsdc6,
+          billableMinutes: quote.billableMinutes,
+          tier: quote.tier,
+        },
+        { status: 402 },
+      ),
+    }
   }
 
-  const verified = await verifyDirectorPayment({
+  const verified = await verifyAndConsumeDirectorPayment({
     txHash: data.paymentTxHash,
     from: data.walletAddress,
     minAmountWei: quote.minCrtvaiWei,
+    purpose: 'director',
   })
 
   if (!verified.ok) {
-    return Response.json(
-      { error: `Director payment rejected: ${verified.reason}` },
-      { status: 402 },
-    )
+    return {
+      error: Response.json(
+        { error: `Director payment rejected: ${verified.reason}` },
+        { status: 402 },
+      ),
+    }
   }
 
-  return null
+  return { paymentTxHash: data.paymentTxHash }
 }
 
 async function fetchEngineStream(
@@ -376,8 +441,15 @@ export async function POST(request: Request): Promise<Response> {
   const parsed = await parseDirectorRequest(request)
   if (!parsed.ok) return parsed.response
 
-  const paymentError = await assertDirectorPayment(parsed.data)
-  if (paymentError) return paymentError
+  const payment = await assertDirectorPayment(parsed.data)
+  if ('error' in payment) return payment.error
+  const reservedPaymentTxHash = payment.paymentTxHash
+
+  const releaseReservedPayment = async () => {
+    if (reservedPaymentTxHash) {
+      await releaseDirectorPayment(reservedPaymentTxHash).catch(() => undefined)
+    }
+  }
 
   const message = buildMessage(parsed.data.prompt, parsed.data.audioUri)
   const input: Record<string, string> = { user_id: parsed.data.userId, message }
@@ -387,6 +459,7 @@ export async function POST(request: Request): Promise<Response> {
   try {
     token = await getAccessToken()
   } catch (error) {
+    await releaseReservedPayment()
     console.error('Director auth error', error)
     const detail = error instanceof Error ? error.message : String(error)
     const hint = process.env.VERCEL
@@ -410,6 +483,7 @@ export async function POST(request: Request): Promise<Response> {
     upstream = await fetchEngineStream(token, input, upstreamAbort.signal)
   } catch (error) {
     request.signal.removeEventListener('abort', onClientAbort)
+    await releaseReservedPayment()
     if (upstreamAbort.signal.aborted || request.signal.aborted) {
       return new Response(null, { status: 499 })
     }
@@ -419,6 +493,7 @@ export async function POST(request: Request): Promise<Response> {
 
   if (!upstream.ok || !upstream.body) {
     request.signal.removeEventListener('abort', onClientAbort)
+    await releaseReservedPayment()
     const errText = await upstream.text().catch(() => '')
     console.error('Director engine error', upstream.status, errText)
     return Response.json(

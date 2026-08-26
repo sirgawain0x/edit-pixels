@@ -384,3 +384,10 @@ body.canvas-translate-cursor-not-allowed * {
     animation: none;
   }
 }
+
+/* Compact editor viewports: prefer pan gestures on the timeline surface. */
+[data-editor-viewport='tablet'] [data-timeline-root],
+[data-editor-viewport='phone'] [data-timeline-root] {
+  touch-action: pan-x pan-y;
+}
+

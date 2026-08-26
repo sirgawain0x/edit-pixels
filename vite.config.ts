@@ -7,6 +7,10 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { POST as directorPost } from './api/director'
 import { GET as generateTaskGet } from './api/generate-task'
+import { POST as flowFramePost } from './api/flow-frame'
+import { POST as flowRunPost } from './api/flow-run'
+import { POST as generateImagePost } from './api/generate-image'
+import { POST as generateVideoPost } from './api/generate-video'
 
 // Stamps public/sw.js with the hashed entry-chunk filename at build time so the service
 // worker's CACHE_VERSION — and the sw.js bytes — change on every deploy. Without this the
@@ -106,8 +110,12 @@ async function handleDirectorDevRequest(
   }
 }
 
-// Keep generate-task reachable as a serverless entry for fallow / Vercel.
+// Keep serverless API modules reachable as entries for fallow / Vercel.
 void generateTaskGet
+void flowFramePost
+void flowRunPost
+void generateImagePost
+void generateVideoPost
 
 function directorApiDevPlugin(): Plugin {
   return {

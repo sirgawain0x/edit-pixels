@@ -124,6 +124,30 @@
     {
       "file": "src/features/editor/deps/timeline-store.ts",
       "exports": ["*"]
+    },
+    {
+      "file": "api/director.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/generate-task.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/flow-frame.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/flow-run.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/generate-image.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/generate-video.ts",
+      "exports": ["*"]
     }
   ]
 }

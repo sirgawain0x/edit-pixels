@@ -10,11 +10,13 @@ import {
   useItemsStore,
   useTimelineSettingsStore,
 } from '@/features/editor/deps/timeline-store-contract'
+import { usePremiumMembership } from '@/features/editor/deps/live-ai'
 import { useSmartWalletOps } from '@/hooks/use-smart-wallet-ops'
 import { getDirectorTreasuryAddress } from './build-director-payment'
 import { confirmDirectorInvoice } from './confirm-director-invoice'
 import { quoteDirectorBrief } from './director-pricing'
 import { DirectorInvoiceCard, type PendingDirectorInvoice } from './director-invoice-card'
+import { DirectorSessionPacks } from './director-session-packs'
 import { useDirectorStore } from './director-store'
 import {
   buildDirectorTimelineAudioContext,
@@ -135,8 +137,10 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
 
   const { account, connect, authenticated, configured: walletConfigured } = useWalletContext()
   const { balance, refreshBalance } = useCredits()
+  const { isPremiumMember } = usePremiumMembership(account)
   const { sendOps, ready: walletOpsReady } = useSmartWalletOps()
   const canPayOnChain = Boolean(getDirectorTreasuryAddress() && walletOpsReady)
+  const hasCrtvai = balance > 0
 
   const timelineItems = useItemsStore((s) => s.items)
   const fps = useTimelineSettingsStore((s) => s.fps)
@@ -168,6 +172,7 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
   }, [input])
 
   const queueInvoice = useCallback(
+    // fallow-ignore-next-line complexity
     (text: string) => {
       const trimmed = text.trim()
       if (!trimmed) return
@@ -191,8 +196,18 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
         return
       }
 
+      if (walletConfigured && authenticated && !hasCrtvai) {
+        reportLocalError(
+          t('director.error.zeroBalance', {
+            defaultValue: 'Your CRTVAI balance is empty. Buy credits below, then brief again.',
+          }),
+        )
+        return
+      }
+
       const quote = quoteDirectorBrief({
         audioDurationSeconds: audioContext.primary.durationSeconds,
+        isPremium: isPremiumMember,
       })
       if (!quote) {
         reportLocalError(
@@ -211,7 +226,17 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
         quote,
       })
     },
-    [audioContext, authenticated, connect, hasTimelineAudio, reportLocalError, t, walletConfigured],
+    [
+      audioContext,
+      authenticated,
+      connect,
+      hasCrtvai,
+      hasTimelineAudio,
+      isPremiumMember,
+      reportLocalError,
+      t,
+      walletConfigured,
+    ],
   )
 
   const cancelInvoice = useCallback(() => {
@@ -362,7 +387,22 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
                           'Drop a track onto the timeline first. The Director builds beat-synced storyboards from audio already in your edit.',
                       })}
                 </p>
+                {isPremiumMember ? (
+                  <p className="text-[11px] text-emerald-300/90">
+                    {t('director.empty.premium', {
+                      defaultValue: 'Pro rate active — half-price Director minutes.',
+                    })}
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground/90">
+                    {t('director.empty.proValue', {
+                      defaultValue: 'Cloud Director · beat-synced research · Pro members pay half.',
+                    })}
+                  </p>
+                )}
               </div>
+
+              {walletConfigured && authenticated && !hasCrtvai && <DirectorSessionPacks />}
 
               <ul className="space-y-1.5">
                 {SUGGESTIONS.map((suggestion, index) => (
