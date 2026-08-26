@@ -145,6 +145,7 @@ function buildMessage(prompt: string, audioUri?: string): string {
   return `${prompt}\n\nAudio URI: ${audioUri.trim()}`
 }
 
+// fallow-ignore-next-line complexity
 function normalizeHost(value: string | null): string | null {
   if (!value) return null
   try {
@@ -162,6 +163,7 @@ function normalizeHost(value: string | null): string | null {
  * - Production: same-origin browser requests, or DIRECTOR_API_SECRET bearer/header
  * - Local dev: open (no VERCEL env)
  */
+// fallow-ignore-next-line complexity
 function assertDirectorAuthorized(request: Request): Response | null {
   const secret = process.env.DIRECTOR_API_SECRET?.trim()
   if (secret) {
