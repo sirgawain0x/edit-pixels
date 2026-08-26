@@ -2,9 +2,12 @@
 /**
  * Vercel serverless endpoint: proxies Creative Director Agent Engine SSE.
  *
- * Auth: GOOGLE_SERVICE_ACCOUNT_JSON (Vercel) or Application Default Credentials
- * (local via `gcloud auth application-default login`). OAuth bearer only —
- * Agent Platform API keys are not used for :streamQuery.
+ * Auth (no service-account keys):
+ * - Production / Vercel: Workload Identity Federation via Vercel OIDC
+ *   (`@vercel/oidc` + `ExternalAccountClient`)
+ * - Local: Application Default Credentials
+ *   (`gcloud auth application-default login`), or the same WIF path after
+ *   `vercel env pull` (provides `VERCEL_OIDC_TOKEN`)
  *
  * Body JSON:
  *   prompt     - user message (required)
@@ -13,7 +16,8 @@
  *   audioUri   - optional audio context appended to the message
  */
 
-import { GoogleAuth, type JWTInput } from 'google-auth-library'
+import { getVercelOidcToken } from '@vercel/oidc'
+import { ExternalAccountClient, GoogleAuth } from 'google-auth-library'
 
 const DEFAULT_PROJECT = '1037240986506'
 const DEFAULT_LOCATION = 'us-central1'
@@ -27,8 +31,20 @@ interface DirectorRequestBody {
   audioUri?: string
 }
 
+interface WifConfig {
+  projectNumber: string
+  poolId: string
+  providerId: string
+  serviceAccountEmail: string
+  audience: string
+}
+
 function getProject(): string {
-  return process.env.GOOGLE_CLOUD_PROJECT?.trim() || DEFAULT_PROJECT
+  return (
+    process.env.GOOGLE_CLOUD_PROJECT?.trim() ||
+    process.env.GCP_PROJECT_ID?.trim() ||
+    DEFAULT_PROJECT
+  )
 }
 
 function getLocation(): string {
@@ -39,29 +55,87 @@ function getEngineId(): string {
   return process.env.VERTEX_REASONING_ENGINE_ID?.trim() || DEFAULT_ENGINE_ID
 }
 
-function parseServiceAccountJson(): JWTInput | null {
-  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim()
-  if (!raw) return null
-  try {
-    return JSON.parse(raw) as JWTInput
-  } catch {
+function readWifConfig(): WifConfig | null {
+  const projectNumber = process.env.GCP_PROJECT_NUMBER?.trim()
+  const poolId = process.env.GCP_WORKLOAD_IDENTITY_POOL_ID?.trim()
+  const providerId = process.env.GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID?.trim()
+  const serviceAccountEmail = process.env.GCP_SERVICE_ACCOUNT_EMAIL?.trim()
+  if (!projectNumber || !poolId || !providerId || !serviceAccountEmail) {
     return null
   }
+
+  // Prefer GCP_AUDIENCE from the provider details page (Default audience).
+  // Format: https://iam.googleapis.com/projects/.../providers/...
+  // See https://vercel.com/docs/oidc/gcp
+  const audience =
+    process.env.GCP_AUDIENCE?.trim() ||
+    `https://iam.googleapis.com/projects/${projectNumber}/locations/global/workloadIdentityPools/${poolId}/providers/${providerId}`
+
+  return { projectNumber, poolId, providerId, serviceAccountEmail, audience }
 }
 
-async function getAccessToken(): Promise<string> {
-  const credentials = parseServiceAccountJson()
-  const auth = credentials
-    ? new GoogleAuth({ credentials, scopes: [CLOUD_PLATFORM_SCOPE] })
-    : new GoogleAuth({ scopes: [CLOUD_PLATFORM_SCOPE] })
+function tokenFromResponse(tokenResponse: unknown): string | null {
+  if (typeof tokenResponse === 'string' && tokenResponse) return tokenResponse
+  if (
+    tokenResponse &&
+    typeof tokenResponse === 'object' &&
+    'token' in tokenResponse &&
+    typeof (tokenResponse as { token?: unknown }).token === 'string'
+  ) {
+    return (tokenResponse as { token: string }).token
+  }
+  return null
+}
 
-  const client = await auth.getClient()
-  const tokenResponse = await client.getAccessToken()
-  const token = typeof tokenResponse === 'string' ? tokenResponse : tokenResponse?.token
+async function getAccessTokenViaWif(config: WifConfig): Promise<string> {
+  // Custom audience pattern (Vercel + GCP recommended):
+  // - ExternalAccountClient.audience = provider Default audience (https://iam.googleapis.com/...)
+  // - getVercelOidcToken({ audience }) so the OIDC aud claim matches that provider
+  const client = ExternalAccountClient.fromJSON({
+    type: 'external_account',
+    audience: config.audience,
+    subject_token_type: 'urn:ietf:params:oauth:token-type:jwt',
+    token_url: 'https://sts.googleapis.com/v1/token',
+    service_account_impersonation_url: `https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${config.serviceAccountEmail}:generateAccessToken`,
+    subject_token_supplier: {
+      getSubjectToken: () =>
+        getVercelOidcToken({
+          audience: config.audience,
+        }),
+    },
+  })
+
+  if (!client) {
+    throw new Error('Failed to create Workload Identity Federation client')
+  }
+
+  client.scopes = [CLOUD_PLATFORM_SCOPE]
+  const token = tokenFromResponse(await client.getAccessToken())
   if (!token) {
-    throw new Error('Failed to obtain Google Cloud access token')
+    throw new Error('Failed to obtain access token via Workload Identity Federation')
   }
   return token
+}
+
+async function getAccessTokenViaAdc(): Promise<string> {
+  const auth = new GoogleAuth({ scopes: [CLOUD_PLATFORM_SCOPE] })
+  const client = await auth.getClient()
+  const token = tokenFromResponse(await client.getAccessToken())
+  if (!token) {
+    throw new Error('Failed to obtain Google Cloud access token via ADC')
+  }
+  return token
+}
+
+/**
+ * Prefer keyless WIF on Vercel; fall back to ADC for local shells without OIDC.
+ */
+async function getAccessToken(): Promise<string> {
+  const wif = readWifConfig()
+  if (wif) {
+    return getAccessTokenViaWif(wif)
+  }
+  return getAccessTokenViaAdc()
 }
 
 function buildMessage(prompt: string, audioUri?: string): string {
@@ -101,7 +175,7 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json(
       {
         error:
-          'Director not configured: set GOOGLE_SERVICE_ACCOUNT_JSON or Application Default Credentials',
+          'Director not configured: set GCP Workload Identity Federation env vars (Vercel OIDC) or Application Default Credentials locally',
       },
       { status: 503 },
     )
