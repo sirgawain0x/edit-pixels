@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { BuyMetokenModal } from '@/features/metoken/components/buy-metoken-modal'
 import { cn } from '@/shared/ui/cn'
 import type { DirectorQuote } from './director-pricing'
 
@@ -29,6 +31,8 @@ export function DirectorInvoiceCard({
 }) {
   const { quote } = invoice
   const insufficient = balance < quote.crtvaiDisplay
+  const [buyOpen, setBuyOpen] = useState(false)
+  const suggestedUsdc = Math.max(1, Math.ceil(quote.estimatedUsdc6 / 1_000_000)).toFixed(2)
 
   return (
     <div className="rounded-xl border border-primary/35 bg-secondary/30 p-3.5">
@@ -45,6 +49,21 @@ export function DirectorInvoiceCard({
         })}
       </p>
 
+      {quote.tier === 'premium' ? (
+        <p className="mt-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1.5 text-[11px] text-emerald-200/90">
+          {t('director.invoice.premium', {
+            defaultValue: 'Pro rate — Creative Org / Pixels Premium members save 50% vs retail.',
+          })}
+        </p>
+      ) : (
+        <p className="mt-2 rounded-md border border-border/70 bg-secondary/40 px-2 py-1.5 text-[11px] text-muted-foreground">
+          {t('director.invoice.proUpsell', {
+            defaultValue:
+              'Pro tip: Creative Org DAO or Pixels Premium unlocks half-price Director minutes plus cloud research tools.',
+          })}
+        </p>
+      )}
+
       <dl className="mt-3 space-y-1.5 font-mono text-[11px]">
         <div className="flex justify-between gap-3">
           <dt className="text-muted-foreground">Audio</dt>
@@ -57,6 +76,7 @@ export function DirectorInvoiceCard({
           <dt className="text-muted-foreground">Rate</dt>
           <dd className="text-foreground">
             {(quote.usdc6PerMinute / 1_000_000).toFixed(2)} USD / min
+            <span className="ml-1 text-muted-foreground">({quote.tier})</span>
           </dd>
         </div>
         <div className="flex justify-between gap-3 border-t border-border/60 pt-1.5">
@@ -75,11 +95,23 @@ export function DirectorInvoiceCard({
       </dl>
 
       {insufficient && (
-        <p className="mt-2 text-[11px] text-destructive">
-          {t('director.invoice.insufficient', {
-            defaultValue: 'Insufficient CRTVAI. Buy credits, then confirm again.',
-          })}
-        </p>
+        <div className="mt-2 space-y-2">
+          <p className="text-[11px] text-destructive">
+            {t('director.invoice.insufficient', {
+              defaultValue: 'Insufficient CRTVAI. Buy credits, then confirm again.',
+            })}
+          </p>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="h-8 w-full text-[11px]"
+            disabled={paying}
+            onClick={() => setBuyOpen(true)}
+          >
+            {t('director.invoice.buyCrtvai', { defaultValue: 'Buy CRTVAI' })}
+          </Button>
+        </div>
       )}
 
       {!canPayOnChain && (
@@ -122,6 +154,8 @@ export function DirectorInvoiceCard({
           )}
         </Button>
       </div>
+
+      <BuyMetokenModal open={buyOpen} onOpenChange={setBuyOpen} initialUsdcAmount={suggestedUsdc} />
     </div>
   )
 }

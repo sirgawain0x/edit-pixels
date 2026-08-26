@@ -6,9 +6,13 @@
 
 import { createPublicClient, http, type Hex } from 'viem'
 import { base } from 'viem/chains'
+import { isPremiumWallet } from './_premium-membership.js'
+import { consumePaymentTxHash, isPaymentLedgerReady } from './_payment-ledger.js'
 
 /** Mirrors `DIRECTOR_USDC6_PER_AUDIO_MINUTE_RETAIL` in src/config/billing.ts */
-const DIRECTOR_USDC6_PER_AUDIO_MINUTE = 50_000
+const DIRECTOR_USDC6_PER_AUDIO_MINUTE_RETAIL = 50_000
+/** Mirrors `DIRECTOR_USDC6_PER_AUDIO_MINUTE_PREMIUM` in src/config/billing.ts */
+const DIRECTOR_USDC6_PER_AUDIO_MINUTE_PREMIUM = 25_000
 
 const CRTVAI_DIAMOND = '0xecb695544a3d2a64d579b3828f3f60f6932f4846'
 
@@ -17,6 +21,7 @@ export interface DirectorBillingQuote {
   estimatedUsdc6: number
   /** Minimum CRTVAI wei expected (usdc6 × 1e12). */
   minCrtvaiWei: bigint
+  tier: 'retail' | 'premium'
 }
 
 function billableAudioMinutes(audioDurationSeconds: number): number {
@@ -24,16 +29,37 @@ function billableAudioMinutes(audioDurationSeconds: number): number {
   return audioDurationSeconds / 60
 }
 
-export function quoteDirectorRetail(audioDurationSeconds: number): DirectorBillingQuote | null {
+export function quoteDirectorRate(
+  audioDurationSeconds: number,
+  isPremium: boolean,
+): DirectorBillingQuote | null {
   const minutes = billableAudioMinutes(audioDurationSeconds)
   if (minutes <= 0) return null
-  const estimatedUsdc6 = Math.round((audioDurationSeconds * DIRECTOR_USDC6_PER_AUDIO_MINUTE) / 60)
+  const rate = isPremium
+    ? DIRECTOR_USDC6_PER_AUDIO_MINUTE_PREMIUM
+    : DIRECTOR_USDC6_PER_AUDIO_MINUTE_RETAIL
+  const estimatedUsdc6 = Math.round((audioDurationSeconds * rate) / 60)
   if (estimatedUsdc6 <= 0) return null
   return {
     billableMinutes: minutes,
     estimatedUsdc6,
     minCrtvaiWei: BigInt(estimatedUsdc6) * 10n ** 12n,
+    tier: isPremium ? 'premium' : 'retail',
   }
+}
+
+/** Always retail — use when membership is unknown. */
+export function quoteDirectorRetail(audioDurationSeconds: number): DirectorBillingQuote | null {
+  return quoteDirectorRate(audioDurationSeconds, false)
+}
+
+/** Resolve quote using on-chain Unlock membership for `walletAddress`. */
+export async function quoteDirectorForWallet(
+  audioDurationSeconds: number,
+  walletAddress: string | undefined,
+): Promise<DirectorBillingQuote | null> {
+  const premium = walletAddress ? await isPremiumWallet(walletAddress) : false
+  return quoteDirectorRate(audioDurationSeconds, premium)
 }
 
 // fallow-ignore-next-line complexity
@@ -125,4 +151,31 @@ export async function verifyDirectorPayment(options: {
       reason: error instanceof Error ? error.message : 'Payment verification failed',
     }
   }
+}
+
+/**
+ * Verify on-chain transfer then consume the tx hash (anti-replay).
+ */
+export async function verifyAndConsumeDirectorPayment(options: {
+  txHash: string
+  from: string
+  minAmountWei: bigint
+  purpose: string
+}): Promise<PaymentVerifyResult> {
+  if (isDirectorBillingEnforced() && !isPaymentLedgerReady()) {
+    return { ok: false, reason: 'Payment ledger unavailable (configure Upstash/Vercel KV)' }
+  }
+
+  const verified = await verifyDirectorPayment(options)
+  if (!verified.ok) return verified
+
+  if (isDirectorBillingEnforced()) {
+    const consumed = await consumePaymentTxHash(options.txHash, {
+      wallet: options.from,
+      purpose: options.purpose,
+    })
+    if (!consumed.ok) return { ok: false, reason: consumed.reason }
+  }
+
+  return verified
 }

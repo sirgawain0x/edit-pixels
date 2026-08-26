@@ -2,45 +2,82 @@
  * Editor density presets.
  *
  * `compact` is tuned to keep more of the editor visible on a 1920x1080 display.
+ * `tablet` / `phone` are selected automatically from viewport width.
  *
  * Prefer changing presets here before editing one-off component sizes.
  */
 const EDIT_DOPESHEET_COLUMN_WIDTH = 288
 
+const COMPACT_LAYOUT = {
+  toolbarHeight: 48,
+  sidebarRailWidth: 44,
+  sidebarHeaderHeight: 36,
+  sidebarHeaderButtonSize: 20,
+  toolbarButtonSize: 20,
+  leftSidebarDefaultWidth: 320,
+  leftSidebarMinWidth: 240,
+  leftSidebarMaxWidth: 560,
+  rightSidebarDefaultWidth: 288,
+  rightSidebarMinWidth: 280,
+  rightSidebarMaxWidth: 420,
+  previewPadding: 32,
+  previewSplitHeaderHeight: 32,
+  previewControlsHeight: 32,
+  previewControlButtonSize: 30,
+  timelineDefaultSize: 28,
+  timelineMinSize: 14,
+  timelineMaxSize: 80,
+  graphPanelSizeIncrease: 10,
+  timelineHeaderHeight: 40,
+  timelineTracksHeaderHeight: 34,
+  timelineRulerHeight: 34,
+  timelineSidebarWidth: EDIT_DOPESHEET_COLUMN_WIDTH,
+  timelineMeterWidth: 84,
+  timelineMixerWidth: 260,
+  timelineTrackHeight: 100,
+  timelineClipLabelRowHeight: 24,
+  timelineWaveformRowHeight: 24,
+} as const
+
 const EDITOR_DENSITY_PRESETS = {
-  compact: {
-    toolbarHeight: 48,
-    sidebarRailWidth: 44,
-    sidebarHeaderHeight: 36,
-    sidebarHeaderButtonSize: 20,
-    toolbarButtonSize: 20,
-    leftSidebarDefaultWidth: 320,
-    leftSidebarMinWidth: 240,
-    leftSidebarMaxWidth: 560,
-    rightSidebarDefaultWidth: 288,
+  compact: COMPACT_LAYOUT,
+  tablet: {
+    ...COMPACT_LAYOUT,
+    toolbarHeight: 44,
+    sidebarRailWidth: 48,
+    leftSidebarDefaultWidth: 300,
+    leftSidebarMinWidth: 260,
+    rightSidebarDefaultWidth: 300,
+    rightSidebarMinWidth: 260,
+    previewPadding: 16,
+    timelineDefaultSize: 32,
+    timelineTrackHeight: 88,
+  },
+  phone: {
+    ...COMPACT_LAYOUT,
+    toolbarHeight: 44,
+    sidebarRailWidth: 0,
+    leftSidebarDefaultWidth: 360,
+    leftSidebarMinWidth: 280,
+    leftSidebarMaxWidth: 420,
+    rightSidebarDefaultWidth: 360,
     rightSidebarMinWidth: 280,
     rightSidebarMaxWidth: 420,
-    previewPadding: 32,
-    previewSplitHeaderHeight: 32,
-    previewControlsHeight: 32,
-    previewControlButtonSize: 30,
-    timelineDefaultSize: 28,
-    timelineMinSize: 14,
-    timelineMaxSize: 80,
-    graphPanelSizeIncrease: 10,
-    timelineHeaderHeight: 40,
-    // Ruler + its left-column header are kept equal so track rows align on both
-    // sides. The ruler now hosts a top IO lane (12px) + a shorter tick ruler.
-    timelineTracksHeaderHeight: 34,
-    timelineRulerHeight: 34,
-    // The Edit track header follows the classic dopesheet property column so
-    // both timeline surfaces share the same ruler and playhead origin.
-    timelineSidebarWidth: EDIT_DOPESHEET_COLUMN_WIDTH,
-    timelineMeterWidth: 84,
-    timelineMixerWidth: 260,
-    timelineTrackHeight: 100,
-    timelineClipLabelRowHeight: 24,
-    timelineWaveformRowHeight: 24,
+    previewPadding: 8,
+    previewControlsHeight: 40,
+    previewControlButtonSize: 36,
+    timelineDefaultSize: 22,
+    timelineMinSize: 18,
+    timelineMaxSize: 45,
+    timelineHeaderHeight: 36,
+    timelineTracksHeaderHeight: 28,
+    timelineRulerHeight: 28,
+    timelineSidebarWidth: 120,
+    timelineMeterWidth: 0,
+    timelineMixerWidth: 0,
+    timelineTrackHeight: 64,
+    timelineClipLabelRowHeight: 18,
+    timelineWaveformRowHeight: 18,
   },
 } as const
 
@@ -49,10 +86,30 @@ export type EditorLayout = (typeof EDITOR_DENSITY_PRESETS)[EditorDensityPresetNa
 type LeftSidebarLayoutBounds = { leftSidebarMinWidth: number; leftSidebarMaxWidth: number }
 type RightSidebarLayoutBounds = { rightSidebarMinWidth: number; rightSidebarMaxWidth: number }
 
+export type EditorViewportMode = 'desktop' | 'tablet' | 'phone'
+
+/** Breakpoints (px): phone < tabletMin ≤ tablet < desktopMin ≤ desktop */
+export const EDITOR_VIEWPORT_TABLET_MIN = 768
+export const EDITOR_VIEWPORT_DESKTOP_MIN = 1100
+
+export function resolveEditorViewportMode(width: number): EditorViewportMode {
+  if (!Number.isFinite(width) || width <= 0) return 'desktop'
+  if (width < EDITOR_VIEWPORT_TABLET_MIN) return 'phone'
+  if (width < EDITOR_VIEWPORT_DESKTOP_MIN) return 'tablet'
+  return 'desktop'
+}
+
+export function densityPresetForViewport(mode: EditorViewportMode): EditorDensityPresetName {
+  if (mode === 'phone') return 'phone'
+  if (mode === 'tablet') return 'tablet'
+  return 'compact'
+}
+
 export const DEFAULT_EDITOR_DENSITY_PRESET: EditorDensityPresetName = 'compact'
 
 export function normalizeEditorDensityPreset(value: unknown): EditorDensityPresetName {
-  return value === 'compact' ? value : DEFAULT_EDITOR_DENSITY_PRESET
+  if (value === 'compact' || value === 'tablet' || value === 'phone') return value
+  return DEFAULT_EDITOR_DENSITY_PRESET
 }
 
 export function getEditorLayout(preset: unknown = DEFAULT_EDITOR_DENSITY_PRESET): EditorLayout {
@@ -164,7 +221,10 @@ export function getLeftEditorSidebarBounds(
 
   return {
     minWidth: layout.leftSidebarMinWidth,
-    maxWidth: Math.max(layout.leftSidebarMinWidth, viewportMaxWidth),
+    maxWidth: Math.max(
+      layout.leftSidebarMinWidth,
+      Math.min(layout.leftSidebarMaxWidth, viewportMaxWidth),
+    ),
   }
 }
 

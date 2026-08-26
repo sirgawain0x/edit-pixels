@@ -28,8 +28,8 @@ import { getVercelOidcToken } from '@vercel/oidc'
 import { ExternalAccountClient, GoogleAuth } from 'google-auth-library'
 import {
   isDirectorBillingEnforced,
-  quoteDirectorRetail,
-  verifyDirectorPayment,
+  quoteDirectorForWallet,
+  verifyAndConsumeDirectorPayment,
 } from './director-billing'
 
 const DEFAULT_PROJECT = 'creative-ai-491118'
@@ -271,7 +271,7 @@ async function assertDirectorPayment(data: ParsedDirectorRequest): Promise<Respo
     )
   }
 
-  const quote = quoteDirectorRetail(data.audioDurationSeconds)
+  const quote = await quoteDirectorForWallet(data.audioDurationSeconds, data.walletAddress)
   if (!quote) {
     return Response.json({ error: 'Unable to quote Director brief' }, { status: 402 })
   }
@@ -282,15 +282,17 @@ async function assertDirectorPayment(data: ParsedDirectorRequest): Promise<Respo
         error: 'Director requires a CRTVAI payment before generation',
         estimatedUsdc6: quote.estimatedUsdc6,
         billableMinutes: quote.billableMinutes,
+        tier: quote.tier,
       },
       { status: 402 },
     )
   }
 
-  const verified = await verifyDirectorPayment({
+  const verified = await verifyAndConsumeDirectorPayment({
     txHash: data.paymentTxHash,
     from: data.walletAddress,
     minAmountWei: quote.minCrtvaiWei,
+    purpose: 'director',
   })
 
   if (!verified.ok) {
