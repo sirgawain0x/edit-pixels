@@ -15,6 +15,8 @@ const mocks = vi.hoisted(() => ({
   setPreviewQuality: vi.fn(),
   toggleSnap: vi.fn(),
   syncSidebarLayout: vi.fn(),
+  setLeftSidebarOpen: vi.fn(),
+  setRightSidebarOpen: vi.fn(),
   editorState: {
     workspace: 'edit',
     propertiesFullColumn: false,
@@ -231,6 +233,8 @@ vi.mock('@/shared/state/editor', () => ({
   useEditorStore: (
     selector: (state: {
       syncSidebarLayout: typeof mocks.syncSidebarLayout
+      setLeftSidebarOpen: typeof mocks.setLeftSidebarOpen
+      setRightSidebarOpen: typeof mocks.setRightSidebarOpen
       propertiesFullColumn: boolean
       mediaFullColumn: boolean
       workspace: string
@@ -238,10 +242,26 @@ vi.mock('@/shared/state/editor', () => ({
   ) =>
     selector({
       syncSidebarLayout: mocks.syncSidebarLayout,
+      setLeftSidebarOpen: mocks.setLeftSidebarOpen,
+      setRightSidebarOpen: mocks.setRightSidebarOpen,
       propertiesFullColumn: mocks.editorState.propertiesFullColumn,
       mediaFullColumn: mocks.editorState.mediaFullColumn,
       workspace: mocks.editorState.workspace,
     }),
+}))
+
+vi.mock('@/features/editor/hooks/use-editor-viewport-mode', () => ({
+  useEditorViewportMode: () => ({
+    mode: 'desktop' as const,
+    densityPreset: 'compact' as const,
+    isDesktop: true,
+    isTablet: false,
+    isPhone: false,
+  }),
+}))
+
+vi.mock('./editor-overlay-chrome', () => ({
+  EditorOverlayChrome: () => null,
 }))
 
 vi.mock('@/features/editor/deps/composition-runtime', () => ({
