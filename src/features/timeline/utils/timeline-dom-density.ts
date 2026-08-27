@@ -1,3 +1,5 @@
+import type { TimelineItemDurationBounds } from './timeline-item-range-index'
+
 /**
  * Dense-track policy is based on the full track size, never the viewport
  * subset. That keeps DOM/detail/culling behavior stable while zoom changes
@@ -12,15 +14,9 @@ export const DENSE_TIMELINE_OVERVIEW_ITEM_THRESHOLD = DENSE_TIMELINE_TRACK_ITEM_
 export const DENSE_TIMELINE_MAX_OVERVIEW_BUCKETS_PER_TRACK = 1024
 
 export const DEFAULT_TIMELINE_ITEM_CULL_BUFFER_PX = 2000
-export const DENSE_TIMELINE_ITEM_CULL_BUFFER_PX = 600
-export const COMPACT_TIMELINE_ITEM_MAX_WIDTH_PX = 36
+const DENSE_TIMELINE_ITEM_CULL_BUFFER_PX = 600
+const COMPACT_TIMELINE_ITEM_MAX_WIDTH_PX = 36
 const MIXED_TIMELINE_COMPACT_ZOOM_STEP = 1.12
-
-export interface TimelineItemDurationBounds {
-  itemCount: number
-  minDurationInFrames: number
-  maxDurationInFrames: number
-}
 
 /**
  * During zoom-out, use the smaller live scale so retained and newly exposed
