@@ -222,6 +222,10 @@ function buildLineRuns(
  * font/size/letter-spacing — mixed fonts/sizes on one line are out of scope
  * (such spans render in the base font).
  */
+// fallow-ignore-next-line complexity
+// Kept whole on purpose: the wrap-loop's leading-space condition must stay
+// visually paired with pushLine's consumption rule (see the isContinuation
+// comment inside) — splitting them across functions invites drift.
 function layoutInlineSpanLines(
   spans: ReturnType<typeof resolveSpanStyles>,
   lineHeightFactor: number,

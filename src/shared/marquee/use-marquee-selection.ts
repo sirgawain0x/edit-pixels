@@ -362,16 +362,8 @@ export function useMarqueeSelection({
     }
   }, [commitSelectionOnMouseUp, containerRef, scheduleLiveCommit])
 
-  // Handle mouse down - start marquee
-  // Using useEffectEvent so changes to enabled, appendMode don't re-register listeners
-  const cancelGesture = useEffectEvent(() => {
-    if (!isDraggingRef.current) return
-
-    const wasActualDrag = hasMovedRef.current
-    const selectionToRestore = hasLiveCommittedRef.current
-      ? gestureStartSelectionIdsRef.current
-      : null
-
+  // Cancel any scheduled live-commit work belonging to the active gesture.
+  const cancelGestureTimers = () => {
     if (rafIdRef.current !== null) {
       cancelAnimationFrame(rafIdRef.current)
       rafIdRef.current = null
@@ -380,7 +372,10 @@ export function useMarqueeSelection({
       clearTimeout(liveCommitTimeoutRef.current)
       liveCommitTimeoutRef.current = null
     }
+  }
 
+  // Clear every per-gesture ref so a cancelled gesture cannot leak into the next.
+  const resetGestureState = () => {
     isDraggingRef.current = false
     hasMovedRef.current = false
     marqueeRef.current = { startX: 0, startY: 0, currentX: 0, currentY: 0 }
@@ -389,7 +384,11 @@ export function useMarqueeSelection({
     lastLiveCommitTimeRef.current = 0
     gestureStartSelectionIdsRef.current = null
     hasLiveCommittedRef.current = false
+  }
 
+  // Notify subscribers that the gesture ended by cancellation. Selection is
+  // restored to its gesture-start state when a live commit already fired.
+  const notifyGestureCancelled = (wasActualDrag: boolean, selectionToRestore: string[] | null) => {
     setIsActive(false)
     publishSnapshot(INACTIVE_SNAPSHOT)
 
@@ -400,6 +399,21 @@ export function useMarqueeSelection({
       onSelectionChangeRef.current?.(selectionToRestore)
     }
     onGestureCancel?.(wasActualDrag)
+  }
+
+  // Handle mouse down - start marquee
+  // Using useEffectEvent so changes to enabled, appendMode don't re-register listeners
+  const cancelGesture = useEffectEvent(() => {
+    if (!isDraggingRef.current) return
+
+    const wasActualDrag = hasMovedRef.current
+    const selectionToRestore = hasLiveCommittedRef.current
+      ? gestureStartSelectionIdsRef.current
+      : null
+
+    cancelGestureTimers()
+    resetGestureState()
+    notifyGestureCancelled(wasActualDrag, selectionToRestore)
   })
 
   const onMouseDown = useEffectEvent((e: MouseEvent) => {

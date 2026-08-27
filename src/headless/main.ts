@@ -84,6 +84,28 @@ const log = createLogger('Headless')
 const HEADLESS_FONT_WEIGHTS = [400, 500, 600, 700, 800]
 
 /**
+ * Probe every family×weight pair, collecting the combinations that never
+ * became applied before the deadline (as `family:weight` strings).
+ */
+async function collectUnresolvedFontFaces(
+  measure: (font: string) => number,
+  families: Iterable<string>,
+  weights: readonly number[],
+  deadline: number,
+): Promise<string[]> {
+  const unresolved: string[] = []
+  for (const family of families) {
+    const bare = family.replace(/^["']|["']$/g, '')
+    for (const weight of weights) {
+      if (!(await waitForFaceApplied(measure, bare, weight, deadline))) {
+        unresolved.push(`${bare}:${weight}`)
+      }
+    }
+  }
+  return unresolved
+}
+
+/**
  * Block until the requested families are actually being APPLIED by the canvas
  * text renderer, not merely until their FontFace promises settled.
  *
@@ -109,12 +131,11 @@ async function awaitFontsApplied(
   weights: readonly number[],
   timeoutMs = 8000,
 ): Promise<string[]> {
-  const unresolved: string[] = []
-  if (families.length === 0 || typeof document === 'undefined') return unresolved
+  if (families.length === 0 || typeof document === 'undefined') return []
 
   const canvas = document.createElement('canvas')
   const ctx = canvas.getContext('2d')
-  if (!ctx) return unresolved
+  if (!ctx) return []
 
   const deadline = Date.now() + timeoutMs
   const measure = (font: string): number => {
@@ -122,23 +143,35 @@ async function awaitFontsApplied(
     return ctx.measureText(PROBE).width
   }
 
-  for (const family of new Set(families)) {
-    const bare = family.replace(/^["']|["']$/g, '')
-    for (const weight of weights) {
-      if (!(await waitForFaceApplied(measure, bare, weight, deadline))) {
-        unresolved.push(`${bare}:${weight}`)
-      }
-    }
-  }
+  const unresolvedCombinations = await collectUnresolvedFontFaces(
+    measure,
+    new Set(families),
+    weights,
+    deadline,
+  )
   // Let the compositor settle one frame before the first rasterisation.
   await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)))
-  return unresolved
+  return unresolvedCombinations
 }
 
 // Glyph-rich probe: Latin + Cyrillic + digits, so a family that only ships a
 // partial subset cannot pass on a handful of shared glyphs.
 const PROBE = 'HAMBURGEFONTSIVЖЯЦЩ0123456789'
 const GENERICS = ['monospace', 'serif'] as const
+
+/**
+ * One measure→wait cycle for a single family+weight. Returns true when the
+ * face has held its applied streak, false when the deadline passed first.
+ */
+async function awaitFaceStability(isApplied: () => boolean, deadline: number): Promise<boolean> {
+  const STABLE_PASSES = 2
+  let streak = 0
+  while (streak < STABLE_PASSES && Date.now() < deadline) {
+    streak = isApplied() ? streak + 1 : 0
+    await new Promise((resolve) => setTimeout(resolve, 60))
+  }
+  return streak >= STABLE_PASSES
+}
 
 /**
  * True once ONE family+weight measurably differs from the generics it is
@@ -155,7 +188,6 @@ async function waitForFaceApplied(
   weight: number,
   deadline: number,
 ): Promise<boolean> {
-  const STABLE_PASSES = 2
   // A family still falling back measures identically to the generic it is stacked
   // on. Differing from BOTH generics means the face is really in use.
   const isApplied = (): boolean =>
@@ -165,14 +197,7 @@ async function waitForFaceApplied(
         measure(`${weight} 100px ${generic}`),
     )
 
-  let streak = 0
-  while (streak < STABLE_PASSES) {
-    streak = isApplied() ? streak + 1 : 0
-    if (streak >= STABLE_PASSES) return true
-    if (Date.now() >= deadline) return false
-    await new Promise((resolve) => setTimeout(resolve, 60))
-  }
-  return true
+  return awaitFaceStability(isApplied, deadline)
 }
 
 /**
@@ -475,18 +500,25 @@ function detectWebGpuOnce(): Promise<boolean> {
   return webGpuAvailable
 }
 
+/**
+ * Can this browser hand us a working GPU device? Adapter presence alone is not
+ * proof — device acquisition is what fails on headless/software stacks.
+ */
+async function acquireWebGpuDevice(): Promise<boolean> {
+  const adapter = await navigator.gpu?.requestAdapter()
+  if (!adapter) return false
+  // An adapter is not enough: device acquisition is what actually fails on
+  // headless/software stacks, and reporting "GPU available" on the strength of
+  // an adapter alone would suppress warnings for presets that then fall back.
+  const device = await adapter.requestDevice()
+  if (!device) return false
+  device.destroy()
+  return true
+}
+
 async function detectWebGpu(): Promise<boolean> {
   try {
-    if (!('gpu' in navigator) || !navigator.gpu) return false
-    const adapter = await navigator.gpu.requestAdapter()
-    if (!adapter) return false
-    // An adapter is not enough: device acquisition is what actually fails on
-    // headless/software stacks, and reporting "GPU available" on the strength of
-    // an adapter alone would suppress warnings for presets that then fall back.
-    const device = await adapter.requestDevice()
-    if (!device) return false
-    device.destroy()
-    return true
+    return await acquireWebGpuDevice()
   } catch {
     return false
   }
