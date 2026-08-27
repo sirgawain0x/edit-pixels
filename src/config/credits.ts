@@ -1,4 +1,6 @@
 /** Milli-credits (3 decimal places) for fractional Live AI debits. 1000 milli = 1 credit. */
+// fallow-ignore-file unused-export
+
 export const MILLI_CREDITS_PER_CREDIT = 1000
 
 /** ~1.11 credits/min reference rate (legacy Live AI equivalence; Live AI bills USDC via Superfluid). */
@@ -46,6 +48,39 @@ export const CREDIT_PACKS: readonly CreditPackDefinition[] = [
 
 export function getCreditPack(packId: number): CreditPackDefinition | undefined {
   return CREDIT_PACKS.find((p) => p.id === packId)
+}
+
+/**
+ * Director session packs — USDC to mint as CRTVAI for prepaid Director briefs.
+ * `credits` is an informational estimate of retail Director audio-minutes
+ * (≈ $0.05/min → 1 credit ≈ 2 min at the legacy $0.10/credit display scale).
+ */
+export const DIRECTOR_SESSION_PACKS: readonly CreditPackDefinition[] = [
+  {
+    id: 10,
+    name: 'Brief',
+    usdc6: 5_000_000,
+    credits: 100,
+    description: '~100 min retail Director audio',
+  },
+  {
+    id: 11,
+    name: 'Session',
+    usdc6: 15_000_000,
+    credits: 300,
+    description: '~300 min retail Director audio',
+  },
+  {
+    id: 12,
+    name: 'Production',
+    usdc6: 40_000_000,
+    credits: 800,
+    description: '~800 min retail Director audio',
+  },
+] as const
+
+export function getDirectorSessionPack(packId: number): CreditPackDefinition | undefined {
+  return DIRECTOR_SESSION_PACKS.find((p) => p.id === packId)
 }
 
 /** Estimated minutes at legacy Live AI credit rate (informational only). */

@@ -29,11 +29,13 @@ import { cn } from '@/shared/ui/cn'
 interface BuyMetokenModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** Prefill USDC amount when opening (e.g. Director session packs). */
+  initialUsdcAmount?: string
 }
 
 const BASE_CHAIN_ID = base.id
 
-export function BuyMetokenModal({ open, onOpenChange }: BuyMetokenModalProps) {
+export function BuyMetokenModal({ open, onOpenChange, initialUsdcAmount }: BuyMetokenModalProps) {
   const { account, chain } = useWalletContext()
   const queryClient = useQueryClient()
   const { sendOps, ready: walletReady } = useSmartWalletOps()
@@ -59,9 +61,11 @@ export function BuyMetokenModal({ open, onOpenChange }: BuyMetokenModalProps) {
     }
   }, [usdcInput, usdcBalance])
 
-  // Fetch current price on open
+  // Prefill + fetch current price on open
   useEffect(() => {
-    if (!open || !onBase) return
+    if (!open) return
+    if (initialUsdcAmount) setUsdcInput(initialUsdcAmount)
+    if (!onBase) return
     let cancelled = false
     void (async () => {
       try {
@@ -76,7 +80,7 @@ export function BuyMetokenModal({ open, onOpenChange }: BuyMetokenModalProps) {
     return () => {
       cancelled = true
     }
-  }, [open, onBase])
+  }, [open, onBase, initialUsdcAmount])
 
   // Debounced mint quote
   useEffect(() => {
