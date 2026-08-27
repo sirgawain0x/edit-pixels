@@ -37,4 +37,3 @@ describe('quoteFlowGeneration', () => {
     expect(withStills.totalCredits).toBe(base.videoCredits + 24)
   })
 })
-

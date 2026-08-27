@@ -82,13 +82,18 @@ jobs:
 
       # Quality ratchet: fails only on dead code / complexity / duplication
       # INTRODUCED by the PR (gate new-only), never on inherited issues.
-      # Advisory for now (continue-on-error) — drop that line to enforce once
-      # the current develop-vs-main delta is cleaned up.
+      # Enforcing for feature PRs (base staging). Promotion PRs (base prod) run
+      # the same audit but advisory: their base is behind staging, so the whole
+      # release delta counts as "new" and the audit re-flags the tracked engine
+      # debt (see #65) rather than regressions. Findings stay recorded on the
+      # promotion run.
+      # Version pinned to match scripts/check-fallow-changed-health.mjs so local
+      # and CI verdicts cannot drift apart across rule releases.
       - name: Fallow quality ratchet
         if: github.event_name == 'pull_request'
-        continue-on-error: true
+        continue-on-error: ${{ github.base_ref == 'prod' }}
         run: |
-          npm install -g fallow
+          npm install -g fallow@2.89.0
           fallow audit --base "origin/${{ github.base_ref }}" --gate new-only --ci
 
   # Repeatedly re-runs the preview-sync suite from cold to surface ordering /

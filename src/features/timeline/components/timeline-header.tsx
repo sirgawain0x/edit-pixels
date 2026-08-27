@@ -1,4 +1,4 @@
-import { useEffect, useCallback, memo, useLayoutEffect, useRef } from 'react'
+import { useEffect, useCallback, memo, useLayoutEffect, useReducer, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import {
@@ -31,7 +31,6 @@ import {
 } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
 import { formatHotkeyBinding } from '@/config/hotkeys'
-import { useTimelineZoom } from '../hooks/use-timeline-zoom'
 import { useTimelineStore } from '../stores/timeline-store'
 import { useTimelineCommandStore } from '../stores/timeline-command-store'
 import { useZoomStore } from '../stores/zoom-store'
@@ -101,9 +100,10 @@ function isSameZoomLevel(left: number, right: number): boolean {
   return Math.abs(left - right) <= tolerance
 }
 
-function blurActiveElement(): void {
-  if (document.activeElement instanceof HTMLElement) {
-    document.activeElement.blur()
+function blurSliderFocus(root: HTMLElement | null): void {
+  const activeElement = document.activeElement
+  if (activeElement instanceof HTMLElement && root?.contains(activeElement)) {
+    activeElement.blur()
   }
 }
 
@@ -114,28 +114,40 @@ const TimelineZoomControls = memo(function TimelineZoomControls({
   onZoomToFit,
 }: TimelineHeaderProps) {
   const { t } = useTranslation()
-  const { zoomLevel, zoomIn, zoomOut, setZoomImmediate } = useTimelineZoom()
+  const settledZoomLevel = useZoomStore((state) => state.contentLevel)
+  const zoomIn = useZoomStore((state) => state.zoomIn)
+  const zoomOut = useZoomStore((state) => state.zoomOut)
+  const beginZoomGesture = useZoomStore((state) => state.beginZoomGesture)
+  const endZoomGesture = useZoomStore((state) => state.endZoomGesture)
+  const setZoomImmediate = useZoomStore((state) => state.setZoomLevelImmediate)
+  const setZoomSynchronized = useZoomStore((state) => state.setZoomLevelSynchronized)
   const sliderRef = useRef<HTMLSpanElement>(null)
   const sliderRafRef = useRef<number | null>(null)
   const pendingSliderValueRef = useRef<number | null>(null)
   const latestSliderValueRef = useRef<number | null>(null)
   const sliderInteractionRef = useRef<'idle' | 'dragging' | 'awaiting-zoom'>('idle')
   const sliderCommitBaseZoomRef = useRef<number | null>(null)
+  const sliderKeyboardInputRef = useRef(false)
+  const sliderZoomGestureHeldRef = useRef(false)
+  const liveZoomLevelRef = useRef(useZoomStore.getState().level)
+  const [, forceKeyboardSliderRender] = useReducer((revision: number) => revision + 1, 0)
   const btnSize = {
     width: EDITOR_LAYOUT_CSS_VALUES.toolbarButtonSize,
     height: EDITOR_LAYOUT_CSS_VALUES.toolbarButtonSize,
   } as const
 
   const applyZoom = useCallback(
-    (newZoom: number) => {
+    (newZoom: number, synchronizeContent = false) => {
       const clampedZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, newZoom))
       if (onZoomChange) {
         onZoomChange(clampedZoom)
+      } else if (synchronizeContent) {
+        setZoomSynchronized(clampedZoom)
       } else {
         setZoomImmediate(clampedZoom)
       }
     },
-    [onZoomChange, setZoomImmediate],
+    [onZoomChange, setZoomImmediate, setZoomSynchronized],
   )
 
   const sliderToZoom = useCallback(
@@ -165,6 +177,30 @@ const TimelineZoomControls = memo(function TimelineZoomControls({
     thumb.setAttribute('aria-valuenow', String(value))
   }, [])
 
+  const releaseSliderZoomGesture = useCallback(() => {
+    if (!sliderZoomGestureHeldRef.current) {
+      return
+    }
+    sliderZoomGestureHeldRef.current = false
+    endZoomGesture()
+  }, [endZoomGesture])
+
+  const finishSliderZoomInteraction = useCallback(() => {
+    releaseSliderZoomGesture()
+    // Radix can restore thumb focus after onValueCommit returns. Defer the
+    // blur until the pointer/key event has fully finished so Space immediately
+    // returns to the editor transport.
+    queueMicrotask(() => blurSliderFocus(sliderRef.current))
+  }, [releaseSliderZoomGesture])
+
+  const beginSliderZoomGesture = useCallback(() => {
+    if (sliderZoomGestureHeldRef.current) {
+      return
+    }
+    sliderZoomGestureHeldRef.current = true
+    beginZoomGesture()
+  }, [beginZoomGesture])
+
   const flushSliderChange = useCallback(() => {
     sliderRafRef.current = null
     const sliderValue = pendingSliderValueRef.current
@@ -174,27 +210,61 @@ const TimelineZoomControls = memo(function TimelineZoomControls({
   }, [applyZoom, sliderToZoom])
 
   useLayoutEffect(() => {
+    const liveZoomLevel = useZoomStore.getState().level
+    liveZoomLevelRef.current = liveZoomLevel
     const sliderPreviewValue = latestSliderValueRef.current
-    if (sliderPreviewValue === null) return
-    if (sliderInteractionRef.current === 'dragging') return
+    if (sliderPreviewValue !== null && sliderInteractionRef.current !== 'dragging') {
+      const commitBaseZoom = sliderCommitBaseZoomRef.current
+      if (commitBaseZoom === null || !isSameZoomLevel(liveZoomLevel, commitBaseZoom)) {
+        // The first store update after release owns the controlled value even when
+        // another zoom gesture superseded the slider's queued target.
+        latestSliderValueRef.current = null
+        sliderCommitBaseZoomRef.current = null
+        sliderInteractionRef.current = 'idle'
+      }
+    }
 
-    const commitBaseZoom = sliderCommitBaseZoomRef.current
-    if (commitBaseZoom !== null && isSameZoomLevel(zoomLevel, commitBaseZoom)) return
-
-    // The first store update after release owns the controlled value even when
-    // another zoom gesture superseded the slider's queued target.
-    latestSliderValueRef.current = null
-    sliderCommitBaseZoomRef.current = null
-    sliderInteractionRef.current = 'idle'
-  }, [zoomLevel])
+    if (sliderInteractionRef.current !== 'dragging') {
+      const previewValue = latestSliderValueRef.current
+      renderSliderPreview(previewValue ?? zoomToSlider(liveZoomLevel))
+    }
+  }, [renderSliderPreview, settledZoomLevel, zoomToSlider])
 
   useEffect(() => {
+    return useZoomStore.subscribe((state) => {
+      const nextZoomLevel = state.level
+      if (isSameZoomLevel(nextZoomLevel, liveZoomLevelRef.current)) return
+      liveZoomLevelRef.current = nextZoomLevel
+      if (sliderInteractionRef.current === 'dragging') return
+
+      const commitBaseZoom = sliderCommitBaseZoomRef.current
+      if (
+        sliderInteractionRef.current === 'awaiting-zoom' &&
+        commitBaseZoom !== null &&
+        !isSameZoomLevel(nextZoomLevel, commitBaseZoom)
+      ) {
+        latestSliderValueRef.current = null
+        sliderCommitBaseZoomRef.current = null
+        sliderInteractionRef.current = 'idle'
+      }
+
+      renderSliderPreview(zoomToSlider(nextZoomLevel))
+    })
+  }, [renderSliderPreview, zoomToSlider])
+
+  useEffect(() => {
+    window.addEventListener('pointerup', finishSliderZoomInteraction)
+    window.addEventListener('pointercancel', finishSliderZoomInteraction)
+
     return () => {
+      window.removeEventListener('pointerup', finishSliderZoomInteraction)
+      window.removeEventListener('pointercancel', finishSliderZoomInteraction)
       if (sliderRafRef.current !== null) {
         cancelAnimationFrame(sliderRafRef.current)
       }
+      releaseSliderZoomGesture()
     }
-  }, [])
+  }, [finishSliderZoomInteraction, releaseSliderZoomGesture])
 
   const handleSliderChange = useCallback(
     (values: number[]) => {
@@ -203,6 +273,23 @@ const TimelineZoomControls = memo(function TimelineZoomControls({
       sliderCommitBaseZoomRef.current = null
       latestSliderValueRef.current = sliderValue
       renderSliderPreview(sliderValue)
+      if (sliderKeyboardInputRef.current) {
+        // Radix derives the next arrow-key step from its controlled value. Keep
+        // that value current for keyboard input even though wheel zoom remains
+        // on the imperative DOM path until content zoom settles.
+        forceKeyboardSliderRender()
+        if (onZoomChange) {
+          applyZoom(sliderToZoom(sliderValue))
+          return
+        }
+        if (sliderRafRef.current !== null) {
+          cancelAnimationFrame(sliderRafRef.current)
+          sliderRafRef.current = null
+        }
+        pendingSliderValueRef.current = null
+        applyZoom(sliderToZoom(sliderValue), true)
+        return
+      }
       if (onZoomChange) {
         applyZoom(sliderToZoom(sliderValue))
         return
@@ -213,7 +300,14 @@ const TimelineZoomControls = memo(function TimelineZoomControls({
         sliderRafRef.current = requestAnimationFrame(flushSliderChange)
       }
     },
-    [applyZoom, flushSliderChange, onZoomChange, renderSliderPreview, sliderToZoom],
+    [
+      applyZoom,
+      flushSliderChange,
+      forceKeyboardSliderRender,
+      onZoomChange,
+      renderSliderPreview,
+      sliderToZoom,
+    ],
   )
 
   const commitSliderZoom = useCallback(
@@ -249,19 +343,23 @@ const TimelineZoomControls = memo(function TimelineZoomControls({
       latestSliderValueRef.current = sliderValue
       renderSliderPreview(sliderValue)
       commitSliderZoom(sliderValue, latestSliderValue)
-      blurActiveElement()
+      if (sliderKeyboardInputRef.current) {
+        releaseSliderZoomGesture()
+      } else {
+        finishSliderZoomInteraction()
+      }
     },
-    [commitSliderZoom, renderSliderPreview],
+    [commitSliderZoom, finishSliderZoomInteraction, releaseSliderZoomGesture, renderSliderPreview],
   )
 
-  const controlledSliderValue = zoomToSlider(zoomLevel)
+  const controlledSliderValue = zoomToSlider(settledZoomLevel)
   const sliderCommitBaseZoom = sliderCommitBaseZoomRef.current
   const shouldRenderSliderPreview =
     latestSliderValueRef.current !== null &&
     (sliderInteractionRef.current === 'dragging' ||
       (sliderInteractionRef.current === 'awaiting-zoom' &&
         sliderCommitBaseZoom !== null &&
-        isSameZoomLevel(zoomLevel, sliderCommitBaseZoom)))
+        isSameZoomLevel(liveZoomLevelRef.current, sliderCommitBaseZoom)))
 
   return (
     <div className="flex items-center justify-end gap-1.5">
@@ -285,6 +383,21 @@ const TimelineZoomControls = memo(function TimelineZoomControls({
         ]}
         onValueChange={handleSliderChange}
         onValueCommit={handleSliderCommit}
+        onPointerDownCapture={beginSliderZoomGesture}
+        onPointerCancelCapture={finishSliderZoomInteraction}
+        onKeyDownCapture={() => {
+          sliderKeyboardInputRef.current = true
+        }}
+        onKeyUpCapture={() => {
+          // Keep the keyboard marker set through Radix's onValueCommit, which
+          // runs later in this keyup event. The next microtask ends the input.
+          queueMicrotask(() => {
+            sliderKeyboardInputRef.current = false
+          })
+        }}
+        onBlurCapture={() => {
+          sliderKeyboardInputRef.current = false
+        }}
         min={0}
         max={1}
         step={0.005}
