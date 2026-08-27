@@ -20,7 +20,9 @@ import { useLinkedEditPreviewStore } from '../stores/linked-edit-preview-store'
 import {
   rollingTrimItems,
   rippleTrimItem,
+  trimItemEnd as trimSelectedItemEnds,
   trimItemBreakingTransition,
+  trimItemStart as trimSelectedItemStarts,
 } from '../stores/actions/item-actions'
 import {
   buildInsertedGapPreviewUpdatesForSyncLockedTracks,
@@ -30,6 +32,8 @@ import { findHandleNeighborWithTransitions } from '../utils/transition-linked-ne
 import {
   buildAttachedCaptionBoundsPreviewUpdates,
   buildSynchronizedLinkedMoveUpdates,
+  expandSelectionWithLinkedItems,
+  filterUnlockedItemIds,
   getSynchronizedLinkedCounterpartPair,
   getSynchronizedLinkedItems,
 } from '../utils/linked-items'
@@ -60,6 +64,13 @@ interface TrimState {
   isConstrained: boolean
   constraintLabel: string | null
   destroyTransitionAtHandle: boolean
+  trimmedItemIds: string[]
+}
+
+const TRIM_EDGE_ALIGNMENT_EPSILON = 1e-6
+
+function areTrimEdgesAligned(left: number, right: number): boolean {
+  return Math.abs(left - right) <= TRIM_EDGE_ALIGNMENT_EPSILON
 }
 
 /**
@@ -79,8 +90,6 @@ export function useTimelineTrim(
 ) {
   const pixelsToTime = pixelsToTimeNow
   const fps = useTimelineStore((s) => s.fps)
-  const trimItemStart = useTimelineStore((s) => s.trimItemStart)
-  const trimItemEnd = useTimelineStore((s) => s.trimItemEnd)
   const setDragState = useSelectionStore((s) => s.setDragState)
   const setActiveSnapTarget = useSelectionStore((s) => s.setActiveSnapTarget)
 
@@ -91,7 +100,7 @@ export function useTimelineTrim(
 
   // Use snap calculator - pass item.id to exclude self from magnetic snaps
   // Only use magnetic snap targets (item edges), not grid lines
-  const { getMagneticSnapTargets, getSnapThresholdFrames, snapEnabled } = useSnapCalculator(
+  const { getMagneticSnapTargets, getSnapThresholdFrames, isSnapEnabled } = useSnapCalculator(
     timelineDuration,
     item.id,
   )
@@ -110,6 +119,7 @@ export function useTimelineTrim(
     isConstrained: false,
     constraintLabel: null,
     destroyTransitionAtHandle: false,
+    trimmedItemIds: [],
   })
 
   const trimStateRef = useRef(trimState)
@@ -123,6 +133,7 @@ export function useTimelineTrim(
 
   // Track previous snap target to avoid unnecessary store updates
   const prevSnapTargetRef = useRef<{ frame: number; type: string } | null>(null)
+  const magneticSnapTargetsRef = useRef<SnapTarget[]>([])
 
   /**
    * Find nearest snap target for a given frame position
@@ -133,13 +144,11 @@ export function useTimelineTrim(
       targetFrame: number,
       excludeItemIds?: Set<string>,
     ): { snappedFrame: number; snapTarget: SnapTarget | null } => {
-      if (!snapEnabled) {
+      if (!isSnapEnabled()) {
         return { snappedFrame: targetFrame, snapTarget: null }
       }
 
-      // Read fresh targets from store — the memoized magneticSnapTargets can be
-      // stale after previous edits that shifted items (e.g. ripple edit).
-      const targets = getMagneticSnapTargets()
+      const targets = magneticSnapTargetsRef.current
       if (targets.length === 0) {
         return { snappedFrame: targetFrame, snapTarget: null }
       }
@@ -162,7 +171,7 @@ export function useTimelineTrim(
 
       return { snappedFrame: targetFrame, snapTarget: null }
     },
-    [snapEnabled, getMagneticSnapTargets, getSnapThresholdFrames],
+    [getSnapThresholdFrames, isSnapEnabled],
   )
 
   // Mouse move handler - only updates local state for visual feedback
@@ -185,6 +194,10 @@ export function useTimelineTrim(
       const allItems = useTimelineStore.getState().items
       const transitions = useTransitionsStore.getState().transitions
       const currentItem = getItemFromStore()
+      const normalTrimItems = trimStateRef.current.trimmedItemIds
+        .map((trimmedItemId) => allItems.find((candidate) => candidate.id === trimmedItemId))
+        .filter((candidate): candidate is TimelineItem => candidate !== undefined)
+      if (normalTrimItems.length === 0) normalTrimItems.push(currentItem)
       let neighborId: string | null = null
 
       if (isRollingEdit) {
@@ -201,7 +214,8 @@ export function useTimelineTrim(
       // During rolling edit, exclude the neighbor from snap targets.
       // During ripple edit, exclude downstream same-track items — their positions
       // are stale because they will shift by the trim amount on commit.
-      const snapExcludeIds = new Set<string>([currentItem.id])
+      const snapExcludeIds = new Set<string>(trimStateRef.current.trimmedItemIds)
+      snapExcludeIds.add(currentItem.id)
       if (neighborId) snapExcludeIds.add(neighborId)
       if (isRippleEdit) {
         // Split segments from the same origin can create self-referential
@@ -264,21 +278,27 @@ export function useTimelineTrim(
       // This ensures visual feedback matches what the store will actually commit
       let isConstrained = false
       let constraintLabel: string | null = null
-      const { clampedAmount } = clampTrimAmount(currentItem, handle!, deltaFrames, fps)
-      if (clampedAmount !== deltaFrames) {
-        isConstrained = true
-        constraintLabel = 'no handle'
-      }
-      deltaFrames = clampedAmount
+      const trimConstraintItems = isRollingEdit || isRippleEdit ? [currentItem] : normalTrimItems
+      for (const trimConstraintItem of trimConstraintItems) {
+        const { clampedAmount } = clampTrimAmount(trimConstraintItem, handle!, deltaFrames, fps)
+        if (clampedAmount !== deltaFrames) {
+          isConstrained = true
+          constraintLabel = 'no handle'
+        }
+        deltaFrames = clampedAmount
 
-      // Clamp to adjacent items on the same track (allow overlap with transition-linked clips)
-      // During ripple edit, skip adjacency clamping — downstream clips shift with the trim.
-      if (!isRippleEdit) {
+        // Clamp to adjacent items on the same track (allow overlap with transition-linked clips)
+        // During ripple edit, skip adjacency clamping — downstream clips shift with the trim.
+        if (isRippleEdit) continue
+
         const transitionLinkedIds = new Set<string>()
-        if (!trimStateRef.current.destroyTransitionAtHandle) {
+        if (
+          !trimStateRef.current.destroyTransitionAtHandle ||
+          trimConstraintItem.id !== currentItem.id
+        ) {
           for (const t of transitions) {
-            if (t.leftClipId === currentItem.id) transitionLinkedIds.add(t.rightClipId)
-            if (t.rightClipId === currentItem.id) transitionLinkedIds.add(t.leftClipId)
+            if (t.leftClipId === trimConstraintItem.id) transitionLinkedIds.add(t.rightClipId)
+            if (t.rightClipId === trimConstraintItem.id) transitionLinkedIds.add(t.leftClipId)
           }
         }
         // During rolling edit, exclude the neighbor from adjacency constraints —
@@ -287,7 +307,7 @@ export function useTimelineTrim(
           transitionLinkedIds.add(neighborId)
         }
         const adjacentClamped = clampToAdjacentItems(
-          currentItem,
+          trimConstraintItem,
           handle!,
           deltaFrames,
           allItems,
@@ -589,12 +609,9 @@ export function useTimelineTrim(
           linkedPreviewUpdates.push(...syncLockPreviewUpdates)
         }
       } else {
-        const synchronizedItems = linkedSelectionEnabled
-          ? getSynchronizedLinkedItems(allItems, currentItem.id)
-          : [currentItem]
         const captionClipBounds: Array<{ id: string; from: number; durationInFrames: number }> = []
 
-        for (const linkedItem of synchronizedItems) {
+        for (const linkedItem of normalTrimItems) {
           const previewUpdate =
             handle === 'end'
               ? applyTrimEndPreview(linkedItem, deltaFrames, fps)
@@ -680,7 +697,9 @@ export function useTimelineTrim(
             : []
 
         if (state.destroyTransitionAtHandle && state.handle) {
-          trimItemBreakingTransition(item.id, state.handle, deltaFrames, transitionIdsToRemove)
+          trimItemBreakingTransition(item.id, state.handle, deltaFrames, transitionIdsToRemove, {
+            itemIds: state.trimmedItemIds,
+          })
         } else if (state.isRippleEdit) {
           // Ripple edit: trim + shift downstream items
           rippleTrimItem(item.id, state.handle!, deltaFrames)
@@ -697,9 +716,9 @@ export function useTimelineTrim(
         } else {
           // Normal trim
           if (state.handle === 'start') {
-            trimItemStart(item.id, deltaFrames)
+            trimSelectedItemStarts(item.id, deltaFrames, { itemIds: state.trimmedItemIds })
           } else if (state.handle === 'end') {
-            trimItemEnd(item.id, deltaFrames)
+            trimSelectedItemEnds(item.id, deltaFrames, { itemIds: state.trimmedItemIds })
           }
         }
       }
@@ -716,6 +735,7 @@ export function useTimelineTrim(
       setActiveSnapTarget(null)
       setDragState(null)
       prevSnapTargetRef.current = null
+      magneticSnapTargetsRef.current = []
 
       // Reset modifier key refs
       altKeyRef.current = false
@@ -735,9 +755,10 @@ export function useTimelineTrim(
         isConstrained: false,
         constraintLabel: null,
         destroyTransitionAtHandle: false,
+        trimmedItemIds: [],
       })
     }
-  }, [item.id, trimItemStart, trimItemEnd, setActiveSnapTarget, setDragState])
+  }, [item.id, setActiveSnapTarget, setDragState])
 
   // Setup and cleanup mouse event listeners
   useEffect(() => {
@@ -775,6 +796,7 @@ export function useTimelineTrim(
         useRollingEditPreviewStore.getState().clearPreview()
         useTransitionBreakPreviewStore.getState().clearPreview()
         useLinkedEditPreviewStore.getState().clear()
+        magneticSnapTargetsRef.current = []
       }
     }
   }, [trimState.isTrimming, handleMouseMove, handleMouseUp])
@@ -807,6 +829,7 @@ export function useTimelineTrim(
       const wantsRolling = forcedMode === 'rolling' || (forcedMode === null && modifierRolling)
       const wantsRipple = forcedMode === 'ripple' || (forcedMode === null && modifierRipple)
       const currentItem = getItemFromStore()
+      const allItems = useTimelineStore.getState().items
       const transitions = useTransitionsStore.getState().transitions
       let neighborId: string | null = null
 
@@ -814,7 +837,7 @@ export function useTimelineTrim(
         const neighbor = findHandleNeighborWithTransitions(
           currentItem,
           handle,
-          useTimelineStore.getState().items,
+          allItems,
           transitions,
         )
         neighborId = neighbor?.id ?? null
@@ -824,9 +847,38 @@ export function useTimelineTrim(
         }
       }
 
+      const selectedItemIds = useSelectionStore.getState().selectedItemIds
+      const baseTrimItemIds = selectedItemIds.includes(currentItem.id)
+        ? selectedItemIds
+        : [currentItem.id]
+      const expandedTrimItemIds = useEditorStore.getState().linkedSelectionEnabled
+        ? expandSelectionWithLinkedItems(allItems, baseTrimItemIds)
+        : baseTrimItemIds
+      const unlockedTrimItemIds = filterUnlockedItemIds(
+        allItems,
+        useItemsStore.getState().tracks,
+        expandedTrimItemIds,
+      )
+      const anchorTrimEdge =
+        handle === 'start' ? currentItem.from : currentItem.from + currentItem.durationInFrames
+      const verticallyAlignedTrimItemIds = unlockedTrimItemIds.filter((trimmedItemId) => {
+        if (trimmedItemId === currentItem.id) return true
+        const trimmedItem = allItems.find((candidate) => candidate.id === trimmedItemId)
+        if (!trimmedItem) return false
+        const trimmedItemEdge =
+          handle === 'start' ? trimmedItem.from : trimmedItem.from + trimmedItem.durationInFrames
+        return areTrimEdgesAligned(anchorTrimEdge, trimmedItemEdge)
+      })
+      const trimmedItemIds = verticallyAlignedTrimItemIds.includes(currentItem.id)
+        ? verticallyAlignedTrimItemIds
+        : [currentItem.id]
+
+      magneticSnapTargetsRef.current = getMagneticSnapTargets()
       setDragState({
         isDragging: true,
-        draggedItemIds: [item.id],
+        // The pointer gesture belongs to the anchor. Other selected items get
+        // their culled geometry from linked trim previews, not move-drag shells.
+        draggedItemIds: [currentItem.id],
         offset: { x: 0, y: 0 },
       })
       setActiveSnapTarget(null)
@@ -845,6 +897,7 @@ export function useTimelineTrim(
         isConstrained: false,
         constraintLabel: null,
         destroyTransitionAtHandle,
+        trimmedItemIds,
       })
 
       if (wantsRolling && neighborId) {
@@ -871,6 +924,7 @@ export function useTimelineTrim(
       item.durationInFrames,
       trackLocked,
       getItemFromStore,
+      getMagneticSnapTargets,
       item.id,
       setActiveSnapTarget,
       setDragState,
