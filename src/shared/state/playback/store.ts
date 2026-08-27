@@ -35,28 +35,32 @@ function enterPlayback(state: PlaybackState & PlaybackActions) {
 function enterNormalPlayback(state: PlaybackState & PlaybackActions) {
   const playbackState = enterPlayback(state)
   if (playbackState === state) {
-    return state.playbackRate === 1 && state.transportMode === 'normal'
-      ? state
-      : { playbackRate: 1, transportMode: 'normal' as const }
+    if (state.playbackRate === 1 && state.transportMode === 'normal') {
+      return state.playbackScrubResumeTransport === null
+        ? state
+        : { playbackScrubResumeTransport: null }
+    }
+    return {
+      playbackRate: 1,
+      transportMode: 'normal' as const,
+      playbackScrubResumeTransport: null,
+    }
   }
   return {
     ...playbackState,
     playbackRate: 1,
     transportMode: 'normal' as const,
+    playbackScrubResumeTransport: null,
   }
 }
 
-function enterShuttlePlayback(
-  state: PlaybackState & PlaybackActions,
-  direction: -1 | 1,
-) {
+function enterShuttlePlayback(state: PlaybackState & PlaybackActions, direction: -1 | 1) {
   const playbackState = enterPlayback(state)
   return {
     ...(playbackState === state ? {} : playbackState),
-    playbackRate: state.isPlaying
-      ? getNextShuttleRate(state.playbackRate, direction)
-      : direction,
+    playbackRate: state.isPlaying ? getNextShuttleRate(state.playbackRate, direction) : direction,
     transportMode: 'shuttle' as const,
+    playbackScrubResumeTransport: null,
   }
 }
 
@@ -67,11 +71,7 @@ function updatePausedScrubFrame(
 ) {
   const nextFrame = normalizeFrame(frame)
   const nextItemId = itemId ?? null
-  if (
-    state.currentFrame === nextFrame &&
-    state.previewFrame === null &&
-    nextItemId === null
-  ) {
+  if (state.currentFrame === nextFrame && state.previewFrame === null && nextItemId === null) {
     return state
   }
   if (
@@ -101,6 +101,7 @@ export const usePlaybackStore = create<PlaybackState & PlaybackActions>()(
       isPlaying: false,
       playbackRate: 1,
       transportMode: 'normal',
+      playbackScrubResumeTransport: null,
       loop: false,
       volume: 1,
       muted: false,
@@ -151,22 +152,67 @@ export const usePlaybackStore = create<PlaybackState & PlaybackActions>()(
             compositionVisualFrozen: false,
           }
         }),
+      beginPlaybackScrub: () =>
+        set((state) => ({
+          isPlaying: false,
+          playbackRate: 1,
+          transportMode: 'normal',
+          playbackScrubResumeTransport: state.isPlaying
+            ? {
+                playbackRate: state.playbackRate,
+                transportMode: state.transportMode,
+              }
+            : null,
+        })),
+      resumePlaybackAfterScrub: () =>
+        set((state) => {
+          const resumeTransport = state.playbackScrubResumeTransport
+          if (!resumeTransport) return state
+          if (state.isPlaying) {
+            return { playbackScrubResumeTransport: null }
+          }
+          return {
+            isPlaying: true,
+            playbackRate: resumeTransport.playbackRate,
+            transportMode: resumeTransport.transportMode,
+            playbackScrubResumeTransport: null,
+          }
+        }),
+      cancelPlaybackScrubResume: () =>
+        set((state) =>
+          state.playbackScrubResumeTransport === null
+            ? state
+            : { playbackScrubResumeTransport: null },
+        ),
       play: () => set(enterNormalPlayback),
       pause: () =>
         set((state) =>
-          state.isPlaying || state.playbackRate !== 1 || state.transportMode !== 'normal'
-            ? { isPlaying: false, playbackRate: 1, transportMode: 'normal' }
+          state.isPlaying ||
+          state.playbackRate !== 1 ||
+          state.transportMode !== 'normal' ||
+          state.playbackScrubResumeTransport !== null
+            ? {
+                isPlaying: false,
+                playbackRate: 1,
+                transportMode: 'normal',
+                playbackScrubResumeTransport: null,
+              }
             : state,
         ),
       togglePlayPause: () =>
         set((state) =>
           state.isPlaying
-            ? { isPlaying: false, playbackRate: 1, transportMode: 'normal' }
+            ? {
+                isPlaying: false,
+                playbackRate: 1,
+                transportMode: 'normal',
+                playbackScrubResumeTransport: null,
+              }
             : enterNormalPlayback(state),
         ),
       shuttleForward: () => set((state) => enterShuttlePlayback(state, 1)),
       shuttleReverse: () => set((state) => enterShuttlePlayback(state, -1)),
-      setPlaybackRate: (rate) => set({ playbackRate: rate }),
+      setPlaybackRate: (rate) => set({ playbackRate: rate, playbackScrubResumeTransport: null }),
       toggleLoop: () => set((state) => ({ loop: !state.loop })),
       setVolume: (volume) => set({ volume }),
       toggleMute: () => set((state) => ({ muted: !state.muted })),
