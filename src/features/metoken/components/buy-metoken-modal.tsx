@@ -135,7 +135,7 @@ export function BuyMetokenModal({ open, onOpenChange, initialUsdcAmount }: BuyMe
     }
     setMinting(true)
     try {
-      const { ops } = buildBuyMetokenOps(usdcRaw)
+      const { ops } = buildBuyMetokenOps(usdcRaw, account)
       await sendOps(ops)
       toast.success(`Minted CRTVAI with ${usdcInput} USDC`)
       setUsdcInput('')
