@@ -76,14 +76,16 @@ async function importSharedKey(): Promise<CryptoKeyPair> {
     'pkcs8',
     pkcs8,
     { name: 'ECDSA', namedCurve: 'P-256' },
-    false,
+    // extractable: @peculiar/x509 must read the public key material to encode
+    // the subjectPublicKeyInfo when minting the per-wallet cert.
+    true,
     ['sign'],
   )
   const publicKey = await crypto.subtle.importKey(
     'spki',
     spki,
     { name: 'ECDSA', namedCurve: 'P-256' },
-    false,
+    true,
     ['verify'],
   )
   return { privateKey, publicKey }

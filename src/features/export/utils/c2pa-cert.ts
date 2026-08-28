@@ -97,3 +97,8 @@ export async function getC2paCertId(
     return null
   }
 }
+
+/** Clear the session certId cache (tests only). */
+export function clearC2paCertIdCache(): void {
+  certIdCache.clear()
+}
