@@ -148,6 +148,18 @@
     {
       "file": "api/generate-video.ts",
       "exports": ["*"]
+    },
+    {
+      "file": "api/c2pa/sign.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/c2pa/certs.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/c2pa/certs/challenge.ts",
+      "exports": ["*"]
     }
   ]
 }
