@@ -94,10 +94,11 @@ async function signResultIfConfigured(opts: {
   result: ClientRenderResult
   composition: CompositionInputProps
   wallet?: string
+  certId?: string
   onProgress: (progress: RenderProgress) => void
   signal: AbortSignal
 }): Promise<ClientRenderResult> {
-  const { result, composition, wallet, onProgress, signal } = opts
+  const { result, composition, wallet, certId, onProgress, signal } = opts
 
   // Audio-only exports (mp3/aac/wav) don't carry a C2PA container box; skip.
   if (result.mimeType.startsWith('audio/')) return result
@@ -114,6 +115,7 @@ async function signResultIfConfigured(opts: {
       mimeType: result.mimeType,
       composition,
       wallet,
+      certId,
       signal,
     })
     if (!signed) return result
@@ -185,6 +187,7 @@ self.onmessage = async (event: MessageEvent<ExportRenderWorkerRequest>) => {
       result,
       composition,
       wallet: message.wallet,
+      certId: message.certId,
       onProgress,
       signal: controller.signal,
     })

@@ -156,6 +156,8 @@ export interface RunRenderArgs {
   onProgress: (progress: RenderProgress) => void
   /** Optional wallet address to bind as the C2PA author identity. */
   wallet?: string
+  /** Optional per-wallet C2PA certId (from the wallet-challenge flow). */
+  certId?: string
 }
 
 export interface RunRenderOutcome {
@@ -174,6 +176,7 @@ function renderInWorker(
   signal: AbortSignal,
   onProgress: (progress: RenderProgress) => void,
   wallet?: string,
+  certId?: string,
 ): Promise<ClientRenderResult> {
   if (typeof Worker === 'undefined') {
     return Promise.reject(new Error('WORKER_UNAVAILABLE'))
@@ -231,6 +234,7 @@ function renderInWorker(
       settings: clientSettings,
       composition,
       wallet,
+      certId,
     }
     worker.postMessage(startMessage)
   })
@@ -261,6 +265,7 @@ export async function runRender({
   signal,
   onProgress,
   wallet,
+  certId,
 }: RunRenderArgs): Promise<RunRenderOutcome> {
   const workerManager = createManagedWorker<Worker>({
     createWorker: () =>
@@ -281,6 +286,7 @@ export async function runRender({
       signal,
       onProgress,
       wallet,
+      certId,
     )
     return { result, renderPath: 'worker' }
   } catch (workerError) {

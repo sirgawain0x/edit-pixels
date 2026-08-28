@@ -33,6 +33,7 @@ import { releaseTemporaryExportOutput } from '../utils/export-output-target'
 import { useTimelineStore } from '@/features/export/deps/timeline'
 import { useProjectStore } from '@/features/export/deps/projects'
 import { useWalletContext } from '@/features/export/deps/wallet'
+import { getC2paCertId } from '../utils/c2pa-cert'
 import { DEFAULT_PROJECT_HEIGHT, DEFAULT_PROJECT_WIDTH } from '@/shared/projects/defaults'
 import { resolveMediaUrls } from '@/features/export/deps/media-library'
 import { usePlaybackStore } from '@/shared/state/playback'
@@ -87,7 +88,7 @@ export function useClientRender(): UseClientRenderReturn {
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<ClientRenderResult | null>(null)
   const resultRef = useRef<ClientRenderResult | null>(null)
-  const { account } = useWalletContext()
+  const { account, walletClient } = useWalletContext()
 
   // AbortController for cancellation
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -288,6 +289,7 @@ export function useClientRender(): UseClientRenderReturn {
         })
 
         // Run the render (worker, with automatic main-thread fallback).
+        const certId = await getC2paCertId(account, walletClient)
         const {
           result: renderResult,
           renderPath,
@@ -299,6 +301,7 @@ export function useClientRender(): UseClientRenderReturn {
           signal,
           onProgress: handleProgress,
           wallet: account,
+          certId: certId ?? undefined,
         })
         if (fallbackReason) event.set('workerFallbackReason', fallbackReason)
 
@@ -345,7 +348,7 @@ export function useClientRender(): UseClientRenderReturn {
         abortControllerRef.current = null
       }
     },
-    [handleProgress, account],
+    [handleProgress, account, walletClient],
   )
 
   /**

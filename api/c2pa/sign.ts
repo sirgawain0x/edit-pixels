@@ -11,22 +11,22 @@
  * Contract (locked with the signing-service owner):
  *
  *   POST /api/c2pa/sign
- *   X-C2PA-Wallet: 0x…            (cert resolution; self-signed phase ignores it)
+ *   X-C2PA-CertId: <certId>       (per-wallet cert from /api/c2pa/certs)
  *   Content-Type: application/octet-stream
  *   Body: <toBeSigned claim bytes>
  *
  *   → 200, application/octet-stream
- *     Body: <COSE_Sign1 CBOR>  (tag 18, protected {1:-7, 33:[certDER]},
+ *     Body: <COSE_Sign1 CBOR>  (tag 18, protected {1:-7, 33:certDER},
  *                               detached payload, P1363 raw r‖s signature)
  *
  * The signature is computed over the COSE Sig_structure
  * `["Signature1", protected, b"", claimBytes]`, NOT the claim bytes directly.
  *
  * IDENTITY BINDING (correctness-critical): the cert's subject MUST equal the
- * manifest's author `did:ethr:<wallet>` (or a matching SAN), or a strict
- * validator flags a signer/author identity mismatch. The self-signed test cert
- * uses the zero address as a placeholder subject; wallet-challenge issuance
- * will mint per-wallet certs with `CN=did:ethr:<actual wallet>`.
+ * manifest's author `did:ethr:<wallet>`. Per-wallet certs (issued via
+ * /api/c2pa/certs) carry `CN=did:ethr:<wallet>`. In the self-signed fallback
+ * phase (no certId), the shared test cert uses the zero-address subject — a
+ * documented, honest placeholder with no real identity claim.
  */
 
 import { createPrivateKey, sign as cryptoSign } from 'node:crypto'
@@ -38,6 +38,7 @@ import {
   normalizePem,
   pemToDer,
 } from '../_cose'
+import { resolveCert } from './_cert'
 
 const MAX_CLAIM_BYTES = 1024 * 1024 // 1 MiB guard — claims are a few KB
 
@@ -53,10 +54,7 @@ export async function POST(request: Request): Promise<Response> {
     )
   }
 
-  const wallet = request.headers.get('x-c2pa-wallet') ?? ''
-  if (!/^0x[0-9a-fA-F]{40}$/.test(wallet)) {
-    return Response.json({ error: 'Missing or invalid X-C2PA-Wallet header' }, { status: 400 })
-  }
+  const certId = request.headers.get('x-c2pa-certid') ?? ''
 
   let claimBytes: Uint8Array
   try {
@@ -73,10 +71,23 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    const certPem = normalizePem(process.env.C2PA_CERT_PEM as string)
-    const keyPem = normalizePem(process.env.C2PA_CERT_KEY as string)
+    // Resolve the signing cert + key. Prefer the per-wallet cert (certId);
+    // fall back to the shared test cert for the self-signed phase.
+    let certDer: Uint8Array
+    let keyPem: string
 
-    const certDer = pemToDer(certPem)
+    if (certId) {
+      const resolved = await resolveCert(certId)
+      if (!resolved) {
+        return Response.json({ error: 'Unknown or expired certId' }, { status: 401 })
+      }
+      certDer = resolved.certDer
+      keyPem = resolved.keyPem
+    } else {
+      certDer = pemToDer(normalizePem(process.env.C2PA_CERT_PEM as string))
+      keyPem = normalizePem(process.env.C2PA_CERT_KEY as string)
+    }
+
     const privateKey = createPrivateKey(keyPem)
 
     // 1. Protected header: { 1: -7 (ES256), 33: <cert DER> }.

@@ -119,6 +119,7 @@ async function renderQueuedJob(job: RenderJob): Promise<void> {
       signal: controller.signal,
       onProgress: (progress) => useRenderQueueStore.getState().updateJobProgress(job.id, progress),
       wallet: job.wallet,
+      certId: job.certId,
     })
     temporaryResult = result
     if (fallbackReason) event.set('workerFallbackReason', fallbackReason)

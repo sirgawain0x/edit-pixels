@@ -108,6 +108,8 @@ export interface BuildRenderJobOptions {
   sequence?: ExportableSequence
   /** Optional wallet address to bind as the C2PA author identity. */
   wallet?: string
+  /** Optional per-wallet C2PA certId (from the wallet-challenge flow). */
+  certId?: string
 }
 
 /**
@@ -123,6 +125,7 @@ function assembleJob(
   outPoint: number | null,
   name?: string,
   wallet?: string,
+  certId?: string,
 ): RenderJob {
   const hasRange = inPoint != null && outPoint != null
   const durationFrames = hasRange ? outPoint - inPoint : capture.durationFrames
@@ -145,6 +148,7 @@ function assembleJob(
     snapshot: capture.snapshot,
     fileName,
     wallet,
+    certId,
     createdAt: Date.now(),
   }
 }
@@ -158,6 +162,7 @@ export async function buildRenderJob({
   capture,
   sequence,
   wallet,
+  certId,
 }: BuildRenderJobOptions): Promise<RenderJob> {
   const cap = capture ?? captureTimeline(sequence)
   const requested = mapRequestedClientSettings(settings, cap.fps)
@@ -178,7 +183,7 @@ export async function buildRenderJob({
   const { clientSettings, exportMode } = smartCopy.eligible
     ? requested
     : await resolveClientSettings(settings, cap.fps)
-  return assembleJob(cap, clientSettings, exportMode, inPoint, outPoint, name, wallet)
+  return assembleJob(cap, clientSettings, exportMode, inPoint, outPoint, name, wallet, certId)
 }
 
 /* ─────────────────────────── Segment generators ─────────────────────────── */
@@ -238,6 +243,7 @@ export async function buildSegmentJobs(
   partLabel: (index: number, range: FrameRange) => string,
   sequence?: ExportableSequence,
   wallet?: string,
+  certId?: string,
 ): Promise<RenderJob[]> {
   const capture = captureTimeline(sequence)
   const { clientSettings, exportMode } = await resolveClientSettings(settings, capture.fps)
@@ -250,6 +256,7 @@ export async function buildSegmentJobs(
       range.end,
       partLabel(i, range),
       wallet,
+      certId,
     ),
   )
 }

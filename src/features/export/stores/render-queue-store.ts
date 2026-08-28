@@ -54,6 +54,8 @@ export interface RenderJob {
   fileName: string
   /** Optional wallet address to bind as the C2PA author identity. */
   wallet?: string
+  /** Optional per-wallet C2PA certId (from the wallet-challenge flow). */
+  certId?: string
   /** Workspace-relative path once saved. */
   savedPath?: string
   fileSize?: number

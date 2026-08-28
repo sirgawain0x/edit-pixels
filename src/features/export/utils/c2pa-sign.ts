@@ -55,15 +55,20 @@ export interface C2paSignResult {
 /**
  * Sign an export blob via the remote claim-signing service + local embed.
  * Returns `null` on any failure so the export can proceed unsigned.
+ *
+ * `wallet` binds the manifest author as `did:ethr:<wallet>`; `certId` selects
+ * the per-wallet signing cert (issued via the wallet-challenge flow). When
+ * `certId` is absent the service falls back to the shared test cert.
  */
 export async function signExportBlob(opts: {
   blob: Blob
   mimeType: string
   composition: CompositionInputProps
   wallet?: string
+  certId?: string
   signal?: AbortSignal
 }): Promise<C2paSignResult | null> {
-  const { blob, mimeType, composition, wallet, signal } = opts
+  const { blob, mimeType, composition, wallet, certId, signal } = opts
 
   try {
     const c2pa = await getC2pa()
@@ -110,7 +115,7 @@ export async function signExportBlob(opts: {
             method: 'POST',
             headers: {
               'Content-Type': 'application/octet-stream',
-              ...(wallet ? { 'X-C2PA-Wallet': wallet } : {}),
+              ...(certId ? { 'X-C2PA-CertId': certId } : {}),
             },
             body,
             signal,
