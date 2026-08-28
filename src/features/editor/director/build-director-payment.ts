@@ -4,7 +4,7 @@
 
 import { encodeFunctionData, type Address, type Hex } from 'viem'
 import {
-  CRTVAI_DIAMOND_ADDRESS,
+  CRTVAI_METOKEN_ADDRESS,
   METOKEN_ERC20_ABI,
   getSuperfluidReceiverAddress,
 } from '@/config/metoken'
@@ -30,7 +30,7 @@ export function buildDirectorPaymentOp(amountWei: bigint): SmartWalletOp {
   }) as Hex
 
   return {
-    target: CRTVAI_DIAMOND_ADDRESS,
+    target: CRTVAI_METOKEN_ADDRESS,
     data,
     value: 0n,
   }
