@@ -6,18 +6,29 @@ import { ALCHEMY_API_KEY } from '@/config/alchemy'
 /**
  * CRTVAI MeToken — Creative TV's AI payment token.
  *
- * Diamond ERC-2535 contract on Base, backed by USDC via Bancor Zero formula.
- * Users mint CRTVAI by sending USDC to the meToken contract; the bonding curve
- * determines how many meTokens they receive. They can sell (burn) meTokens
- * back into USDC at the current curve price.
+ * Two distinct contracts are involved:
+ *  - The **meToken** (`0xecb6…4846`) is a plain ERC-20 (MeToken.sol). Its
+ *    `mint`/`burn` are `onlyDiamond`-gated, so users NEVER call them directly.
+ *    Users only read `balanceOf` / `transfer` / `approve` on it.
+ *  - The **Diamond** (`0xba55…3f5`) is the ERC-2535 proxy. Minting/burning go
+ *    through its `FoundryFacet`:
+ *      mint(address meToken, uint256 assetsDeposited, address recipient)
+ *      burn(address meToken, uint256 meTokensBurned, address recipient)
+ *    The FoundryFacet pulls the connector asset (USDC) from the caller via the
+ *    hub vault's `handleDeposit` → `safeTransferFrom`, so the caller must
+ *    approve USDC to the **vault**, not the Diamond and not the meToken.
  *
- * Diamond address: 0xecb695544a3d2a64d579b3828f3f60f6932f4846
- * Hub ID: 2 (USDC-backed, curve params fixed: baseY=224, reserveWeight=32)
- * Underlying asset: USDC on Base (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913)
+ * Hub 2 (USDC-backed): baseY=224, reserveWeight=32, refundRatio=80%.
  */
 
-/** CRTVAI meToken diamond address on Base. */
-export const CRTVAI_DIAMOND_ADDRESS = '0xecb695544a3d2a64d579b3828f3f60f6932f4846' as const
+/** CRTVAI meToken (ERC-20) address on Base. */
+export const CRTVAI_METOKEN_ADDRESS = '0xecb695544a3d2a64d579b3828f3f60f6932f4846' as const
+
+/** meTokens Diamond (ERC-2535 proxy) address on Base. */
+export const CRTVAI_DIAMOND_ADDRESS = '0xba5502db2aC2cBff189965e991C07109B14eB3f5' as const
+
+/** Hub-2 vault — the USDC approval target for minting. */
+export const CRTVAI_HUB_2_VAULT_ADDRESS = '0xd4b3f4d2c44Feba751F30e19D7e1047A29eE085d' as const
 
 /** MeToken hub ID for CRTVAI (USDC-backed hub on Base). */
 export const CRTVAI_HUB_ID = 2
@@ -90,9 +101,9 @@ export function hourlyUsdcFromInterval(intervalCostUsdc6: number): number {
   return (intervalCostUsdc6 * 12) / 1_000_000
 }
 
-// ── MeToken Diamond ABI (ERC-2535 facets) ──────────────────────────
+// ── ABIs ────────────────────────────────────────────────────────────
 
-/** ERC-20 facet — standard token interface for balanceOf, transfer, etc. */
+/** ERC-20 facet — standard token interface on the meToken (balanceOf, transfer, etc.). */
 export const METOKEN_ERC20_ABI = parseAbi([
   'function balanceOf(address account) view returns (uint256)',
   'function transfer(address to, uint256 amount) returns (bool)',
@@ -104,16 +115,16 @@ export const METOKEN_ERC20_ABI = parseAbi([
   'function decimals() view returns (uint8)',
 ])
 
-/** MeToken facet — mint, sell, and curve pricing. */
+/**
+ * FoundryFacet — the mint/burn entry point on the Diamond.
+ * `mint`/`burn` take the meToken address and pull the connector asset through
+ * the hub vault (approve USDC to the vault first).
+ */
 export const METOKEN_DIAMOND_ABI = parseAbi([
-  'function balanceOf(address account) view returns (uint256)',
-  'function mint(uint256 amount) external',
-  'function sell(uint256 amount) external',
-  'function getCurrentPrice() view returns (uint256)',
-  'function getMintPrice(uint256 amount) view returns (uint256)',
-  'function getSellPrice(uint256 amount) view returns (uint256)',
-  'function getHubId() view returns (uint256)',
-  'function activeCollateralOnly() view returns (bool)',
+  'function mint(address meToken, uint256 assetsDeposited, address recipient) returns (uint256 meTokensMinted)',
+  'function burn(address meToken, uint256 meTokensBurned, address recipient) returns (uint256 assetsReturned)',
+  'function calculateMeTokensMinted(address meToken, uint256 assetsDeposited) view returns (uint256 meTokensMinted)',
+  'function calculateAssetsReturned(address meToken, uint256 meTokensBurned, address sender) view returns (uint256 assetsReturned)',
 ])
 
 /** CFAv1Forwarder — same address on all Superfluid networks. */
@@ -130,43 +141,49 @@ export const SUPER_TOKEN_ABI = parseAbi([
 export async function readCrtvaiBalance(address: `0x${string}`): Promise<bigint> {
   const client = getBasePublicClient()
   return client.readContract({
-    address: CRTVAI_DIAMOND_ADDRESS,
-    abi: METOKEN_DIAMOND_ABI,
+    address: CRTVAI_METOKEN_ADDRESS,
+    abi: METOKEN_ERC20_ABI,
     functionName: 'balanceOf',
     args: [address],
   })
 }
 
-/** Read current meToken mint price (USDC per meToken, in raw units). */
-export async function readCrtvaiCurrentPrice(): Promise<bigint> {
-  const client = getBasePublicClient()
-  return client.readContract({
-    address: CRTVAI_DIAMOND_ADDRESS,
-    abi: METOKEN_DIAMOND_ABI,
-    functionName: 'getCurrentPrice',
-  })
-}
-
-/** Read estimated meToken output for a given USDC input amount. */
+/** Read estimated meToken output for a given USDC input amount (FoundryFacet quote). */
 export async function readCrtvaiMintQuote(usdcAmount: bigint): Promise<bigint> {
   const client = getBasePublicClient()
   return client.readContract({
     address: CRTVAI_DIAMOND_ADDRESS,
     abi: METOKEN_DIAMOND_ABI,
-    functionName: 'getMintPrice',
-    args: [usdcAmount],
+    functionName: 'calculateMeTokensMinted',
+    args: [CRTVAI_METOKEN_ADDRESS, usdcAmount],
   })
 }
 
-/** Read estimated USDC return for selling a given meToken amount. */
-export async function readCrtvaiSellQuote(metokenAmount: bigint): Promise<bigint> {
+/** Read estimated USDC return for selling a given meToken amount (FoundryFacet quote). */
+export async function readCrtvaiSellQuote(
+  metokenAmount: bigint,
+  sender: `0x${string}`,
+): Promise<bigint> {
   const client = getBasePublicClient()
   return client.readContract({
     address: CRTVAI_DIAMOND_ADDRESS,
     abi: METOKEN_DIAMOND_ABI,
-    functionName: 'getSellPrice',
-    args: [metokenAmount],
+    functionName: 'calculateAssetsReturned',
+    args: [CRTVAI_METOKEN_ADDRESS, metokenAmount, sender],
   })
+}
+
+/**
+ * Implied current price in USDC6 per whole CRTVAI, derived from a 1-USDC mint
+ * quote. There is no `getCurrentPrice` view on the FoundryFacet; this is the
+ * equivalent derived from `calculateMeTokensMinted`.
+ */
+export async function readCrtvaiCurrentPrice(): Promise<bigint> {
+  const ONE_USDC = 1_000_000n
+  const minted = await readCrtvaiMintQuote(ONE_USDC)
+  if (minted === 0n) return 0n
+  // price (USDC6 per whole token) = 1e6 * 1e18 / meTokensMinted
+  return (ONE_USDC * 10n ** 18n) / minted
 }
 
 export function requireAlchemyKey(): string {
