@@ -3,7 +3,7 @@ import { createLogger } from '@/shared/logging/logger'
 import type { ImageItem } from '@/types/timeline'
 import type { CompositionInputProps } from '@/types/export'
 import type { RenderProgress, ClientRenderResult } from '../utils/client-renderer'
-import { signExportBlob } from '../utils/c2pa-sign'
+import { signRenderResultIfConfigured } from '../utils/c2pa-sign'
 import type {
   ExportRenderWorkerRequest,
   ExportRenderWorkerResponse,
@@ -98,32 +98,7 @@ async function signResultIfConfigured(opts: {
   onProgress: (progress: RenderProgress) => void
   signal: AbortSignal
 }): Promise<ClientRenderResult> {
-  const { result, composition, wallet, certId, onProgress, signal } = opts
-
-  // Audio-only exports (mp3/aac/wav) don't carry a C2PA container box; skip.
-  if (result.mimeType.startsWith('audio/')) return result
-
-  onProgress({
-    phase: 'signing',
-    progress: 100,
-    message: 'Signing provenance…',
-  })
-
-  try {
-    const signed = await signExportBlob({
-      blob: result.blob,
-      mimeType: result.mimeType,
-      composition,
-      wallet,
-      certId,
-      signal,
-    })
-    if (!signed) return result
-
-    return { ...result, blob: signed.blob, fileSize: signed.blob.size }
-  } catch {
-    return result
-  }
+  return signRenderResultIfConfigured(opts)
 }
 
 self.onmessage = async (event: MessageEvent<ExportRenderWorkerRequest>) => {

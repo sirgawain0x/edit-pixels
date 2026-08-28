@@ -24,6 +24,8 @@ export async function POST(request: Request): Promise<Response> {
     const challenge = await issueChallenge(wallet)
     return Response.json(challenge)
   } catch (e) {
-    return Response.json({ error: (e as Error).message }, { status: 400 })
+    const msg = (e as Error).message
+    const status = msg.includes('unavailable') ? 503 : 400
+    return Response.json({ error: msg }, { status })
   }
 }

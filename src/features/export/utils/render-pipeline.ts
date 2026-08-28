@@ -35,6 +35,7 @@ import {
   selectFallbackVideoCodec,
 } from './client-renderer'
 import { renderAudioOnly, renderComposition } from './canvas-render-orchestrator'
+import { signRenderResultIfConfigured } from './c2pa-sign'
 import type {
   ExportRenderWorkerRequest,
   ExportRenderWorkerResponse,
@@ -309,7 +310,15 @@ export async function runRender({
       signal,
       onProgress,
     )
-    return { result, renderPath: 'main-thread', fallbackReason: workerMessage }
+    const signedResult = await signRenderResultIfConfigured({
+      result,
+      composition,
+      wallet,
+      certId,
+      onProgress,
+      signal,
+    })
+    return { result: signedResult, renderPath: 'main-thread', fallbackReason: workerMessage }
   } finally {
     workerManager.terminate()
   }

@@ -80,16 +80,26 @@ async function renderQueuedJob(job: RenderJob): Promise<void> {
     )
 
     if (smartCopy.result) {
-      const saved = await saveExportFile(job.projectId, job.fileName, smartCopy.result.blob)
+      const { signRenderResultIfConfigured } = await import('../utils/c2pa-sign')
+      const signedResult = await signRenderResultIfConfigured({
+        result: smartCopy.result,
+        wallet: job.wallet,
+        certId: job.certId,
+        onProgress: (progress) =>
+          useRenderQueueStore.getState().updateJobProgress(job.id, progress),
+        signal: controller.signal,
+      })
+      temporaryResult = signedResult
+      const saved = await saveExportFile(job.projectId, job.fileName, signedResult.blob)
       useRenderQueueStore.getState().markCompleted(job.id, {
         savedPath: saved.relPath,
-        fileSize: smartCopy.result.fileSize,
+        fileSize: signedResult.fileSize,
       })
       event.set('renderPath', 'smart-copy')
       event.success({
         savedPath: saved.relPath,
-        fileSize: smartCopy.result.fileSize,
-        duration: smartCopy.result.duration,
+        fileSize: signedResult.fileSize,
+        duration: signedResult.duration,
       })
       return
     }

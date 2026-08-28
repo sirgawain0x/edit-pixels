@@ -23,6 +23,7 @@
 
 import type { CompositionInputProps } from '@/types/export'
 import type { Signer } from '@contentauth/c2pa-web'
+import type { ClientRenderResult, RenderProgress } from './client-renderer'
 import { collectIngredientSources } from './c2pa-manifest'
 
 const SIGN_ENDPOINT = '/api/c2pa/sign'
@@ -47,7 +48,7 @@ function getC2pa(): Promise<import('@contentauth/c2pa-web').C2paSdk> {
   return c2paPromise
 }
 
-export interface C2paSignResult {
+interface C2paSignResult {
   /** The signed file bytes (JUMBF box embedded). */
   blob: Blob
 }
@@ -60,10 +61,12 @@ export interface C2paSignResult {
  * the per-wallet signing cert (issued via the wallet-challenge flow). When
  * `certId` is absent the service falls back to the shared test cert.
  */
-export async function signExportBlob(opts: {
+// fallow-ignore-next-line complexity
+async function signExportBlob(opts: {
   blob: Blob
   mimeType: string
-  composition: CompositionInputProps
+  /** When omitted (e.g. smart-copy), ingredients are skipped; author identity still binds. */
+  composition?: CompositionInputProps
   wallet?: string
   certId?: string
   signal?: AbortSignal
@@ -88,7 +91,7 @@ export async function signExportBlob(opts: {
       }
 
       // Ingredients: each source clip, hashed by c2pa-web from its blob.
-      const sources = collectIngredientSources(composition)
+      const sources = composition ? collectIngredientSources(composition) : []
       for (const { title, src } of sources) {
         if (signal?.aborted) return null
         try {
@@ -133,5 +136,44 @@ export async function signExportBlob(opts: {
   } catch {
     // Non-fatal: signing is best-effort.
     return null
+  }
+}
+
+/**
+ * Optionally sign a completed render result. Audio-only containers skip;
+ * any signing failure returns the unsigned result unchanged.
+ */
+export async function signRenderResultIfConfigured(opts: {
+  result: ClientRenderResult
+  composition?: CompositionInputProps
+  wallet?: string
+  certId?: string
+  onProgress?: (progress: RenderProgress) => void
+  signal?: AbortSignal
+}): Promise<ClientRenderResult> {
+  const { result, composition, wallet, certId, onProgress, signal } = opts
+
+  // Audio-only exports (mp3/aac/wav) don't carry a C2PA container box; skip.
+  if (result.mimeType.startsWith('audio/')) return result
+
+  onProgress?.({
+    phase: 'signing',
+    progress: 100,
+    message: 'Signing provenance…',
+  })
+
+  try {
+    const signed = await signExportBlob({
+      blob: result.blob,
+      mimeType: result.mimeType,
+      composition,
+      wallet,
+      certId,
+      signal,
+    })
+    if (!signed) return result
+    return { ...result, blob: signed.blob, fileSize: signed.blob.size }
+  } catch {
+    return result
   }
 }

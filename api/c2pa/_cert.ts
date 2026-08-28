@@ -128,11 +128,12 @@ export async function issueChallenge(wallet: string): Promise<{
   const expiresAt = Math.floor(Date.now() / 1000) + CHALLENGE_TTL_SECONDS
 
   const redis = await getRedis()
-  if (redis) {
-    await redis.set(`${CHALLENGE_PREFIX}${wallet.toLowerCase()}`, nonce, {
-      ex: CHALLENGE_TTL_SECONDS,
-    })
+  if (!redis) {
+    throw new Error('cert storage unavailable')
   }
+  await redis.set(`${CHALLENGE_PREFIX}${wallet.toLowerCase()}`, nonce, {
+    ex: CHALLENGE_TTL_SECONDS,
+  })
 
   return { nonce, expiresAt, domain: C2PA_DOMAIN, types: C2PA_TYPES }
 }
@@ -156,11 +157,12 @@ export async function verifyAndIssue(opts: {
 
   // 1. Verify the nonce matches the one we issued (one-time use).
   const redis = await getRedis()
-  if (redis) {
-    const stored = await redis.get<string>(`${CHALLENGE_PREFIX}${wallet.toLowerCase()}`)
-    if (stored !== nonce) throw new Error('invalid or expired challenge')
-    await redis.del(`${CHALLENGE_PREFIX}${wallet.toLowerCase()}`)
+  if (!redis) {
+    throw new Error('cert storage unavailable')
   }
+  const stored = await redis.get<string>(`${CHALLENGE_PREFIX}${wallet.toLowerCase()}`)
+  if (stored !== nonce) throw new Error('invalid or expired challenge')
+  await redis.del(`${CHALLENGE_PREFIX}${wallet.toLowerCase()}`)
 
   // 2. Recover the signer from the EIP-712 signature and check it == wallet.
   const recovered = await recoverTypedDataAddress({
@@ -184,18 +186,16 @@ export async function verifyAndIssue(opts: {
   const certId = randomCertId()
   const certExpiresAt = Math.floor(Date.now() / 1000) + CERT_TTL_SECONDS
 
-  if (redis) {
-    await redis.set(
-      `${CERT_PREFIX}${certId}`,
-      JSON.stringify({
-        certDer: Buffer.from(certDer).toString('base64'),
-        keyPem: process.env.C2PA_CERT_KEY as string,
-        wallet: wallet.toLowerCase(),
-        expiresAt: certExpiresAt,
-      }),
-      { ex: CERT_TTL_SECONDS },
-    )
-  }
+  await redis.set(
+    `${CERT_PREFIX}${certId}`,
+    JSON.stringify({
+      certDer: Buffer.from(certDer).toString('base64'),
+      keyPem: process.env.C2PA_CERT_KEY as string,
+      wallet: wallet.toLowerCase(),
+      expiresAt: certExpiresAt,
+    }),
+    { ex: CERT_TTL_SECONDS },
+  )
 
   return { certId, expiresAt: certExpiresAt }
 }

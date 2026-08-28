@@ -26,6 +26,7 @@ import {
   runRender,
 } from '../utils/render-pipeline'
 import { trySmartCopyExport } from '../utils/smart-copy'
+import { signRenderResultIfConfigured } from '../utils/c2pa-sign'
 import { convertTimelineToComposition } from '../utils/timeline-to-composition'
 import { buildTranscriptSubtitleCues } from '../utils/embedded-subtitle-export'
 import { serializeSrt } from '@/shared/utils/subtitles'
@@ -184,15 +185,23 @@ export function useClientRender(): UseClientRenderReturn {
         )
 
         if (smartCopy.result) {
-          resultRef.current = smartCopy.result
-          setResult(smartCopy.result)
+          const certId = await getC2paCertId(account, walletClient)
+          const signedResult = await signRenderResultIfConfigured({
+            result: smartCopy.result,
+            wallet: account,
+            certId: certId ?? undefined,
+            onProgress: handleProgress,
+            signal,
+          })
+          resultRef.current = signedResult
+          setResult(signedResult)
           setStatus('completed')
           setProgress(100)
           event.set('renderPath', 'smart-copy')
           event.success({
-            fileSize: smartCopy.result.fileSize,
-            fileSizeFormatted: formatBytes(smartCopy.result.fileSize),
-            duration: smartCopy.result.duration,
+            fileSize: signedResult.fileSize,
+            fileSizeFormatted: formatBytes(signedResult.fileSize),
+            duration: signedResult.duration,
           })
           return
         }

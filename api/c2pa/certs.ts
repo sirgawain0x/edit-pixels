@@ -30,7 +30,11 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json(result)
   } catch (e) {
     const msg = (e as Error).message
-    const status = msg.includes('expired') || msg.includes('challenge') ? 400 : 401
+    const status = msg.includes('unavailable')
+      ? 503
+      : msg.includes('expired') || msg.includes('challenge')
+        ? 400
+        : 401
     return Response.json({ error: msg }, { status })
   }
 }
