@@ -26,12 +26,15 @@ import {
   runRender,
 } from '../utils/render-pipeline'
 import { trySmartCopyExport } from '../utils/smart-copy'
+import { signRenderResultIfConfigured } from '../utils/c2pa-sign'
 import { convertTimelineToComposition } from '../utils/timeline-to-composition'
 import { buildTranscriptSubtitleCues } from '../utils/embedded-subtitle-export'
 import { serializeSrt } from '@/shared/utils/subtitles'
 import { releaseTemporaryExportOutput } from '../utils/export-output-target'
 import { useTimelineStore } from '@/features/export/deps/timeline'
 import { useProjectStore } from '@/features/export/deps/projects'
+import { useWalletContext } from '@/features/export/deps/wallet'
+import { getC2paCertId } from '../utils/c2pa-cert'
 import { DEFAULT_PROJECT_HEIGHT, DEFAULT_PROJECT_WIDTH } from '@/shared/projects/defaults'
 import { resolveMediaUrls } from '@/features/export/deps/media-library'
 import { usePlaybackStore } from '@/shared/state/playback'
@@ -45,6 +48,7 @@ type ClientRenderStatus =
   | 'rendering'
   | 'encoding'
   | 'finalizing'
+  | 'signing'
   | 'completed'
   | 'failed'
   | 'cancelled'
@@ -85,6 +89,7 @@ export function useClientRender(): UseClientRenderReturn {
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<ClientRenderResult | null>(null)
   const resultRef = useRef<ClientRenderResult | null>(null)
+  const { account, walletClient } = useWalletContext()
 
   // AbortController for cancellation
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -111,6 +116,9 @@ export function useClientRender(): UseClientRenderReturn {
         break
       case 'finalizing':
         setStatus('finalizing')
+        break
+      case 'signing':
+        setStatus('signing')
         break
     }
   }, [])
@@ -177,15 +185,23 @@ export function useClientRender(): UseClientRenderReturn {
         )
 
         if (smartCopy.result) {
-          resultRef.current = smartCopy.result
-          setResult(smartCopy.result)
+          const certId = await getC2paCertId(account, walletClient)
+          const signedResult = await signRenderResultIfConfigured({
+            result: smartCopy.result,
+            wallet: account,
+            certId: certId ?? undefined,
+            onProgress: handleProgress,
+            signal,
+          })
+          resultRef.current = signedResult
+          setResult(signedResult)
           setStatus('completed')
           setProgress(100)
           event.set('renderPath', 'smart-copy')
           event.success({
-            fileSize: smartCopy.result.fileSize,
-            fileSizeFormatted: formatBytes(smartCopy.result.fileSize),
-            duration: smartCopy.result.duration,
+            fileSize: signedResult.fileSize,
+            fileSizeFormatted: formatBytes(signedResult.fileSize),
+            duration: signedResult.duration,
           })
           return
         }
@@ -282,6 +298,7 @@ export function useClientRender(): UseClientRenderReturn {
         })
 
         // Run the render (worker, with automatic main-thread fallback).
+        const certId = await getC2paCertId(account, walletClient)
         const {
           result: renderResult,
           renderPath,
@@ -292,6 +309,8 @@ export function useClientRender(): UseClientRenderReturn {
           composition,
           signal,
           onProgress: handleProgress,
+          wallet: account,
+          certId: certId ?? undefined,
         })
         if (fallbackReason) event.set('workerFallbackReason', fallbackReason)
 
@@ -338,7 +357,7 @@ export function useClientRender(): UseClientRenderReturn {
         abortControllerRef.current = null
       }
     },
-    [handleProgress],
+    [handleProgress, account, walletClient],
   )
 
   /**

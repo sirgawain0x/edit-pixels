@@ -1,7 +1,9 @@
 import { isGifUrl, isWebpUrl } from '@/shared/utils/media-utils'
 import { createLogger } from '@/shared/logging/logger'
 import type { ImageItem } from '@/types/timeline'
-import type { RenderProgress } from '../utils/client-renderer'
+import type { CompositionInputProps } from '@/types/export'
+import type { RenderProgress, ClientRenderResult } from '../utils/client-renderer'
+import { signRenderResultIfConfigured } from '../utils/c2pa-sign'
 import type {
   ExportRenderWorkerRequest,
   ExportRenderWorkerResponse,
@@ -83,6 +85,22 @@ function compositionHasAudio(
   return false
 }
 
+/**
+ * Attach C2PA provenance to a rendered export, if the signing service is
+ * reachable. Optional and non-fatal: on any failure the unsigned result is
+ * returned unchanged so a signing outage never blocks an export.
+ */
+async function signResultIfConfigured(opts: {
+  result: ClientRenderResult
+  composition: CompositionInputProps
+  wallet?: string
+  certId?: string
+  onProgress: (progress: RenderProgress) => void
+  signal: AbortSignal
+}): Promise<ClientRenderResult> {
+  return signRenderResultIfConfigured(opts)
+}
+
 self.onmessage = async (event: MessageEvent<ExportRenderWorkerRequest>) => {
   const message = event.data
 
@@ -138,10 +156,21 @@ self.onmessage = async (event: MessageEvent<ExportRenderWorkerRequest>) => {
             signal: controller.signal,
           })
 
+    // C2PA provenance signing — optional and non-fatal. If the signer is
+    // unavailable or fails, the unsigned blob is delivered unchanged.
+    const signedResult = await signResultIfConfigured({
+      result,
+      composition,
+      wallet: message.wallet,
+      certId: message.certId,
+      onProgress,
+      signal: controller.signal,
+    })
+
     const complete: ExportRenderWorkerResponse = {
       type: 'complete',
       requestId,
-      result,
+      result: signedResult,
     }
     self.postMessage(complete)
   } catch (error) {

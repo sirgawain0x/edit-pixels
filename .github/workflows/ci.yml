@@ -33,6 +33,19 @@ jobs:
       - name: Install dependencies
         run: vp install
 
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-browsers-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            playwright-browsers-${{ runner.os }}-
+
+      # Required by src/features/export/utils/c2pa-flow.integration.test.ts
+      # (c2pa-web needs a real Chromium Worker; jsdom cannot host it).
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
       - name: Check feature boundaries
         run: vp run check:boundaries
 

@@ -57,6 +57,7 @@
   "dependencies": {
     "@alchemy/wallet-apis": "^5.0.6",
     "@coinbase/cdp-sdk": "^1.45.0",
+    "@contentauth/c2pa-web": "0.14.3",
     "@daydreamlive/react": "^0.3.2",
     "@daydreamlive/sdk": "^0.1.1",
     "@hookform/resolvers": "5.2.2",
@@ -67,6 +68,7 @@
     "@mediabunny/mp3-encoder": "1.50.8",
     "@mediabunny/prores": "1.50.8",
     "@modelcontextprotocol/sdk": "1.30.0",
+    "@peculiar/x509": "2.0.0",
     "@privy-io/react-auth": "^3.32.2",
     "@privy-io/server-auth": "^1.32.5",
     "@radix-ui/react-accordion": "1.2.12",
@@ -115,6 +117,7 @@
     "react-hotkeys-hook": "5.2.4",
     "react-i18next": "16.2.4",
     "react-resizable-panels": "3.0.6",
+    "reflect-metadata": "0.2.2",
     "sonner": "2.0.7",
     "soundtouchjs": "^0.2.1",
     "tailwind-merge": "2.6.1",

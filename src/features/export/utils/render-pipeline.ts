@@ -35,6 +35,7 @@ import {
   selectFallbackVideoCodec,
 } from './client-renderer'
 import { renderAudioOnly, renderComposition } from './canvas-render-orchestrator'
+import { signRenderResultIfConfigured } from './c2pa-sign'
 import type {
   ExportRenderWorkerRequest,
   ExportRenderWorkerResponse,
@@ -154,6 +155,10 @@ export interface RunRenderArgs {
   composition: CompositionInputProps
   signal: AbortSignal
   onProgress: (progress: RenderProgress) => void
+  /** Optional wallet address to bind as the C2PA author identity. */
+  wallet?: string
+  /** Optional per-wallet C2PA certId (from the wallet-challenge flow). */
+  certId?: string
 }
 
 export interface RunRenderOutcome {
@@ -171,6 +176,8 @@ function renderInWorker(
   composition: CompositionInputProps,
   signal: AbortSignal,
   onProgress: (progress: RenderProgress) => void,
+  wallet?: string,
+  certId?: string,
 ): Promise<ClientRenderResult> {
   if (typeof Worker === 'undefined') {
     return Promise.reject(new Error('WORKER_UNAVAILABLE'))
@@ -227,6 +234,8 @@ function renderInWorker(
       requestId,
       settings: clientSettings,
       composition,
+      wallet,
+      certId,
     }
     worker.postMessage(startMessage)
   })
@@ -256,6 +265,8 @@ export async function runRender({
   composition,
   signal,
   onProgress,
+  wallet,
+  certId,
 }: RunRenderArgs): Promise<RunRenderOutcome> {
   const workerManager = createManagedWorker<Worker>({
     createWorker: () =>
@@ -275,6 +286,8 @@ export async function runRender({
       composition,
       signal,
       onProgress,
+      wallet,
+      certId,
     )
     return { result, renderPath: 'worker' }
   } catch (workerError) {
@@ -297,7 +310,15 @@ export async function runRender({
       signal,
       onProgress,
     )
-    return { result, renderPath: 'main-thread', fallbackReason: workerMessage }
+    const signedResult = await signRenderResultIfConfigured({
+      result,
+      composition,
+      wallet,
+      certId,
+      onProgress,
+      signal,
+    })
+    return { result: signedResult, renderPath: 'main-thread', fallbackReason: workerMessage }
   } finally {
     workerManager.terminate()
   }
