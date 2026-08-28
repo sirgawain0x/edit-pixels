@@ -106,6 +106,8 @@ export interface BuildRenderJobOptions {
   capture?: TimelineCapture
   /** Which sequence to export (Main or a standalone tab). Defaults to active. */
   sequence?: ExportableSequence
+  /** Optional wallet address to bind as the C2PA author identity. */
+  wallet?: string
 }
 
 /**
@@ -120,6 +122,7 @@ function assembleJob(
   inPoint: number | null,
   outPoint: number | null,
   name?: string,
+  wallet?: string,
 ): RenderJob {
   const hasRange = inPoint != null && outPoint != null
   const durationFrames = hasRange ? outPoint - inPoint : capture.durationFrames
@@ -141,6 +144,7 @@ function assembleJob(
     clientSettings,
     snapshot: capture.snapshot,
     fileName,
+    wallet,
     createdAt: Date.now(),
   }
 }
@@ -153,6 +157,7 @@ export async function buildRenderJob({
   name,
   capture,
   sequence,
+  wallet,
 }: BuildRenderJobOptions): Promise<RenderJob> {
   const cap = capture ?? captureTimeline(sequence)
   const requested = mapRequestedClientSettings(settings, cap.fps)
@@ -173,7 +178,7 @@ export async function buildRenderJob({
   const { clientSettings, exportMode } = smartCopy.eligible
     ? requested
     : await resolveClientSettings(settings, cap.fps)
-  return assembleJob(cap, clientSettings, exportMode, inPoint, outPoint, name)
+  return assembleJob(cap, clientSettings, exportMode, inPoint, outPoint, name, wallet)
 }
 
 /* ─────────────────────────── Segment generators ─────────────────────────── */
@@ -232,10 +237,19 @@ export async function buildSegmentJobs(
   ranges: FrameRange[],
   partLabel: (index: number, range: FrameRange) => string,
   sequence?: ExportableSequence,
+  wallet?: string,
 ): Promise<RenderJob[]> {
   const capture = captureTimeline(sequence)
   const { clientSettings, exportMode } = await resolveClientSettings(settings, capture.fps)
   return ranges.map((range, i) =>
-    assembleJob(capture, clientSettings, exportMode, range.start, range.end, partLabel(i, range)),
+    assembleJob(
+      capture,
+      clientSettings,
+      exportMode,
+      range.start,
+      range.end,
+      partLabel(i, range),
+      wallet,
+    ),
   )
 }

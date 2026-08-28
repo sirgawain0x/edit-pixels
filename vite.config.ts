@@ -11,6 +11,7 @@ import { POST as flowFramePost } from './api/flow-frame'
 import { POST as flowRunPost } from './api/flow-run'
 import { POST as generateImagePost } from './api/generate-image'
 import { POST as generateVideoPost } from './api/generate-video'
+import { POST as c2paSignPost } from './api/c2pa/sign'
 
 // Stamps public/sw.js with the hashed entry-chunk filename at build time so the service
 // worker's CACHE_VERSION — and the sw.js bytes — change on every deploy. Without this the
@@ -116,6 +117,7 @@ void flowFramePost
 void flowRunPost
 void generateImagePost
 void generateVideoPost
+void c2paSignPost
 
 function directorApiDevPlugin(): Plugin {
   return {

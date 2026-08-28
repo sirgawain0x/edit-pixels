@@ -52,6 +52,8 @@ export interface RenderJob {
   snapshot: RenderJobSnapshot
   /** Suggested on-disk filename (incl. extension). */
   fileName: string
+  /** Optional wallet address to bind as the C2PA author identity. */
+  wallet?: string
   /** Workspace-relative path once saved. */
   savedPath?: string
   fileSize?: number

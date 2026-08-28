@@ -10,6 +10,8 @@ export interface ExportRenderStartRequest {
   requestId: string
   settings: ClientExportSettings
   composition: CompositionInputProps
+  /** Optional wallet address to bind as the C2PA author identity. */
+  wallet?: string
 }
 
 export interface ExportRenderCancelRequest {

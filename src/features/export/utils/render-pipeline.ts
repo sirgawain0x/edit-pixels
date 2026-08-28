@@ -154,6 +154,8 @@ export interface RunRenderArgs {
   composition: CompositionInputProps
   signal: AbortSignal
   onProgress: (progress: RenderProgress) => void
+  /** Optional wallet address to bind as the C2PA author identity. */
+  wallet?: string
 }
 
 export interface RunRenderOutcome {
@@ -171,6 +173,7 @@ function renderInWorker(
   composition: CompositionInputProps,
   signal: AbortSignal,
   onProgress: (progress: RenderProgress) => void,
+  wallet?: string,
 ): Promise<ClientRenderResult> {
   if (typeof Worker === 'undefined') {
     return Promise.reject(new Error('WORKER_UNAVAILABLE'))
@@ -227,6 +230,7 @@ function renderInWorker(
       requestId,
       settings: clientSettings,
       composition,
+      wallet,
     }
     worker.postMessage(startMessage)
   })
@@ -256,6 +260,7 @@ export async function runRender({
   composition,
   signal,
   onProgress,
+  wallet,
 }: RunRenderArgs): Promise<RunRenderOutcome> {
   const workerManager = createManagedWorker<Worker>({
     createWorker: () =>
@@ -275,6 +280,7 @@ export async function runRender({
       composition,
       signal,
       onProgress,
+      wallet,
     )
     return { result, renderPath: 'worker' }
   } catch (workerError) {

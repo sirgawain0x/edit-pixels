@@ -32,6 +32,7 @@ import { serializeSrt } from '@/shared/utils/subtitles'
 import { releaseTemporaryExportOutput } from '../utils/export-output-target'
 import { useTimelineStore } from '@/features/export/deps/timeline'
 import { useProjectStore } from '@/features/export/deps/projects'
+import { useWalletContext } from '@/features/export/deps/wallet'
 import { DEFAULT_PROJECT_HEIGHT, DEFAULT_PROJECT_WIDTH } from '@/shared/projects/defaults'
 import { resolveMediaUrls } from '@/features/export/deps/media-library'
 import { usePlaybackStore } from '@/shared/state/playback'
@@ -45,6 +46,7 @@ type ClientRenderStatus =
   | 'rendering'
   | 'encoding'
   | 'finalizing'
+  | 'signing'
   | 'completed'
   | 'failed'
   | 'cancelled'
@@ -85,6 +87,7 @@ export function useClientRender(): UseClientRenderReturn {
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<ClientRenderResult | null>(null)
   const resultRef = useRef<ClientRenderResult | null>(null)
+  const { account } = useWalletContext()
 
   // AbortController for cancellation
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -111,6 +114,9 @@ export function useClientRender(): UseClientRenderReturn {
         break
       case 'finalizing':
         setStatus('finalizing')
+        break
+      case 'signing':
+        setStatus('signing')
         break
     }
   }, [])
@@ -292,6 +298,7 @@ export function useClientRender(): UseClientRenderReturn {
           composition,
           signal,
           onProgress: handleProgress,
+          wallet: account,
         })
         if (fallbackReason) event.set('workerFallbackReason', fallbackReason)
 
@@ -338,7 +345,7 @@ export function useClientRender(): UseClientRenderReturn {
         abortControllerRef.current = null
       }
     },
-    [handleProgress],
+    [handleProgress, account],
   )
 
   /**

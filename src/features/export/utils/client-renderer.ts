@@ -49,7 +49,7 @@ export interface ClientExportSettings {
 }
 
 export interface RenderProgress {
-  phase: 'preparing' | 'rendering' | 'encoding' | 'finalizing'
+  phase: 'preparing' | 'rendering' | 'encoding' | 'finalizing' | 'signing'
   progress: number // 0-100
   currentFrame?: number
   totalFrames?: number

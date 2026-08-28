@@ -148,6 +148,10 @@
     {
       "file": "api/generate-video.ts",
       "exports": ["*"]
+    },
+    {
+      "file": "api/c2pa/sign.ts",
+      "exports": ["*"]
     }
   ]
 }

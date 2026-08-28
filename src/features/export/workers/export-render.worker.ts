@@ -1,7 +1,14 @@
 import { isGifUrl, isWebpUrl } from '@/shared/utils/media-utils'
 import { createLogger } from '@/shared/logging/logger'
 import type { ImageItem } from '@/types/timeline'
-import type { RenderProgress } from '../utils/client-renderer'
+import type { CompositionInputProps } from '@/types/export'
+import type { RenderProgress, ClientRenderResult } from '../utils/client-renderer'
+import {
+  collectIngredientSources,
+  hashSourceBytes,
+  buildC2paManifestTemplate,
+} from '../utils/c2pa-manifest'
+import { signExportBlob } from '../utils/c2pa-sign'
 import type {
   ExportRenderWorkerRequest,
   ExportRenderWorkerResponse,
@@ -83,6 +90,57 @@ function compositionHasAudio(
   return false
 }
 
+/**
+ * Attach C2PA provenance to a rendered export, if the signing service is
+ * reachable. Optional and non-fatal: on any failure the unsigned result is
+ * returned unchanged so a signing outage never blocks an export.
+ */
+async function signResultIfConfigured(opts: {
+  result: ClientRenderResult
+  composition: CompositionInputProps
+  wallet?: string
+  onProgress: (progress: RenderProgress) => void
+  signal: AbortSignal
+}): Promise<ClientRenderResult> {
+  const { result, composition, wallet, onProgress, signal } = opts
+
+  // Audio-only exports (mp3/aac/wav) don't carry a C2PA container box; skip.
+  if (result.mimeType.startsWith('audio/')) return result
+
+  onProgress({
+    phase: 'signing',
+    progress: 100,
+    message: 'Signing provenance…',
+  })
+
+  try {
+    const sources = collectIngredientSources(composition)
+    const ingredients = []
+    for (const { title, src } of sources) {
+      if (signal.aborted) return result
+      try {
+        const hash = await hashSourceBytes(src, signal)
+        ingredients.push({ title, hash, relationship: 'componentOf' as const })
+      } catch {
+        // A single unhashable ingredient shouldn't block signing; skip it.
+      }
+    }
+
+    const manifest = buildC2paManifestTemplate({
+      ingredients,
+      mimeType: result.mimeType,
+      wallet,
+    })
+
+    const signed = await signExportBlob({ blob: result.blob, manifest, wallet, signal })
+    if (!signed) return result
+
+    return { ...result, blob: signed.blob, fileSize: signed.blob.size }
+  } catch {
+    return result
+  }
+}
+
 self.onmessage = async (event: MessageEvent<ExportRenderWorkerRequest>) => {
   const message = event.data
 
@@ -138,10 +196,20 @@ self.onmessage = async (event: MessageEvent<ExportRenderWorkerRequest>) => {
             signal: controller.signal,
           })
 
+    // C2PA provenance signing — optional and non-fatal. If the signer is
+    // unavailable or fails, the unsigned blob is delivered unchanged.
+    const signedResult = await signResultIfConfigured({
+      result,
+      composition,
+      wallet: message.wallet,
+      onProgress,
+      signal: controller.signal,
+    })
+
     const complete: ExportRenderWorkerResponse = {
       type: 'complete',
       requestId,
-      result,
+      result: signedResult,
     }
     self.postMessage(complete)
   } catch (error) {

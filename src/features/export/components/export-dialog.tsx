@@ -52,6 +52,7 @@ import type {
   SubtitleExportMode,
 } from '@/types/export'
 import { useClientRender } from '../hooks/use-client-render'
+import { useWalletContext } from '../deps/wallet'
 import {
   buildRenderJob,
   buildSegmentJobs,
@@ -338,6 +339,7 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
   const outPoint = exportable.outPoint
   const brokenMediaIds = useBrokenMediaIds()
   const enqueueJobs = useRenderQueueStore((s) => s.enqueueJobs)
+  const { account } = useWalletContext()
 
   const [settings, setSettings] = useState<ExportSettings>({
     codec: getDefaultCodecForFormat('mp4'),
@@ -394,8 +396,7 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
     const reversedClipIds = new Set(
       items
         .filter(
-          (item) =>
-            (item.type === 'video' || item.type === 'audio') && item.isReversed === true,
+          (item) => (item.type === 'video' || item.type === 'audio') && item.isReversed === true,
         )
         .map((item) => item.id),
     )
@@ -698,7 +699,7 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
   const handleAddCurrentRange = () => {
     const seq = captureSelection()
     void enqueueAndReveal(async (settings) => [
-      await buildRenderJob({ settings, ...queueRange(seq), sequence: seq }),
+      await buildRenderJob({ settings, ...queueRange(seq), sequence: seq, wallet: account }),
     ])
   }
 
@@ -716,6 +717,7 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
         ranges,
         (i) => t('export.renderQueue.partLabel', { n: i + 1 }),
         seq,
+        account,
       ),
     )
   }
@@ -734,6 +736,7 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
         ranges,
         (i) => t('export.renderQueue.partLabel', { n: i + 1 }),
         seq,
+        account,
       ),
     )
   }
@@ -1574,8 +1577,7 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
                 </div>
                 <div className="flex items-center justify-between text-sm gap-2">
                   <span className="text-muted-foreground truncate">
-                    {status === 'preparing' &&
-                      (progressMessage ?? t('export.progress.preparing'))}
+                    {status === 'preparing' && (progressMessage ?? t('export.progress.preparing'))}
                     {status === 'rendering' && t('export.progress.rendering')}
                     {status === 'encoding' && t('export.progress.encoding')}
                     {status === 'finalizing' && t('export.progress.finalizing')}
