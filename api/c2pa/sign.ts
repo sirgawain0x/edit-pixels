@@ -1,33 +1,45 @@
 /// <reference types="node" />
 // fallow-ignore-file complexity
 /**
- * C2PA signing endpoint (embedded mode).
+ * C2PA signing endpoint (claim-signing mode).
  *
- * Receives the rendered export blob + a manifest template, signs it with the
- * service's X.509 cert, and returns the re-signed file (JUMBF box injected).
+ * The browser cannot sign C2PA manifests (no X.509 key client-side), and the
+ * full export blob can't round-trip through a Vercel serverless function
+ * (4.5 MB request-body cap). So this route signs only the *claim* — a few KB —
+ * and the worker embeds the returned COSE signature locally via `c2pa-web`.
  *
- * The browser cannot sign C2PA manifests (no X.509 key client-side), so this
- * serverless route is the trust boundary that holds the signing cert.
+ * Contract (locked with the signing-service owner):
  *
- * Current state: STUB. Real signing requires a C2PA signing cert + the
- * `c2pa-node` native bindings (LocalSigner). Until a cert is provisioned
- * (C2PA_CERT_PEM / C2PA_CERT_KEY env vars) AND the c2pa-node integration below
- * is implemented, this returns 503 so the export worker's non-fatal fallback
- * delivers the unsigned blob unchanged.
+ *   POST /api/c2pa/sign
+ *   X-C2PA-Wallet: 0x…            (cert resolution; self-signed phase ignores it)
+ *   Content-Type: application/octet-stream
+ *   Body: <toBeSigned claim bytes>
  *
- * The wallet-challenge cert-issuance endpoint (`POST /api/c2pa/cert`) is
- * specced separately by the signing-service owner; this route only signs.
+ *   → 200, application/octet-stream
+ *     Body: <COSE_Sign1 CBOR>  (tag 18, protected {1:-7, 33:[certDER]},
+ *                               detached payload, P1363 raw r‖s signature)
  *
- * IDENTITY BINDING (correctness-critical): the client sends `wallet`, NOT a
- * `certId`. This route resolves `wallet → cert` internally — self-signed phase
- * maps any wallet to the shared test cert; wallet-challenge phase looks up (or
- * lazily issues) the per-wallet cert. The cert's subject MUST equal the
+ * The signature is computed over the COSE Sig_structure
+ * `["Signature1", protected, b"", claimBytes]`, NOT the claim bytes directly.
+ *
+ * IDENTITY BINDING (correctness-critical): the cert's subject MUST equal the
  * manifest's author `did:ethr:<wallet>` (or a matching SAN), or a strict
- * validator flags a signer/author identity mismatch. Never sign with a generic
- * `CN=Pixels Test` subject while the manifest claims `did:ethr:0x…`.
+ * validator flags a signer/author identity mismatch. The self-signed test cert
+ * uses the zero address as a placeholder subject; wallet-challenge issuance
+ * will mint per-wallet certs with `CN=did:ethr:<actual wallet>`.
  */
 
-const MAX_BLOB_BYTES = 2 * 1024 * 1024 * 1024 // 2 GiB guard
+import { createPrivateKey, sign as cryptoSign } from 'node:crypto'
+import {
+  bstr,
+  buildCoseSign1,
+  buildProtectedHeader,
+  buildSigStructure,
+  normalizePem,
+  pemToDer,
+} from '../_cose'
+
+const MAX_CLAIM_BYTES = 1024 * 1024 // 1 MiB guard — claims are a few KB
 
 function hasSigningCert(): boolean {
   return Boolean(process.env.C2PA_CERT_PEM && process.env.C2PA_CERT_KEY)
@@ -41,57 +53,56 @@ export async function POST(request: Request): Promise<Response> {
     )
   }
 
-  let form: FormData
+  const wallet = request.headers.get('x-c2pa-wallet') ?? ''
+  if (!/^0x[0-9a-fA-F]{40}$/.test(wallet)) {
+    return Response.json({ error: 'Missing or invalid X-C2PA-Wallet header' }, { status: 400 })
+  }
+
+  let claimBytes: Uint8Array
   try {
-    form = await request.formData()
+    const buf = new Uint8Array(await request.arrayBuffer())
+    if (buf.length === 0) {
+      return Response.json({ error: 'Empty claim body' }, { status: 400 })
+    }
+    if (buf.length > MAX_CLAIM_BYTES) {
+      return Response.json({ error: 'Claim too large' }, { status: 413 })
+    }
+    claimBytes = buf
   } catch {
-    return Response.json({ error: 'Expected multipart/form-data' }, { status: 400 })
+    return Response.json({ error: 'Expected raw claim bytes' }, { status: 400 })
   }
 
-  const file = form.get('file')
-  const manifestRaw = form.get('manifest')
-  const wallet = form.get('wallet')
-
-  if (!(file instanceof File)) {
-    return Response.json({ error: 'Missing file' }, { status: 400 })
-  }
-  if (typeof manifestRaw !== 'string') {
-    return Response.json({ error: 'Missing manifest' }, { status: 400 })
-  }
-  if (typeof wallet !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(wallet)) {
-    return Response.json({ error: 'Missing or invalid wallet address' }, { status: 400 })
-  }
-  if (file.size > MAX_BLOB_BYTES) {
-    return Response.json({ error: 'File too large' }, { status: 413 })
-  }
-
-  // Parse the manifest template (validated for shape; not trusted for identity).
-  let manifest: unknown
   try {
-    manifest = JSON.parse(manifestRaw)
-  } catch {
-    return Response.json({ error: 'Invalid manifest JSON' }, { status: 400 })
+    const certPem = normalizePem(process.env.C2PA_CERT_PEM as string)
+    const keyPem = normalizePem(process.env.C2PA_CERT_KEY as string)
+
+    const certDer = pemToDer(certPem)
+    const privateKey = createPrivateKey(keyPem)
+
+    // 1. Protected header: { 1: -7 (ES256), 33: <cert DER> }.
+    const protectedHeader = buildProtectedHeader(certDer)
+    const protectedBstr = bstr(protectedHeader)
+
+    // 2. Sig_structure = ["Signature1", protected, b"", claimBytes].
+    const sigStructure = buildSigStructure(protectedBstr, claimBytes)
+
+    // 3. ES256 sign the Sig_structure → raw P1363 r‖s (64 bytes for P-256).
+    const signature = cryptoSign('sha256', sigStructure, {
+      key: privateKey,
+      dsaEncoding: 'ieee-p1363',
+    })
+
+    // 4. Assemble the COSE_Sign1 (tag 18, detached payload).
+    const coseSign1 = buildCoseSign1({
+      protectedBstr,
+      signature: new Uint8Array(signature),
+    })
+
+    return new Response(new Uint8Array(coseSign1), {
+      headers: { 'Content-Type': 'application/octet-stream' },
+    })
+  } catch (e) {
+    console.error('C2PA signing error', e)
+    return Response.json({ error: 'C2PA signing failed' }, { status: 500 })
   }
-
-  // ── Real signing (TODO: wire c2pa-node once a cert is provisioned) ─────────
-  // const { sign } = await import('c2pa-node')
-  // const cert = resolveCertForWallet(wallet) // self-signed: shared test cert;
-  //                                           // challenge: per-wallet cert whose
-  //                                           // subject === `did:ethr:${wallet}`
-  // const signer = await sign({
-  //   manifest,
-  //   cert: cert.pem,
-  //   privateKey: cert.key,
-  // })
-  // const signed = await signer.sign({ asset: await file.arrayBuffer() })
-  // return new Response(signed, { headers: { 'Content-Type': file.type } })
-  // ──────────────────────────────────────────────────────────────────────────
-
-  // Not yet implemented — fail closed so the worker falls back to unsigned.
-  void manifest
-  void wallet
-  return Response.json(
-    { error: 'C2PA signing not implemented: c2pa-node integration pending' },
-    { status: 503 },
-  )
 }

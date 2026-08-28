@@ -3,11 +3,6 @@ import { createLogger } from '@/shared/logging/logger'
 import type { ImageItem } from '@/types/timeline'
 import type { CompositionInputProps } from '@/types/export'
 import type { RenderProgress, ClientRenderResult } from '../utils/client-renderer'
-import {
-  collectIngredientSources,
-  hashSourceBytes,
-  buildC2paManifestTemplate,
-} from '../utils/c2pa-manifest'
 import { signExportBlob } from '../utils/c2pa-sign'
 import type {
   ExportRenderWorkerRequest,
@@ -114,25 +109,13 @@ async function signResultIfConfigured(opts: {
   })
 
   try {
-    const sources = collectIngredientSources(composition)
-    const ingredients = []
-    for (const { title, src } of sources) {
-      if (signal.aborted) return result
-      try {
-        const hash = await hashSourceBytes(src, signal)
-        ingredients.push({ title, hash, relationship: 'componentOf' as const })
-      } catch {
-        // A single unhashable ingredient shouldn't block signing; skip it.
-      }
-    }
-
-    const manifest = buildC2paManifestTemplate({
-      ingredients,
+    const signed = await signExportBlob({
+      blob: result.blob,
       mimeType: result.mimeType,
+      composition,
       wallet,
+      signal,
     })
-
-    const signed = await signExportBlob({ blob: result.blob, manifest, wallet, signal })
     if (!signed) return result
 
     return { ...result, blob: signed.blob, fileSize: signed.blob.size }

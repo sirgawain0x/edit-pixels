@@ -57,6 +57,7 @@
   "dependencies": {
     "@alchemy/wallet-apis": "^5.0.6",
     "@coinbase/cdp-sdk": "^1.45.0",
+    "@contentauth/c2pa-web": "0.14.3",
     "@daydreamlive/react": "^0.3.2",
     "@daydreamlive/sdk": "^0.1.1",
     "@hookform/resolvers": "5.2.2",
