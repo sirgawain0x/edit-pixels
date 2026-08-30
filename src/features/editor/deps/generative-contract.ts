@@ -1,5 +1,5 @@
 /**
- * Cross-feature dependency contract: generative / Evolink proxy.
+ * Cross-feature dependency contract: generative / Vertex proxy.
  */
 export {
   getPublicImageUrl,

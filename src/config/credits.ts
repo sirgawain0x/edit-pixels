@@ -99,53 +99,62 @@ export function formatLiveAiTimeFromCredits(credits: number): string {
   return m > 0 ? `~${h}h ${m}m` : `~${h}h`
 }
 
-export type SeedanceQuality = '480p' | '720p' | '1080p'
-export type SeedanceSpeed = 'standard' | 'fast'
+export type VeoTier = 'standard' | 'fast' | 'lite'
+export type VeoQuality = '720p' | '1080p' | '4K'
 export type NanobananaQuality = '0.5K' | '1K' | '2K' | '4K'
 
-const QUALITY_MULTIPLIER: Record<SeedanceQuality, number> = {
-  '480p': 1,
-  '720p': 1.6,
-  '1080p': 2.5,
+/** @deprecated Use VeoTier */
+export type SeedanceSpeed = VeoTier
+/** @deprecated Use VeoQuality */
+export type SeedanceQuality = VeoQuality
+
+const VEO_USD_PER_SEC: Record<VeoTier, Partial<Record<VeoQuality, number>>> = {
+  standard: { '720p': 0.4, '1080p': 0.4, '4K': 0.6 },
+  fast: { '720p': 0.1, '1080p': 0.12, '4K': 0.3 },
+  lite: { '720p': 0.05, '1080p': 0.08 },
 }
 
-const SPEED_MULTIPLIER: Record<SeedanceSpeed, number> = {
-  standard: 1,
-  fast: 0.75,
-}
-
-/** Base credits per second of Seedance output (retail ~$0.10/credit). */
-const SEEDANCE_BASE_CREDITS_PER_SECOND = 1.4
-
-export interface SeedanceCreditQuoteParams {
+export interface VeoCreditQuoteParams {
   duration: number
-  quality: SeedanceQuality
-  speed: SeedanceSpeed
-  generateAudio: boolean
+  quality: VeoQuality
+  tier: VeoTier
 }
 
-/** Quote Seedance i2v generation cost in whole credits (rounded up). */
-export function quoteSeedanceCredits(params: SeedanceCreditQuoteParams): number {
-  const { duration, quality, speed, generateAudio } = params
-  let credits =
-    duration *
-    SEEDANCE_BASE_CREDITS_PER_SECOND *
-    QUALITY_MULTIPLIER[quality] *
-    SPEED_MULTIPLIER[speed]
-  if (generateAudio) credits *= 1.15
-  return Math.max(1, Math.ceil(credits))
+/** Quote Veo 3.1 video generation cost in whole credits (rounded up). */
+export function quoteVeoCredits(params: VeoCreditQuoteParams): number {
+  const { duration, quality, tier } = params
+  const usdPerSec = VEO_USD_PER_SEC[tier][quality]
+  if (!usdPerSec) {
+    throw new Error(`Quality ${quality} is not supported for Veo tier ${tier}`)
+  }
+  const usd = duration * usdPerSec
+  return Math.max(1, Math.ceil(usd / 0.1))
+}
+
+/** @deprecated Use quoteVeoCredits */
+export function quoteSeedanceCredits(params: {
+  duration: number
+  quality: VeoQuality
+  speed: VeoTier
+  generateAudio: boolean
+}): number {
+  return quoteVeoCredits({
+    duration: params.duration,
+    quality: params.quality,
+    tier: params.speed,
+  })
 }
 
 const NANO_QUALITY_CREDITS: Record<NanobananaQuality, number> = {
-  '0.5K': 5,
-  '1K': 8,
-  '2K': 12,
-  '4K': 18,
+  '0.5K': 1,
+  '1K': 1,
+  '2K': 1,
+  '4K': 2,
 }
 
-/** Quote Nanobanana image generation cost in whole credits. */
+/** Quote Gemini image generation cost in whole credits. */
 export function quoteNanobananaCredits(quality: NanobananaQuality): number {
-  return NANO_QUALITY_CREDITS[quality] ?? 10
+  return NANO_QUALITY_CREDITS[quality] ?? 1
 }
 
 /** Default contest promo template (admin CLI). */
@@ -154,4 +163,10 @@ export const DEFAULT_CONTEST_PROMO = {
   promoCode: 'CONTEST2026',
   maxClaims: 100,
   expiresAt: null as string | null,
+}
+
+export function normalizeVeoQuality(quality: string, tier: VeoTier): VeoQuality {
+  const q = quality === '4k' || quality === '4K' ? '4K' : quality === '1080p' ? '1080p' : '720p'
+  if (tier === 'lite' && q === '4K') return '1080p'
+  return q
 }

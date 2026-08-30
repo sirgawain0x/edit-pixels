@@ -1,10 +1,18 @@
 import { memo, useCallback, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowRightLeft, ImagePlus, Loader2, Sparkles, Upload, WandSparkles } from 'lucide-react'
+import {
+  ArrowRightLeft,
+  ImagePlus,
+  Loader2,
+  Maximize2,
+  Minimize2,
+  Sparkles,
+  Upload,
+  WandSparkles,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
-import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -34,10 +42,12 @@ import {
 } from '../director/build-director-payment'
 import { useSmartWalletOps } from '@/hooks/use-smart-wallet-ops'
 import {
+  FLOW_ALLOWED_DURATIONS,
   FLOW_DURATION_DEFAULT_SEC,
-  FLOW_DURATION_MAX_SEC,
-  FLOW_DURATION_MIN_SEC,
   clampFlowDuration,
+  normalizeFlowQuality,
+  type FlowQuality,
+  type FlowTier,
 } from '@/config/flow'
 import { quoteFlowGeneration } from './flow-pricing'
 import { cn } from '@/shared/ui/cn'
@@ -65,7 +75,7 @@ async function importRemoteVideo(url: string, projectId: string): Promise<void> 
   })
   const { mediaLibraryService } = await importMediaLibraryService()
   await mediaLibraryService.importGeneratedVideo(file, projectId, {
-    tags: ['ai-generated', 'flow', 'seedance'],
+    tags: ['ai-generated', 'flow', 'veo'],
   })
 }
 
@@ -87,15 +97,16 @@ export const FlowPanel = memo(function FlowPanel() {
   const [end, setEnd] = useState<FrameSlot>(emptySlot)
   const [prompt, setPrompt] = useState('')
   const [duration, setDuration] = useState(FLOW_DURATION_DEFAULT_SEC)
-  const [quality, setQuality] = useState<'480p' | '720p' | '1080p'>('720p')
-  const [speed, setSpeed] = useState<'standard' | 'fast'>('standard')
-  const [generateAudio, setGenerateAudio] = useState(true)
+  const [quality, setQuality] = useState<FlowQuality>('720p')
+  const [tier, setTier] = useState<FlowTier>('standard')
   const [chainNext, setChainNext] = useState(false)
   const [progress, setProgress] = useState(0)
   const [status, setStatus] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [buyOpen, setBuyOpen] = useState(false)
   const [lastEndUrl, setLastEndUrl] = useState<string | null>(null)
+
+  const effectiveQuality = normalizeFlowQuality(quality, tier)
 
   const stillCount =
     (start.mode === 'generate' && !start.publicUrl && start.generatePrompt.trim() ? 1 : 0) +
@@ -105,15 +116,21 @@ export const FlowPanel = memo(function FlowPanel() {
     () =>
       quoteFlowGeneration({
         duration,
-        quality,
-        speed,
-        generateAudio,
+        quality: effectiveQuality,
+        tier,
         stillCount,
       }),
-    [duration, quality, speed, generateAudio, stillCount],
+    [duration, effectiveQuality, tier, stillCount],
   )
 
   const insufficient = balance < quote.crtvaiDisplay
+
+  const onTierChange = useCallback((next: FlowTier) => {
+    setTier(next)
+    if (next === 'lite') {
+      setQuality((q) => (q === '4K' ? '1080p' : q))
+    }
+  }, [])
 
   const assignFile = useCallback(
     async (file: File, which: 'start' | 'end') => {
@@ -213,9 +230,8 @@ export const FlowPanel = memo(function FlowPanel() {
       const task = await proxyFlowRun(auth, {
         prompt: prompt.trim(),
         duration: clampFlowDuration(duration),
-        quality,
-        speed,
-        generate_audio: generateAudio,
+        quality: effectiveQuality,
+        tier,
         ...(start.publicUrl ? { startImageUrl: start.publicUrl } : {}),
         ...(end.publicUrl ? { endImageUrl: end.publicUrl } : {}),
         ...(!start.publicUrl && start.generatePrompt.trim()
@@ -290,18 +306,17 @@ export const FlowPanel = memo(function FlowPanel() {
     connect,
     currentProjectId,
     duration,
+    effectiveQuality,
     end,
-    generateAudio,
     insufficient,
     loadMediaItems,
     prompt,
-    quality,
     quote.crtvaiWei,
     refreshBalance,
     sendOps,
-    speed,
     start,
     t,
+    tier,
     walletConfigured,
   ])
 
@@ -312,7 +327,7 @@ export const FlowPanel = memo(function FlowPanel() {
           {t('flow.eyebrow', { defaultValue: 'Flow' })}
         </p>
         <h2 className="text-[13px] font-semibold tracking-tight text-foreground">
-          {t('flow.title', { defaultValue: 'Start → end video' })}
+          {t('flow.title', { defaultValue: 'Start → End video' })}
         </h2>
         <p className="mt-0.5 text-[11px] text-muted-foreground">
           {t('flow.blurb', {
@@ -323,7 +338,7 @@ export const FlowPanel = memo(function FlowPanel() {
       </header>
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3">
-        <div className="grid grid-cols-2 gap-2">
+        <div className="flex flex-col gap-2">
           <FrameCard
             label={t('flow.start', { defaultValue: 'Start' })}
             slot={start}
@@ -376,23 +391,24 @@ export const FlowPanel = memo(function FlowPanel() {
           />
         </div>
 
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <Label className="text-[11px]">
-              {t('flow.duration', { defaultValue: 'Duration' })}
-            </Label>
-            <span className="font-mono text-[11px] text-muted-foreground">
-              {duration}s ({FLOW_DURATION_MIN_SEC}–{FLOW_DURATION_MAX_SEC})
-            </span>
-          </div>
-          <Slider
-            value={[duration]}
-            min={FLOW_DURATION_MIN_SEC}
-            max={FLOW_DURATION_MAX_SEC}
-            step={1}
+        <div className="space-y-1">
+          <Label className="text-[11px]">{t('flow.duration', { defaultValue: 'Duration' })}</Label>
+          <Select
+            value={String(duration)}
+            onValueChange={(v) => setDuration(clampFlowDuration(Number(v)))}
             disabled={busy}
-            onValueChange={([v]) => setDuration(clampFlowDuration(v ?? FLOW_DURATION_DEFAULT_SEC))}
-          />
+          >
+            <SelectTrigger className="h-8 text-[11px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {FLOW_ALLOWED_DURATIONS.map((sec) => (
+                <SelectItem key={sec} value={String(sec)}>
+                  {sec}s
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="grid grid-cols-2 gap-2">
@@ -400,47 +416,32 @@ export const FlowPanel = memo(function FlowPanel() {
             <Label className="text-[11px]">{t('flow.quality', { defaultValue: 'Quality' })}</Label>
             <Select
               value={quality}
-              onValueChange={(v) => setQuality(v as typeof quality)}
+              onValueChange={(v) => setQuality(v as FlowQuality)}
               disabled={busy}
             >
               <SelectTrigger className="h-8 text-[11px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="480p">480p</SelectItem>
                 <SelectItem value="720p">720p</SelectItem>
                 <SelectItem value="1080p">1080p</SelectItem>
+                {tier !== 'lite' && <SelectItem value="4K">4K</SelectItem>}
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-1">
-            <Label className="text-[11px]">{t('flow.speed', { defaultValue: 'Speed' })}</Label>
-            <Select
-              value={speed}
-              onValueChange={(v) => setSpeed(v as typeof speed)}
-              disabled={busy}
-            >
+            <Label className="text-[11px]">{t('flow.tier', { defaultValue: 'Tier' })}</Label>
+            <Select value={tier} onValueChange={(v) => onTierChange(v as FlowTier)} disabled={busy}>
               <SelectTrigger className="h-8 text-[11px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="standard">Standard</SelectItem>
                 <SelectItem value="fast">Fast</SelectItem>
+                <SelectItem value="lite">Lite</SelectItem>
               </SelectContent>
             </Select>
           </div>
-        </div>
-
-        <div className="flex items-center justify-between gap-2 rounded-md border border-border/60 px-2.5 py-2">
-          <Label className="text-[11px]" htmlFor="flow-audio">
-            {t('flow.audio', { defaultValue: 'Generate audio' })}
-          </Label>
-          <Switch
-            id="flow-audio"
-            checked={generateAudio}
-            onCheckedChange={setGenerateAudio}
-            disabled={busy}
-          />
         </div>
 
         <div className="flex items-center justify-between gap-2 rounded-md border border-border/60 px-2.5 py-2">
@@ -566,15 +567,46 @@ function FrameCard({
   disabled: boolean
 }) {
   const { t } = useTranslation()
+  const [promptExpanded, setPromptExpanded] = useState(false)
+
+  const setMode = (mode: 'upload' | 'generate') => {
+    if (mode === 'upload') setPromptExpanded(false)
+    onMode(mode)
+  }
+
   return (
     <div className="rounded-lg border border-border/70 bg-secondary/20 p-2">
       <div className="mb-1.5 flex items-center justify-between gap-1">
         <span className="text-[11px] font-medium text-foreground">{label}</span>
-        <div className="flex gap-0.5">
+        <div className="flex items-center gap-0.5">
+          {slot.mode === 'generate' && (
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => setPromptExpanded((v) => !v)}
+              className="rounded p-0.5 text-muted-foreground hover:text-foreground"
+              aria-label={
+                promptExpanded
+                  ? t('flow.collapsePrompt', { defaultValue: 'Collapse prompt' })
+                  : t('flow.expandPrompt', { defaultValue: 'Expand prompt' })
+              }
+              title={
+                promptExpanded
+                  ? t('flow.collapsePrompt', { defaultValue: 'Collapse prompt' })
+                  : t('flow.expandPrompt', { defaultValue: 'Expand prompt' })
+              }
+            >
+              {promptExpanded ? (
+                <Minimize2 className="h-3 w-3" />
+              ) : (
+                <Maximize2 className="h-3 w-3" />
+              )}
+            </button>
+          )}
           <button
             type="button"
             disabled={disabled}
-            onClick={() => onMode('upload')}
+            onClick={() => setMode('upload')}
             className={cn(
               'rounded px-1.5 py-0.5 text-[9px] uppercase',
               slot.mode === 'upload' ? 'bg-primary/20 text-primary' : 'text-muted-foreground',
@@ -585,7 +617,7 @@ function FrameCard({
           <button
             type="button"
             disabled={disabled}
-            onClick={() => onMode('generate')}
+            onClick={() => setMode('generate')}
             className={cn(
               'rounded px-1.5 py-0.5 text-[9px] uppercase',
               slot.mode === 'generate' ? 'bg-primary/20 text-primary' : 'text-muted-foreground',
@@ -623,9 +655,12 @@ function FrameCard({
           value={slot.generatePrompt}
           onChange={(e) => onPrompt(e.target.value)}
           disabled={disabled}
-          rows={2}
+          rows={promptExpanded ? 8 : 2}
           placeholder={t('flow.stillPrompt', { defaultValue: 'Describe the still…' })}
-          className="min-h-[52px] resize-none text-[10px]"
+          className={cn(
+            'resize-none text-[10px]',
+            promptExpanded ? 'min-h-[160px] text-[11px]' : 'min-h-[52px]',
+          )}
         />
       )}
       <input

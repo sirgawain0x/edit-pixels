@@ -2,45 +2,43 @@
 import { createLogger } from '@/shared/logging/logger'
 import { proxyGetTask, proxySubmitVideo, type SignedRequestParams } from './generative-proxy-client'
 import type {
-  SeedanceResponse,
-  SeedanceSpeed,
-  SeedanceQuality,
-  SeedanceAspectRatio,
-  EvolinkTaskDetail,
+  VeoResponse,
+  VeoTier,
+  VeoQuality,
+  VeoAspectRatio,
+  GenerativeTaskDetail,
 } from '../types'
 
-const log = createLogger('SeedanceService')
+const log = createLogger('VeoService')
 
 export interface GenerateVideoParams {
   prompt: string
   imageUrls: string[]
-  speed?: SeedanceSpeed
+  tier?: VeoTier
   duration?: number
-  quality?: SeedanceQuality
-  aspectRatio?: SeedanceAspectRatio
-  generateAudio?: boolean
+  quality?: VeoQuality
+  aspectRatio?: VeoAspectRatio
 }
 
 export async function submitVideoGeneration(
   params: GenerateVideoParams,
   auth: SignedRequestParams,
   signal?: AbortSignal,
-): Promise<SeedanceResponse> {
+): Promise<VeoResponse> {
   const {
     prompt,
     imageUrls,
-    speed = 'standard',
-    duration = 5,
+    tier = 'standard',
+    duration = 8,
     quality = '720p',
-    aspectRatio = 'adaptive',
-    generateAudio = true,
+    aspectRatio = '16:9',
   } = params
 
   if (imageUrls.length === 0 || imageUrls.length > 2) {
-    throw new Error('Seedance image-to-video requires 1 or 2 image URLs.')
+    throw new Error('Veo image-to-video requires 1 or 2 image URLs.')
   }
 
-  log.info('Submitting video generation', { duration, quality, imageCount: imageUrls.length })
+  log.info('Submitting video generation', { duration, quality, tier, imageCount: imageUrls.length })
   return proxySubmitVideo(
     auth,
     {
@@ -48,17 +46,17 @@ export async function submitVideoGeneration(
       image_urls: imageUrls,
       duration,
       quality,
-      speed,
+      tier,
       aspect_ratio: aspectRatio,
-      generate_audio: generateAudio,
     },
     signal,
-  ) as Promise<SeedanceResponse>
+  ) as Promise<VeoResponse>
 }
 
 export async function getVideoTaskDetail(
   taskId: string,
   signal?: AbortSignal,
-): Promise<EvolinkTaskDetail> {
-  return proxyGetTask(taskId, signal)
+  auth?: SignedRequestParams,
+): Promise<GenerativeTaskDetail> {
+  return proxyGetTask(taskId, signal, auth)
 }

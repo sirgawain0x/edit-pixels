@@ -42,7 +42,7 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 }
 
 /**
- * Poll an evolink.ai task until it reaches a terminal status.
+ * Poll a generative task until it reaches a terminal status.
  *
  * @param getStatus - function that fetches the current task detail (caller provides the HTTP call)
  * @param options - polling configuration

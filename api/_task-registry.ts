@@ -1,21 +1,37 @@
 /**
- * Bind Evolink task ids to the paying wallet so poll routes stay private.
+ * Bind generative task ids to wallet + Vertex operation metadata.
  * Requires Upstash/Vercel KV on Vercel — instance memory is local-dev only.
  */
-// fallow-ignore-file complexity
+// fallow-ignore-file complexity,unused-export
 
 import { getRedis, isRedisConfigured } from './_redis-client.js'
 
 const TASK_KEY_PREFIX = 'pixels:flow:task:'
+const TASK_META_PREFIX = 'pixels:flow:task-meta:'
 const TASK_TTL_SECONDS = 60 * 60 * 24 // 24h
 
-const memoryTasks = new Map<string, { wallet: string; expiresAt: number }>()
+export interface GenerativeTaskMeta {
+  operationName: string
+  modelId: string
+}
+
+interface MemoryTaskEntry {
+  wallet: string
+  meta?: GenerativeTaskMeta
+  expiresAt: number
+}
+
+const memoryTasks = new Map<string, MemoryTaskEntry>()
 
 function allowMemoryFallback(): boolean {
   return !process.env.VERCEL
 }
 
-export async function registerGenerativeTask(taskId: string, wallet: string): Promise<void> {
+export async function registerGenerativeTask(
+  taskId: string,
+  wallet: string,
+  meta?: GenerativeTaskMeta,
+): Promise<void> {
   const id = taskId.trim()
   const owner = wallet.trim().toLowerCase()
   if (!id || !owner) return
@@ -24,6 +40,11 @@ export async function registerGenerativeTask(taskId: string, wallet: string): Pr
     const redis = await getRedis()
     if (redis) {
       await redis.set(`${TASK_KEY_PREFIX}${id}`, owner, { ex: TASK_TTL_SECONDS })
+      if (meta) {
+        await redis.set(`${TASK_META_PREFIX}${id}`, JSON.stringify(meta), {
+          ex: TASK_TTL_SECONDS,
+        })
+      }
       return
     }
   }
@@ -34,6 +55,7 @@ export async function registerGenerativeTask(taskId: string, wallet: string): Pr
 
   memoryTasks.set(id, {
     wallet: owner,
+    meta,
     expiresAt: Date.now() + TASK_TTL_SECONDS * 1000,
   })
 }
@@ -59,4 +81,28 @@ export async function getGenerativeTaskOwner(taskId: string): Promise<string | n
     return null
   }
   return entry.wallet
+}
+
+export async function getGenerativeTaskMeta(taskId: string): Promise<GenerativeTaskMeta | null> {
+  const id = taskId.trim()
+  if (!id) return null
+
+  if (isRedisConfigured()) {
+    const redis = await getRedis()
+    if (redis) {
+      const raw = await redis.get<string>(`${TASK_META_PREFIX}${id}`)
+      if (typeof raw !== 'string') return null
+      try {
+        return JSON.parse(raw) as GenerativeTaskMeta
+      } catch {
+        return null
+      }
+    }
+  }
+
+  if (!allowMemoryFallback()) return null
+
+  const entry = memoryTasks.get(id)
+  if (!entry || entry.expiresAt < Date.now()) return null
+  return entry.meta ?? null
 }

@@ -1,32 +1,48 @@
 /**
- * POST /api/generate-video — Seedance i2v with Director-style CRTVAI payment verify.
- *
- * Body: prompt, image_urls (1–2), duration?, quality?, speed?, aspect_ratio?,
- *       generate_audio?, requestId, walletAddress, paymentTxHash?
- * Header: Authorization: Bearer <privy token>
+ * POST /api/generate-video — Veo 3.1 i2v with CRTVAI payment verify.
  */
 // fallow-ignore-file complexity,code-duplication
 
 import { getBearerToken, verifyPrivyAccessToken } from './_wallet-auth.js'
 import { checkMetokenSufficient } from './_metoken-server.js'
-import { evolinkServerPost, isEvolinkServerConfigured } from './_evolink-server.js'
+import {
+  clampFlowDuration,
+  normalizeVeoQuality,
+  quoteVeoCredits,
+  type VeoTier,
+} from './_generative-pricing.js'
+import {
+  fetchImageBytes,
+  isVertexGenerativeConfigured,
+  shortTaskId,
+  startVeoVideo,
+} from './_vertex-generative.js'
 import { isFlowBillingEnforced, quoteFlowCreditsUsdc6, verifyFlowPayment } from './flow-billing.js'
 
+function parseTier(body: Record<string, unknown>): VeoTier {
+  const raw =
+    typeof body.tier === 'string'
+      ? body.tier
+      : typeof body.speed === 'string'
+        ? body.speed
+        : 'standard'
+  if (raw === 'fast' || raw === 'lite') return raw
+  return 'standard'
+}
+
 function quoteVideoCredits(body: Record<string, unknown>): number {
-  const duration = typeof body.duration === 'number' ? body.duration : 5
-  const quality = typeof body.quality === 'string' ? body.quality : '720p'
-  const speed = typeof body.speed === 'string' ? body.speed : 'standard'
-  const generateAudio = body.generate_audio !== false
-  const qMult = quality === '1080p' ? 2.5 : quality === '720p' ? 1.6 : 1
-  const sMult = speed === 'fast' ? 0.75 : 1
-  let credits = duration * 1.4 * qMult * sMult
-  if (generateAudio) credits *= 1.15
-  return Math.max(1, Math.ceil(credits))
+  const duration = clampFlowDuration(typeof body.duration === 'number' ? body.duration : 8)
+  const tier = parseTier(body)
+  const quality = normalizeVeoQuality(
+    typeof body.quality === 'string' ? body.quality : '720p',
+    tier,
+  )
+  return quoteVeoCredits({ duration, quality, tier })
 }
 
 // fallow-ignore-next-line complexity
 export async function POST(request: Request): Promise<Response> {
-  if (!isEvolinkServerConfigured()) {
+  if (!isVertexGenerativeConfigured()) {
     return Response.json({ error: 'service unavailable' }, { status: 503 })
   }
 
@@ -55,7 +71,9 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
-  const imageUrls = Array.isArray(body.image_urls) ? body.image_urls : []
+  const imageUrls = Array.isArray(body.image_urls)
+    ? body.image_urls.filter((u) => typeof u === 'string')
+    : []
   if (!prompt || imageUrls.length === 0 || imageUrls.length > 2) {
     return Response.json({ error: 'prompt and 1–2 image_urls required' }, { status: 400 })
   }
@@ -109,34 +127,42 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    const model =
-      body.speed === 'fast' ? 'seedance-2.0-fast-image-to-video' : 'seedance-2.0-image-to-video'
-
-    const result = await evolinkServerPost<Record<string, unknown> & { id?: string }>(
-      '/videos/generations',
-      {
-        model,
-        prompt,
-        image_urls: imageUrls,
-        duration: body.duration ?? 5,
-        quality: body.quality ?? '720p',
-        aspect_ratio: body.aspect_ratio ?? 'adaptive',
-        generate_audio: body.generate_audio ?? true,
-      },
+    const tier = parseTier(body)
+    const quality = normalizeVeoQuality(
+      typeof body.quality === 'string' ? body.quality : '720p',
+      tier,
     )
+    const duration = clampFlowDuration(typeof body.duration === 'number' ? body.duration : 8)
+    const startImage = await fetchImageBytes(String(imageUrls[0]))
+    const endImage = imageUrls.length > 1 ? await fetchImageBytes(String(imageUrls[1])) : undefined
 
-    if (typeof result.id === 'string') {
-      const { registerGenerativeTask } = await import('./_task-registry.js')
-      await registerGenerativeTask(result.id, auth.address)
-    }
+    const started = await startVeoVideo({
+      tier,
+      prompt,
+      startImage,
+      endImage,
+      duration,
+      quality,
+      aspectRatio: typeof body.aspect_ratio === 'string' ? body.aspect_ratio : '16:9',
+    })
+
+    const taskId = shortTaskId(started.operationName)
+    const { registerGenerativeTask } = await import('./_task-registry.js')
+    await registerGenerativeTask(taskId, auth.address, {
+      operationName: started.operationName,
+      modelId: started.modelId,
+    })
 
     return Response.json({
-      ...result,
+      id: taskId,
+      status: 'processing',
+      progress: 0,
+      model: started.modelId,
       costUsdc6: quote.estimatedUsdc6,
       crtvaiRequired: quote.minCrtvaiWei.toString(),
     })
   } catch (e) {
-    console.error('generate-video evolink error', e)
+    console.error('generate-video vertex error', e)
     return Response.json({ error: 'generation failed' }, { status: 502 })
   }
 }
