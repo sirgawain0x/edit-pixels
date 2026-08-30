@@ -22,16 +22,26 @@
  *   audioDurationSeconds  - timeline audio length (required when billing enforced)
  *   paymentTxHash         - CRTVAI transfer to treasury (required when billing enforced)
  *   walletAddress         - payer wallet (required when billing enforced)
+ *   projectId             - local workspace project id (optional, for Firestore index)
  */
 
 import { getVertexAccessToken, getVertexLocation, getVertexProject } from './_vertex-auth'
+import { assertDirectorAuthorized } from './_director-auth'
 import {
   isDirectorBillingEnforced,
   quoteDirectorForWallet,
   releaseDirectorPayment,
   verifyAndConsumeDirectorPayment,
+  type DirectorBillingQuote,
 } from './director-billing'
 import { probeAudioDurationSeconds } from './_audio-duration'
+import {
+  finalizeDirectorSession,
+  persistDirectorPayment,
+  upsertDirectorSession,
+  type DirectorPersistContext,
+} from './_director-firestore'
+import { DirectorSsePersistAccumulator } from './_director-sse-persist'
 
 const DEFAULT_ENGINE_ID = '5922098819817799680'
 
@@ -39,6 +49,7 @@ interface DirectorRequestBody {
   prompt?: string
   userId?: string
   sessionId?: string
+  projectId?: string
   audioUri?: string
   audioDurationSeconds?: number
   paymentTxHash?: string
@@ -49,6 +60,7 @@ interface ParsedDirectorRequest {
   prompt: string
   userId: string
   sessionId?: string
+  projectId?: string
   audioUri?: string
   audioDurationSeconds?: number
   paymentTxHash?: string
@@ -62,49 +74,6 @@ function getEngineId(): string {
 function buildMessage(prompt: string, audioUri?: string): string {
   if (!audioUri?.trim()) return prompt
   return `${prompt}\n\nAudio URI: ${audioUri.trim()}`
-}
-
-// fallow-ignore-next-line complexity
-function normalizeHost(value: string | null): string | null {
-  if (!value) return null
-  try {
-    if (value.includes('://')) {
-      return new URL(value).host.split(':')[0]?.toLowerCase() ?? null
-    }
-    return value.split(':')[0]?.toLowerCase() ?? null
-  } catch {
-    return null
-  }
-}
-
-/**
- * Block unauthenticated abuse of the Vertex proxy on Vercel.
- * - Production: same-origin browser requests, or DIRECTOR_API_SECRET bearer/header
- * - Local dev: open (no VERCEL env)
- */
-// fallow-ignore-next-line complexity
-function assertDirectorAuthorized(request: Request): Response | null {
-  const secret = process.env.DIRECTOR_API_SECRET?.trim()
-  if (secret) {
-    const auth = request.headers.get('authorization')
-    const headerSecret = request.headers.get('x-director-secret')
-    const bearer = auth?.startsWith('Bearer ') ? auth.slice(7).trim() : null
-    if (bearer === secret || headerSecret === secret) {
-      return null
-    }
-  }
-
-  if (process.env.VERCEL) {
-    const host = normalizeHost(request.headers.get('host'))
-    const originHost = normalizeHost(request.headers.get('origin'))
-    const refererHost = normalizeHost(request.headers.get('referer'))
-    if (host && (originHost === host || refererHost === host)) {
-      return null
-    }
-    return Response.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  return null
 }
 
 function engineStreamUrl(): string {
@@ -141,6 +110,7 @@ async function parseDirectorRequest(
       prompt,
       userId: body.userId?.trim() || 'creator-user',
       sessionId: body.sessionId?.trim(),
+      projectId: body.projectId?.trim(),
       audioUri: body.audioUri,
       audioDurationSeconds,
       paymentTxHash: body.paymentTxHash?.trim(),
@@ -209,10 +179,17 @@ async function resolveBillableAudioSeconds(
 }
 
 // fallow-ignore-next-line complexity
-async function assertDirectorPayment(
-  data: ParsedDirectorRequest,
-): Promise<{ error: Response } | { paymentTxHash: string | null }> {
-  if (!isDirectorBillingEnforced()) return { paymentTxHash: null }
+async function assertDirectorPayment(data: ParsedDirectorRequest): Promise<
+  | { error: Response }
+  | {
+      paymentTxHash: string | null
+      quote: DirectorBillingQuote | null
+      audioSeconds: number | null
+    }
+> {
+  if (!isDirectorBillingEnforced()) {
+    return { paymentTxHash: null, quote: null, audioSeconds: null }
+  }
 
   const billable = await resolveBillableAudioSeconds(data)
   if (!billable.ok) return { error: billable.response }
@@ -252,7 +229,11 @@ async function assertDirectorPayment(
     }
   }
 
-  return { paymentTxHash: data.paymentTxHash }
+  return {
+    paymentTxHash: data.paymentTxHash,
+    quote,
+    audioSeconds: billable.seconds,
+  }
 }
 
 async function fetchEngineStream(
@@ -279,9 +260,23 @@ function proxyEngineSse(
   request: Request,
   upstream: Response,
   upstreamAbort: AbortController,
+  persist?: DirectorPersistContext,
 ): Response {
   const onClientAbort = () => upstreamAbort.abort()
   request.signal.addEventListener('abort', onClientAbort)
+
+  const accumulator = persist ? new DirectorSsePersistAccumulator(persist.initialSessionId) : null
+  const decoder = new TextDecoder()
+  let persistFinalized = false
+
+  const finalizePersist = (status: 'completed' | 'failed') => {
+    if (!persist || !accumulator || persistFinalized) return
+    persistFinalized = true
+    accumulator.flush(decoder)
+    void finalizeDirectorSession(persist, accumulator.state, status).catch((error) => {
+      console.error('Director Firestore finalize failed', error)
+    })
+  }
 
   const stream = new ReadableStream<Uint8Array>({
     // fallow-ignore-next-line complexity
@@ -291,10 +286,15 @@ function proxyEngineSse(
         while (true) {
           const { done, value } = await reader.read()
           if (done) break
-          if (value) controller.enqueue(value)
+          if (value) {
+            if (accumulator) accumulator.pushChunk(value, decoder)
+            controller.enqueue(value)
+          }
         }
+        finalizePersist(accumulator?.state.hadError ? 'failed' : 'completed')
         controller.close()
       } catch (error) {
+        finalizePersist('failed')
         if (!upstreamAbort.signal.aborted) {
           controller.error(error)
         } else {
@@ -306,6 +306,7 @@ function proxyEngineSse(
       }
     },
     cancel() {
+      finalizePersist('failed')
       upstreamAbort.abort()
       request.signal.removeEventListener('abort', onClientAbort)
     },
@@ -320,6 +321,18 @@ function proxyEngineSse(
   })
 }
 
+function buildPersistContext(data: ParsedDirectorRequest): DirectorPersistContext {
+  return {
+    userId: data.walletAddress?.trim().toLowerCase() || data.userId,
+    walletAddress: data.walletAddress,
+    projectId: data.projectId,
+    audioUri: data.audioUri,
+    engineId: getEngineId(),
+    initialSessionId: data.sessionId,
+    promptPreview: data.prompt,
+  }
+}
+
 // fallow-ignore-next-line complexity
 export async function POST(request: Request): Promise<Response> {
   const authError = assertDirectorAuthorized(request)
@@ -331,6 +344,29 @@ export async function POST(request: Request): Promise<Response> {
   const payment = await assertDirectorPayment(parsed.data)
   if ('error' in payment) return payment.error
   const reservedPaymentTxHash = payment.paymentTxHash
+  const persistCtx = buildPersistContext(parsed.data)
+
+  if (
+    payment.paymentTxHash &&
+    payment.quote &&
+    payment.audioSeconds != null &&
+    parsed.data.walletAddress
+  ) {
+    void persistDirectorPayment({
+      txHash: payment.paymentTxHash,
+      walletAddress: parsed.data.walletAddress,
+      quote: payment.quote,
+      audioDurationSeconds: payment.audioSeconds,
+      sessionId: parsed.data.sessionId,
+      projectId: parsed.data.projectId,
+    }).catch((error) => {
+      console.error('Director Firestore payment persist failed', error)
+    })
+  }
+
+  void upsertDirectorSession(persistCtx, 'streaming', parsed.data.sessionId).catch((error) => {
+    console.error('Director Firestore session upsert failed', error)
+  })
 
   const releaseReservedPayment = async () => {
     if (reservedPaymentTxHash) {
@@ -389,5 +425,5 @@ export async function POST(request: Request): Promise<Response> {
     )
   }
 
-  return proxyEngineSse(request, upstream, upstreamAbort)
+  return proxyEngineSse(request, upstream, upstreamAbort, persistCtx)
 }

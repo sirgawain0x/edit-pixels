@@ -5,7 +5,7 @@
 // fallow-ignore-file unused-export
 
 import { getVercelOidcToken } from '@vercel/oidc'
-import { ExternalAccountClient, GoogleAuth } from 'google-auth-library'
+import { ExternalAccountClient, GoogleAuth, type AnyAuthClient } from 'google-auth-library'
 
 const DEFAULT_PROJECT = 'creative-ai-491118'
 const DEFAULT_LOCATION = 'us-central1'
@@ -60,7 +60,7 @@ function tokenFromResponse(tokenResponse: unknown): string | null {
   return null
 }
 
-async function getAccessTokenViaWif(config: WifConfig): Promise<string> {
+function buildExternalAccountClient(config: WifConfig): AnyAuthClient {
   const client = ExternalAccountClient.fromJSON({
     type: 'external_account',
     audience: config.audience,
@@ -80,6 +80,11 @@ async function getAccessTokenViaWif(config: WifConfig): Promise<string> {
   }
 
   client.scopes = [CLOUD_PLATFORM_SCOPE]
+  return client
+}
+
+async function getAccessTokenViaWif(config: WifConfig): Promise<string> {
+  const client = buildExternalAccountClient(config)
   const token = tokenFromResponse(await client.getAccessToken())
   if (!token) {
     throw new Error('Failed to obtain access token via Workload Identity Federation')
@@ -104,6 +109,16 @@ export async function getVertexAccessToken(): Promise<string> {
     return getAccessTokenViaWif(wif)
   }
   return getAccessTokenViaAdc()
+}
+
+/** Auth client for GCP SDKs (Firestore, etc.) — same WIF / ADC path as Vertex. */
+export async function getGoogleAuthClient(): Promise<AnyAuthClient> {
+  const wif = readWifConfig()
+  if (wif && process.env.VERCEL) {
+    return buildExternalAccountClient(wif)
+  }
+  const auth = new GoogleAuth({ scopes: [CLOUD_PLATFORM_SCOPE] })
+  return auth.getClient()
 }
 
 export function isVertexAuthConfigured(): boolean {
