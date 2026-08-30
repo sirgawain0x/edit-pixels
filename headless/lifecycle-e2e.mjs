@@ -105,6 +105,16 @@ try {
   const edited = (await jsonRequest('/v1/projects/demo/edit', editOptions)).body
   assert.equal(edited.persisted, true)
   assert.equal(edited.project.timeline.items[0].from, 6)
+  const source = path.join(workspace, 'tone.wav')
+  generateToneWav(source)
+  const importedHttp = (
+    await jsonRequest('/v1/media/import', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ file: source, id: 'tone_1', project: 'demo' }),
+    })
+  ).body
+  assert.equal(importedHttp.metadata.mimeType, 'audio/wav')
 } finally {
   const exited = new Promise((resolve) => service.once('exit', () => resolve(true)))
   service.kill('SIGTERM')
@@ -122,26 +132,12 @@ try {
   const source = path.join(workspace, 'tone.wav')
   const output = path.join(workspace, 'rendered.wav')
   const ops = path.join(workspace, 'add-tone.json')
-  generateToneWav(source)
   fs.writeFileSync(
     ops,
     JSON.stringify([
       { callerId: 'tone', op: 'addClip', mediaId: 'tone_1', from: 0, durationInFrames: 15 },
     ]),
   )
-  const imported = runAgent([
-    'media',
-    'import',
-    '--workspace',
-    workspace,
-    '--file',
-    source,
-    '--id',
-    'tone_1',
-    '--project',
-    'demo',
-  ])
-  assert.equal(imported.media.metadata.mimeType, 'audio/wav')
   const current = runAgent(['project', 'get', '--workspace', workspace, '--id', 'demo'])
   const edited = runAgent([
     'project',

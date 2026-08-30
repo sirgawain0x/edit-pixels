@@ -65,6 +65,7 @@ import {
   frameRequestSchema,
   layoutRequestSchema,
   lifecycleEditRequestSchema,
+  mediaImportRequestSchema,
   mediaProbeRequestSchema,
   projectCreateRequestSchema,
   projectSaveRequestSchema,
@@ -82,6 +83,9 @@ import {
   listMediaResources,
   listProjectResources,
   saveProjectResource,
+  stageLocalMedia,
+  commitStagedMedia,
+  rollbackStagedMedia,
   updateMediaMetadata,
 } from './lib/lifecycle-store.mjs'
 import { withIdempotency } from './lib/idempotency.mjs'
@@ -441,6 +445,31 @@ async function main() {
     sendJson(res, result.status, result.response)
   }
 
+  const handleV1MediaImport = async (req, res) => {
+    const body = validate(mediaImportRequestSchema, await readJsonBody(req))
+    let staged
+    try {
+      staged = await stageLocalMedia(workspace, body.file, body.id)
+      const probe = await queue.enqueue(
+        () =>
+          session.page.evaluate((payload) => window.pixels.probeMedia(payload), {
+            url: mediaUrlOf(staged.id),
+            fileName: path.basename(staged.target),
+            mimeType: staged.mimeType,
+          }),
+        { timeoutMs: editTimeoutMs, kind: 'media-probe' },
+      )
+      const media = await commitStagedMedia(staged, probe, {
+        workspace,
+        projectId: body.project,
+      })
+      sendJson(res, 201, resourceEnvelope(media))
+    } catch (error) {
+      if (staged) await rollbackStagedMedia(staged)
+      throw error
+    }
+  }
+
   const handleV1MediaProbe = async (req, res, id) => {
     const body = validate(
       mediaProbeRequestSchema,
@@ -627,7 +656,9 @@ async function main() {
                                 apiVersion: HEADLESS_API_VERSION,
                                 media: await listMediaResources(workspace),
                               })
-                          : mediaProbeMatch && req.method === 'POST'
+                          : route === 'POST /v1/media/import'
+                            ? () => handleV1MediaImport(req, res)
+                            : mediaProbeMatch && req.method === 'POST'
                             ? () =>
                                 handleV1MediaProbe(
                                   req,

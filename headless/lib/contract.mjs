@@ -550,6 +550,14 @@ export const mediaProbeRequestSchema = z
     path: ['expectedRevision'],
   })
 
+export const mediaImportRequestSchema = z
+  .object({
+    file: z.string().min(1),
+    id: z.string().optional(),
+    project: z.string().optional(),
+  })
+  .strict()
+
 const RENDER_OPTIONS = {
   codecs: ['h264', 'h265', 'vp9', 'vp8', 'av1'],
   containers: ['mp4', 'webm', 'mov', 'mkv', 'mp3', 'wav', 'm4a'],
@@ -675,6 +683,7 @@ export function capabilities() {
       projectUpdate: z.toJSONSchema(projectUpdateRequestSchema, { target: 'draft-7' }),
       lifecycleEdit: z.toJSONSchema(lifecycleEditRequestSchema, { target: 'draft-7' }),
       mediaProbe: z.toJSONSchema(mediaProbeRequestSchema, { target: 'draft-7' }),
+      mediaImport: z.toJSONSchema(mediaImportRequestSchema, { target: 'draft-7' }),
     },
     lifecycle: {
       routes: [
@@ -687,10 +696,11 @@ export function capabilities() {
         'POST /v1/projects/:id/edit',
         'GET /v1/media',
         'GET /v1/media/:id',
+        'POST /v1/media/import',
         'POST /v1/media/:id/probe',
         'POST /v1/render',
       ],
-      httpMediaUpload: false,
+      httpMediaUpload: true,
       deleteProject: false,
       writerMode: 'exclusive',
       limits: {
