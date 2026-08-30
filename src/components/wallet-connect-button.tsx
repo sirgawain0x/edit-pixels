@@ -20,7 +20,7 @@ import { SWITCHABLE_CHAINS } from '@/config/chains'
 import { useUsdcBalance } from '@/hooks/use-usdc-balance'
 import { useCrtvaiBalance } from '@/hooks/use-crtvai-balance'
 import { BuyUsdcOnrampModal } from '@/features/onramp'
-import { BuyMetokenModal } from '@/features/metoken'
+import { BuyCreditsModal } from '@/features/credits'
 import { cn } from '@/shared/ui/cn'
 
 function truncateAddress(address: string): string {
@@ -58,7 +58,7 @@ export function WalletConnectButton({
     address as `0x${string}` | undefined,
   )
   const [copied, setCopied] = useState(false)
-  const [buyMetokenOpen, setBuyMetokenOpen] = useState(false)
+  const [buyCreditsOpen, setBuyCreditsOpen] = useState(false)
   const [buyOnrampOpen, setBuyOnrampOpen] = useState(false)
 
   const handleCopyAddress = useCallback(() => {
@@ -142,7 +142,7 @@ export function WalletConnectButton({
           </DropdownMenuItem>
 
           <DropdownMenuItem
-            onClick={() => setBuyMetokenOpen(true)}
+            onClick={() => setBuyCreditsOpen(true)}
             className="flex cursor-pointer items-center gap-2"
             aria-label="Buy CRTVAI"
           >
@@ -178,7 +178,7 @@ export function WalletConnectButton({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <BuyMetokenModal open={buyMetokenOpen} onOpenChange={setBuyMetokenOpen} />
+      <BuyCreditsModal open={buyCreditsOpen} onOpenChange={setBuyCreditsOpen} />
       <BuyUsdcOnrampModal open={buyOnrampOpen} onOpenChange={setBuyOnrampOpen} />
     </>
   )

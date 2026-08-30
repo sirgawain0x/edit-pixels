@@ -60,6 +60,10 @@ vi.mock('@/features/export/deps/timeline', () => ({
     }),
 }))
 
+vi.mock('@/features/export/deps/wallet', () => ({
+  useWalletContext: () => ({ account: undefined }),
+}))
+
 vi.mock('./export-preview-player', () => ({
   ExportPreviewPlayer: () => <div data-testid="export-preview-player" />,
 }))

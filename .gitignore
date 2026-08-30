@@ -28,6 +28,9 @@ dist-ssr
 .env.local
 .env.*.local
 
+# C2PA signing credentials (self-signed test cert + private key — never commit)
+.c2pa/
+
 # Build outputs
 build
 out
