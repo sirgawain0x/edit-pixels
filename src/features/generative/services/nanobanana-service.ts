@@ -5,8 +5,7 @@ import type {
   NanobananaResponse,
   NanobananaSize,
   NanobananaQuality,
-  NanobananaThinking,
-  EvolinkTaskDetail,
+  GenerativeTaskDetail,
 } from '../types'
 
 const log = createLogger('NanobananaService')
@@ -16,7 +15,6 @@ export interface GenerateImageParams {
   size?: NanobananaSize
   quality?: NanobananaQuality
   imageUrls?: string[]
-  thinkingLevel?: NanobananaThinking
 }
 
 export async function submitImageGeneration(
@@ -42,6 +40,6 @@ export async function submitImageGeneration(
 export async function getImageTaskDetail(
   taskId: string,
   signal?: AbortSignal,
-): Promise<EvolinkTaskDetail> {
+): Promise<GenerativeTaskDetail> {
   return proxyGetTask(taskId, signal)
 }

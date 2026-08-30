@@ -1,5 +1,5 @@
 /**
- * Cross-feature dependency adapter: generative / Evolink proxy.
+ * Cross-feature dependency adapter: generative / Vertex proxy.
  */
 export {
   getPublicImageUrl,

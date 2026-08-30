@@ -1,0 +1,28 @@
+rules_version = '2';
+
+// Deploy with Firebase CLI or GCP console. Server routes use the service account;
+// these rules protect direct client access if you add a Firebase web SDK later.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isOwnerWallet() {
+      return request.auth != null
+        && resource.data.wallet is string
+        && request.auth.token.wallet_address == resource.data.wallet;
+    }
+
+    match /director_sessions/{sessionId} {
+      allow read: if isOwnerWallet();
+      allow write: if false;
+    }
+
+    match /director_storyboards/{storyboardId} {
+      allow read: if isOwnerWallet();
+      allow write: if false;
+    }
+
+    match /director_payments/{txHash} {
+      allow read: if isOwnerWallet();
+      allow write: if false;
+    }
+  }
+}

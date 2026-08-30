@@ -5,13 +5,22 @@ export {
   proxySubmitImage,
   proxySubmitVideo,
   quoteNanobananaCostUsdc6,
+  quoteVeoCostUsdc6,
   quoteSeedanceCostUsdc6,
   GenerativeApiError,
   type SignedRequestParams,
 } from './services/generative-proxy-client'
-export { submitVideoGeneration } from './services/seedance-service'
+export { submitVideoGeneration } from './services/veo-service'
 export { submitImageGeneration } from './services/nanobanana-service'
 export { pollTask } from './services/task-poller'
 export { getPublicImageUrl, ensurePublicUrl } from './services/image-upload-service'
 export { useGenerativeAuth, useGenerativeReady } from './hooks/use-generative-auth'
-export type { EvolinkTaskDetail, SeedanceQuality, SeedanceSpeed, NanobananaQuality } from './types'
+export type {
+  GenerativeTaskDetail,
+  EvolinkTaskDetail,
+  VeoQuality,
+  VeoTier,
+  SeedanceQuality,
+  SeedanceSpeed,
+  NanobananaQuality,
+} from './types'

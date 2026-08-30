@@ -22,27 +22,34 @@
  *   audioDurationSeconds  - timeline audio length (required when billing enforced)
  *   paymentTxHash         - CRTVAI transfer to treasury (required when billing enforced)
  *   walletAddress         - payer wallet (required when billing enforced)
+ *   projectId             - local workspace project id (optional, for Firestore index)
  */
 
-import { getVercelOidcToken } from '@vercel/oidc'
-import { ExternalAccountClient, GoogleAuth } from 'google-auth-library'
+import { getVertexAccessToken, getVertexLocation, getVertexProject } from './_vertex-auth'
+import { assertDirectorAuthorized } from './_director-auth'
 import {
   isDirectorBillingEnforced,
   quoteDirectorForWallet,
   releaseDirectorPayment,
   verifyAndConsumeDirectorPayment,
+  type DirectorBillingQuote,
 } from './director-billing'
 import { probeAudioDurationSeconds } from './_audio-duration'
+import {
+  finalizeDirectorSession,
+  persistDirectorPayment,
+  upsertDirectorSession,
+  type DirectorPersistContext,
+} from './_director-firestore'
+import { DirectorSsePersistAccumulator } from './_director-sse-persist'
 
-const DEFAULT_PROJECT = 'creative-ai-491118'
-const DEFAULT_LOCATION = 'us-central1'
 const DEFAULT_ENGINE_ID = '5922098819817799680'
-const CLOUD_PLATFORM_SCOPE = 'https://www.googleapis.com/auth/cloud-platform'
 
 interface DirectorRequestBody {
   prompt?: string
   userId?: string
   sessionId?: string
+  projectId?: string
   audioUri?: string
   audioDurationSeconds?: number
   paymentTxHash?: string
@@ -53,123 +60,15 @@ interface ParsedDirectorRequest {
   prompt: string
   userId: string
   sessionId?: string
+  projectId?: string
   audioUri?: string
   audioDurationSeconds?: number
   paymentTxHash?: string
   walletAddress?: string
 }
 
-interface WifConfig {
-  projectNumber: string
-  poolId: string
-  providerId: string
-  serviceAccountEmail: string
-  audience: string
-}
-
-function getProject(): string {
-  return (
-    process.env.GOOGLE_CLOUD_PROJECT?.trim() ||
-    process.env.GCP_PROJECT_ID?.trim() ||
-    DEFAULT_PROJECT
-  )
-}
-
-function getLocation(): string {
-  return process.env.VERTEX_LOCATION?.trim() || DEFAULT_LOCATION
-}
-
 function getEngineId(): string {
   return process.env.VERTEX_REASONING_ENGINE_ID?.trim() || DEFAULT_ENGINE_ID
-}
-
-// fallow-ignore-next-line complexity
-function readWifConfig(): WifConfig | null {
-  const projectNumber = process.env.GCP_PROJECT_NUMBER?.trim()
-  const poolId = process.env.GCP_WORKLOAD_IDENTITY_POOL_ID?.trim()
-  const providerId = process.env.GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID?.trim()
-  const serviceAccountEmail = process.env.GCP_SERVICE_ACCOUNT_EMAIL?.trim()
-  if (!projectNumber || !poolId || !providerId || !serviceAccountEmail) {
-    return null
-  }
-
-  // Prefer GCP_AUDIENCE from the provider details page (Default audience).
-  // Format: https://iam.googleapis.com/projects/.../providers/...
-  // See https://vercel.com/docs/oidc/gcp
-  const audience =
-    process.env.GCP_AUDIENCE?.trim() ||
-    `https://iam.googleapis.com/projects/${projectNumber}/locations/global/workloadIdentityPools/${poolId}/providers/${providerId}`
-
-  return { projectNumber, poolId, providerId, serviceAccountEmail, audience }
-}
-
-// fallow-ignore-next-line complexity
-function tokenFromResponse(tokenResponse: unknown): string | null {
-  if (typeof tokenResponse === 'string' && tokenResponse) return tokenResponse
-  if (
-    tokenResponse &&
-    typeof tokenResponse === 'object' &&
-    'token' in tokenResponse &&
-    typeof (tokenResponse as { token?: unknown }).token === 'string'
-  ) {
-    return (tokenResponse as { token: string }).token
-  }
-  return null
-}
-
-async function getAccessTokenViaWif(config: WifConfig): Promise<string> {
-  // Custom audience pattern (Vercel + GCP recommended):
-  // - ExternalAccountClient.audience = provider Default audience (https://iam.googleapis.com/...)
-  // - getVercelOidcToken({ audience }) so the OIDC aud claim matches that provider
-  const client = ExternalAccountClient.fromJSON({
-    type: 'external_account',
-    audience: config.audience,
-    subject_token_type: 'urn:ietf:params:oauth:token-type:jwt',
-    token_url: 'https://sts.googleapis.com/v1/token',
-    service_account_impersonation_url: `https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${config.serviceAccountEmail}:generateAccessToken`,
-    subject_token_supplier: {
-      getSubjectToken: () =>
-        getVercelOidcToken({
-          audience: config.audience,
-        }),
-    },
-  })
-
-  if (!client) {
-    throw new Error('Failed to create Workload Identity Federation client')
-  }
-
-  client.scopes = [CLOUD_PLATFORM_SCOPE]
-  const token = tokenFromResponse(await client.getAccessToken())
-  if (!token) {
-    throw new Error('Failed to obtain access token via Workload Identity Federation')
-  }
-  return token
-}
-
-async function getAccessTokenViaAdc(): Promise<string> {
-  const auth = new GoogleAuth({ scopes: [CLOUD_PLATFORM_SCOPE] })
-  const client = await auth.getClient()
-  const token = tokenFromResponse(await client.getAccessToken())
-  if (!token) {
-    throw new Error('Failed to obtain Google Cloud access token via ADC')
-  }
-  return token
-}
-
-/**
- * Prefer keyless WIF on Vercel; use ADC for local `vp dev`.
- *
- * `vercel env pull` often copies GCP_* into `.env.local`. Those must not force
- * the WIF path locally — Vercel OIDC tokens expire and `@vercel/oidc` needs the
- * Vercel runtime. Only use WIF when `VERCEL` is set.
- */
-async function getAccessToken(): Promise<string> {
-  const wif = readWifConfig()
-  if (wif && process.env.VERCEL) {
-    return getAccessTokenViaWif(wif)
-  }
-  return getAccessTokenViaAdc()
 }
 
 function buildMessage(prompt: string, audioUri?: string): string {
@@ -177,52 +76,9 @@ function buildMessage(prompt: string, audioUri?: string): string {
   return `${prompt}\n\nAudio URI: ${audioUri.trim()}`
 }
 
-// fallow-ignore-next-line complexity
-function normalizeHost(value: string | null): string | null {
-  if (!value) return null
-  try {
-    if (value.includes('://')) {
-      return new URL(value).host.split(':')[0]?.toLowerCase() ?? null
-    }
-    return value.split(':')[0]?.toLowerCase() ?? null
-  } catch {
-    return null
-  }
-}
-
-/**
- * Block unauthenticated abuse of the Vertex proxy on Vercel.
- * - Production: same-origin browser requests, or DIRECTOR_API_SECRET bearer/header
- * - Local dev: open (no VERCEL env)
- */
-// fallow-ignore-next-line complexity
-function assertDirectorAuthorized(request: Request): Response | null {
-  const secret = process.env.DIRECTOR_API_SECRET?.trim()
-  if (secret) {
-    const auth = request.headers.get('authorization')
-    const headerSecret = request.headers.get('x-director-secret')
-    const bearer = auth?.startsWith('Bearer ') ? auth.slice(7).trim() : null
-    if (bearer === secret || headerSecret === secret) {
-      return null
-    }
-  }
-
-  if (process.env.VERCEL) {
-    const host = normalizeHost(request.headers.get('host'))
-    const originHost = normalizeHost(request.headers.get('origin'))
-    const refererHost = normalizeHost(request.headers.get('referer'))
-    if (host && (originHost === host || refererHost === host)) {
-      return null
-    }
-    return Response.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  return null
-}
-
 function engineStreamUrl(): string {
-  const project = getProject()
-  const location = getLocation()
+  const project = getVertexProject()
+  const location = getVertexLocation()
   const engineId = getEngineId()
   return `https://${location}-aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/reasoningEngines/${engineId}:streamQuery?alt=sse`
 }
@@ -254,6 +110,7 @@ async function parseDirectorRequest(
       prompt,
       userId: body.userId?.trim() || 'creator-user',
       sessionId: body.sessionId?.trim(),
+      projectId: body.projectId?.trim(),
       audioUri: body.audioUri,
       audioDurationSeconds,
       paymentTxHash: body.paymentTxHash?.trim(),
@@ -322,10 +179,17 @@ async function resolveBillableAudioSeconds(
 }
 
 // fallow-ignore-next-line complexity
-async function assertDirectorPayment(
-  data: ParsedDirectorRequest,
-): Promise<{ error: Response } | { paymentTxHash: string | null }> {
-  if (!isDirectorBillingEnforced()) return { paymentTxHash: null }
+async function assertDirectorPayment(data: ParsedDirectorRequest): Promise<
+  | { error: Response }
+  | {
+      paymentTxHash: string | null
+      quote: DirectorBillingQuote | null
+      audioSeconds: number | null
+    }
+> {
+  if (!isDirectorBillingEnforced()) {
+    return { paymentTxHash: null, quote: null, audioSeconds: null }
+  }
 
   const billable = await resolveBillableAudioSeconds(data)
   if (!billable.ok) return { error: billable.response }
@@ -365,7 +229,11 @@ async function assertDirectorPayment(
     }
   }
 
-  return { paymentTxHash: data.paymentTxHash }
+  return {
+    paymentTxHash: data.paymentTxHash,
+    quote,
+    audioSeconds: billable.seconds,
+  }
 }
 
 async function fetchEngineStream(
@@ -392,9 +260,23 @@ function proxyEngineSse(
   request: Request,
   upstream: Response,
   upstreamAbort: AbortController,
+  persist?: DirectorPersistContext,
 ): Response {
   const onClientAbort = () => upstreamAbort.abort()
   request.signal.addEventListener('abort', onClientAbort)
+
+  const accumulator = persist ? new DirectorSsePersistAccumulator(persist.initialSessionId) : null
+  const decoder = new TextDecoder()
+  let persistFinalized = false
+
+  const finalizePersist = (status: 'completed' | 'failed') => {
+    if (!persist || !accumulator || persistFinalized) return
+    persistFinalized = true
+    accumulator.flush(decoder)
+    void finalizeDirectorSession(persist, accumulator.state, status).catch((error) => {
+      console.error('Director Firestore finalize failed', error)
+    })
+  }
 
   const stream = new ReadableStream<Uint8Array>({
     // fallow-ignore-next-line complexity
@@ -404,10 +286,15 @@ function proxyEngineSse(
         while (true) {
           const { done, value } = await reader.read()
           if (done) break
-          if (value) controller.enqueue(value)
+          if (value) {
+            if (accumulator) accumulator.pushChunk(value, decoder)
+            controller.enqueue(value)
+          }
         }
+        finalizePersist(accumulator?.state.hadError ? 'failed' : 'completed')
         controller.close()
       } catch (error) {
+        finalizePersist('failed')
         if (!upstreamAbort.signal.aborted) {
           controller.error(error)
         } else {
@@ -419,6 +306,7 @@ function proxyEngineSse(
       }
     },
     cancel() {
+      finalizePersist('failed')
       upstreamAbort.abort()
       request.signal.removeEventListener('abort', onClientAbort)
     },
@@ -433,6 +321,18 @@ function proxyEngineSse(
   })
 }
 
+function buildPersistContext(data: ParsedDirectorRequest): DirectorPersistContext {
+  return {
+    userId: data.walletAddress?.trim().toLowerCase() || data.userId,
+    walletAddress: data.walletAddress,
+    projectId: data.projectId,
+    audioUri: data.audioUri,
+    engineId: getEngineId(),
+    initialSessionId: data.sessionId,
+    promptPreview: data.prompt,
+  }
+}
+
 // fallow-ignore-next-line complexity
 export async function POST(request: Request): Promise<Response> {
   const authError = assertDirectorAuthorized(request)
@@ -444,6 +344,29 @@ export async function POST(request: Request): Promise<Response> {
   const payment = await assertDirectorPayment(parsed.data)
   if ('error' in payment) return payment.error
   const reservedPaymentTxHash = payment.paymentTxHash
+  const persistCtx = buildPersistContext(parsed.data)
+
+  if (
+    payment.paymentTxHash &&
+    payment.quote &&
+    payment.audioSeconds != null &&
+    parsed.data.walletAddress
+  ) {
+    void persistDirectorPayment({
+      txHash: payment.paymentTxHash,
+      walletAddress: parsed.data.walletAddress,
+      quote: payment.quote,
+      audioDurationSeconds: payment.audioSeconds,
+      sessionId: parsed.data.sessionId,
+      projectId: parsed.data.projectId,
+    }).catch((error) => {
+      console.error('Director Firestore payment persist failed', error)
+    })
+  }
+
+  void upsertDirectorSession(persistCtx, 'streaming', parsed.data.sessionId).catch((error) => {
+    console.error('Director Firestore session upsert failed', error)
+  })
 
   const releaseReservedPayment = async () => {
     if (reservedPaymentTxHash) {
@@ -457,7 +380,7 @@ export async function POST(request: Request): Promise<Response> {
 
   let token: string
   try {
-    token = await getAccessToken()
+    token = await getVertexAccessToken()
   } catch (error) {
     await releaseReservedPayment()
     console.error('Director auth error', error)
@@ -502,5 +425,5 @@ export async function POST(request: Request): Promise<Response> {
     )
   }
 
-  return proxyEngineSse(request, upstream, upstreamAbort)
+  return proxyEngineSse(request, upstream, upstreamAbort, persistCtx)
 }

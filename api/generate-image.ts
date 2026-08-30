@@ -1,26 +1,19 @@
 /**
- * POST /api/generate-image — Gemini/Nanobanana stills with CRTVAI payment verify.
+ * POST /api/generate-image — Gemini stills via Vertex with CRTVAI payment verify.
  */
 // fallow-ignore-file complexity,code-duplication
 
+import { randomUUID } from 'node:crypto'
 import { getBearerToken, verifyPrivyAccessToken } from './_wallet-auth.js'
 import { checkMetokenSufficient } from './_metoken-server.js'
-import { evolinkServerPost, isEvolinkServerConfigured } from './_evolink-server.js'
+import { quoteNanobananaCredits, type NanobananaQuality } from './_generative-pricing.js'
+import { completedImageTask } from './_generative-task-response.js'
+import { generateGeminiImage, isVertexGenerativeConfigured } from './_vertex-generative.js'
 import { isFlowBillingEnforced, quoteFlowCreditsUsdc6, verifyFlowPayment } from './flow-billing.js'
-
-function quoteImageCredits(quality: string): number {
-  const creditMap: Record<string, number> = {
-    '0.5K': 5,
-    '1K': 8,
-    '2K': 12,
-    '4K': 18,
-  }
-  return creditMap[quality] ?? 10
-}
 
 // fallow-ignore-next-line complexity
 export async function POST(request: Request): Promise<Response> {
-  if (!isEvolinkServerConfigured()) {
+  if (!isVertexGenerativeConfigured()) {
     return Response.json({ error: 'service unavailable' }, { status: 503 })
   }
 
@@ -61,8 +54,8 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'requestId required' }, { status: 400 })
   }
 
-  const quality = typeof body.quality === 'string' ? body.quality : '2K'
-  const quote = quoteFlowCreditsUsdc6(quoteImageCredits(quality))
+  const quality = (typeof body.quality === 'string' ? body.quality : '2K') as NanobananaQuality
+  const quote = quoteFlowCreditsUsdc6(quoteNanobananaCredits(quality))
   if (!quote) {
     return Response.json({ error: 'invalid quote' }, { status: 400 })
   }
@@ -102,31 +95,27 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    const result = await evolinkServerPost<Record<string, unknown> & { id?: string }>(
-      '/images/generations',
-      {
-        model: 'gemini-3.1-flash-image-preview',
-        prompt,
-        size: body.size ?? 'auto',
-        quality,
-        ...(Array.isArray(body.image_urls) && body.image_urls.length > 0
-          ? { image_urls: body.image_urls }
-          : {}),
-      },
+    const image = await generateGeminiImage(prompt, {
+      quality,
+      aspectRatio: typeof body.size === 'string' ? body.size : '16:9',
+    })
+    const { storeFlowFrameFromDataUri } = await import('./flow-frame.js')
+    const origin = new URL(request.url).origin
+    const imageUrl = await storeFlowFrameFromDataUri(
+      `data:${image.mimeType};base64,${image.base64}`,
+      origin,
     )
 
-    if (typeof result.id === 'string') {
-      const { registerGenerativeTask } = await import('./_task-registry.js')
-      await registerGenerativeTask(result.id, auth.address)
-    }
+    const taskId = randomUUID()
+    const detail = completedImageTask(taskId, 'gemini-2.5-flash-image', imageUrl)
 
     return Response.json({
-      ...result,
+      ...detail,
       costUsdc6: quote.estimatedUsdc6,
       crtvaiRequired: quote.minCrtvaiWei.toString(),
     })
   } catch (e) {
-    console.error('generate-image evolink error', e)
+    console.error('generate-image vertex error', e)
     return Response.json({ error: 'generation failed' }, { status: 502 })
   }
 }

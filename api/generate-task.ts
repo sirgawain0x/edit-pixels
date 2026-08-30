@@ -1,15 +1,16 @@
 /**
  * GET /api/generate-task?id=...
- * Poll Evolink task status. Requires Privy auth; task must be owned by the wallet.
+ * Poll Vertex Veo operation status. Requires Privy auth; task must be owned by the wallet.
  */
 // fallow-ignore-file complexity
 
 import { getBearerToken, verifyPrivyAccessToken } from './_wallet-auth.js'
-import { evolinkServerGet, isEvolinkServerConfigured } from './_evolink-server.js'
-import { getGenerativeTaskOwner } from './_task-registry.js'
+import { toGenerativeTaskDetail } from './_generative-task-response.js'
+import { isVertexGenerativeConfigured, pollVeoOperation } from './_vertex-generative.js'
+import { getGenerativeTaskMeta, getGenerativeTaskOwner } from './_task-registry.js'
 
 export async function GET(request: Request): Promise<Response> {
-  if (!isEvolinkServerConfigured()) {
+  if (!isVertexGenerativeConfigured()) {
     return Response.json({ error: 'service unavailable' }, { status: 503 })
   }
 
@@ -38,9 +39,15 @@ export async function GET(request: Request): Promise<Response> {
     return Response.json({ error: 'forbidden' }, { status: 403 })
   }
 
+  const meta = await getGenerativeTaskMeta(taskId)
+  if (!meta) {
+    return Response.json({ error: 'task metadata not found' }, { status: 404 })
+  }
+
   try {
-    const result = await evolinkServerGet<Record<string, unknown>>(`/tasks/${taskId}`)
-    return Response.json(result)
+    const poll = await pollVeoOperation(meta.operationName, meta.modelId)
+    const detail = toGenerativeTaskDetail(taskId, meta.modelId, poll)
+    return Response.json(detail)
   } catch (e) {
     console.error('generate-task error', e)
     return Response.json({ error: 'poll failed' }, { status: 502 })
