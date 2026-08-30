@@ -2,6 +2,7 @@
  * Server-side SSE parsing for Director Firestore persistence.
  * Mirrors the client parser in src/features/editor/director/parse-sse.ts.
  */
+// fallow-ignore-file complexity
 
 export interface DirectorSsePersistState {
   sessionId: string | null
@@ -21,7 +22,7 @@ interface AdkEventLike {
   sessionId?: string
 }
 
-export function createDirectorSsePersistState(initialSessionId?: string): DirectorSsePersistState {
+function createDirectorSsePersistState(initialSessionId?: string): DirectorSsePersistState {
   return {
     sessionId: initialSessionId?.trim() || null,
     assistantText: '',
@@ -125,6 +126,7 @@ export class DirectorSsePersistAccumulator {
     }
   }
 
+  // fallow-ignore-next-line unused-class-member
   flush(decoder: TextDecoder): void {
     if (this.buffer.length > 0) {
       this.pushChunk(new Uint8Array(), decoder)

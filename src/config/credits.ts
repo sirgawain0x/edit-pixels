@@ -103,11 +103,6 @@ export type VeoTier = 'standard' | 'fast' | 'lite'
 export type VeoQuality = '720p' | '1080p' | '4K'
 export type NanobananaQuality = '0.5K' | '1K' | '2K' | '4K'
 
-/** @deprecated Use VeoTier */
-export type SeedanceSpeed = VeoTier
-/** @deprecated Use VeoQuality */
-export type SeedanceQuality = VeoQuality
-
 const VEO_USD_PER_SEC: Record<VeoTier, Partial<Record<VeoQuality, number>>> = {
   standard: { '720p': 0.4, '1080p': 0.4, '4K': 0.6 },
   fast: { '720p': 0.1, '1080p': 0.12, '4K': 0.3 },

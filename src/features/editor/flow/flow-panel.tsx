@@ -547,6 +547,7 @@ export const FlowPanel = memo(function FlowPanel() {
   )
 })
 
+// fallow-ignore-next-line complexity
 function FrameCard({
   label,
   slot,

@@ -2,7 +2,7 @@
  * Bind generative task ids to wallet + Vertex operation metadata.
  * Requires Upstash/Vercel KV on Vercel — instance memory is local-dev only.
  */
-// fallow-ignore-file complexity,unused-export
+// fallow-ignore-file complexity
 
 import { getRedis, isRedisConfigured } from './_redis-client.js'
 

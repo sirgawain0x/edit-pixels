@@ -13,7 +13,7 @@ let firestoreInit: Promise<Firestore | null> | null = null
 /** Named Firestore DB in GCP (Studio: creative-director-1). Override via FIRESTORE_DATABASE_ID. */
 const DEFAULT_DATABASE_ID = 'creative-director-1'
 
-export function getFirestoreDatabaseId(): string {
+function getFirestoreDatabaseId(): string {
   return process.env.FIRESTORE_DATABASE_ID?.trim() || DEFAULT_DATABASE_ID
 }
 

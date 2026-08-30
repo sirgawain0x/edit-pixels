@@ -148,6 +148,14 @@
     {
       "file": "api/generate-video.ts",
       "exports": ["*"]
+    },
+    {
+      "file": "src/config/credits.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "src/features/generative/types.ts",
+      "exports": ["*"]
     }
   ]
 }

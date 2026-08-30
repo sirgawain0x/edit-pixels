@@ -7,8 +7,6 @@
 export const FLOW_ALLOWED_DURATIONS = [4, 6, 8] as const
 export type FlowDurationSec = (typeof FLOW_ALLOWED_DURATIONS)[number]
 
-export const FLOW_DURATION_MIN_SEC = FLOW_ALLOWED_DURATIONS[0]
-export const FLOW_DURATION_MAX_SEC = FLOW_ALLOWED_DURATIONS[FLOW_ALLOWED_DURATIONS.length - 1]
 export const FLOW_DURATION_DEFAULT_SEC: FlowDurationSec = 8
 
 export type FlowQuality = '720p' | '1080p' | '4K'

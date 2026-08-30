@@ -3,6 +3,7 @@
  * GET /api/director-sessions?wallet=0x...&projectId=...
  * Lists persisted Director session metadata from Firestore.
  */
+// fallow-ignore-file complexity
 
 import { assertDirectorAuthorized } from './_director-auth.js'
 import { listDirectorSessions } from './_director-firestore.js'

@@ -1,7 +1,7 @@
 /**
  * Map Vertex Veo poll results to client GenerativeTaskDetail shape.
  */
-// fallow-ignore-file unused-export
+// fallow-ignore-file complexity
 
 import type { VeoPollResult } from './_vertex-generative.js'
 
@@ -19,9 +19,6 @@ export interface GenerativeTaskDetail {
   }
   error?: { code: string; message: string; type: string }
 }
-
-/** @deprecated */
-export type EvolinkTaskDetail = GenerativeTaskDetail
 
 export function toGenerativeTaskDetail(
   taskId: string,

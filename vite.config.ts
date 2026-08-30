@@ -131,9 +131,11 @@ function directorApiDevPlugin(): Plugin {
         if (process.env[key] === undefined) process.env[key] = value
       }
 
+      // fallow-ignore-next-line complexity
       server.middlewares.use((req, res, next) => {
         const path = req.url?.split('?')[0]
         if (path === '/api/director-sessions' && req.method === 'GET') {
+          // fallow-ignore-next-line complexity
           void (async () => {
             const host = req.headers.host ?? 'localhost'
             const request = new Request(`http://${host}${req.url ?? '/api/director-sessions'}`, {

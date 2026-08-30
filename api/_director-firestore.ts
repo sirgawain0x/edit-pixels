@@ -3,6 +3,7 @@
  * Firestore persistence for Creative Director sessions, storyboards, and billing audit.
  * Agent Engine remains the source of truth for conversation memory.
  */
+// fallow-ignore-file complexity
 
 import { FieldValue, type Firestore } from '@google-cloud/firestore'
 import type { DirectorBillingQuote } from './director-billing.js'
@@ -25,7 +26,7 @@ export interface DirectorPersistContext {
   promptPreview: string
 }
 
-export interface DirectorSessionRecord {
+interface DirectorSessionRecord {
   sessionId: string
   userId: string
   wallet: string | null

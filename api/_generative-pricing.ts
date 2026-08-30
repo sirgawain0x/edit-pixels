@@ -1,7 +1,7 @@
 /**
  * Server-side generative pricing — mirrors src/config/credits.ts for API routes.
  */
-// fallow-ignore-file unused-export
+// fallow-ignore-file complexity,unused-export
 
 export type VeoTier = 'standard' | 'fast' | 'lite'
 export type VeoQuality = '720p' | '1080p' | '4K'

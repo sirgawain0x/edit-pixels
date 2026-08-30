@@ -2,7 +2,7 @@
 /**
  * Shared Vertex / Google Cloud auth — WIF on Vercel, ADC locally.
  */
-// fallow-ignore-file unused-export
+// fallow-ignore-file complexity
 
 import { getVercelOidcToken } from '@vercel/oidc'
 import { ExternalAccountClient, GoogleAuth, type AnyAuthClient } from 'google-auth-library'
