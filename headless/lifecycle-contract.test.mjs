@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   capabilities,
   lifecycleEditRequestSchema,
+  mediaImportRequestSchema,
   mediaProbeRequestSchema,
   projectCreateRequestSchema,
   projectSaveRequestSchema,
@@ -40,6 +41,8 @@ test('lifecycle project requests are strict and revision guarded', () => {
   assert.equal(projectSaveRequestSchema.safeParse({ project: {} }).success, false)
   assert.equal(mediaProbeRequestSchema.safeParse({ persist: true }).success, false)
   assert.equal(mediaProbeRequestSchema.safeParse({ persist: true, force: true }).success, true)
+  assert.equal(mediaImportRequestSchema.safeParse({ file: '/tmp/tone.wav' }).success, true)
+  assert.equal(mediaImportRequestSchema.safeParse({ file: '/tmp/tone.wav', surprise: true }).success, false)
 })
 
 test('lifecycle edits require unique caller ids and accept id references', () => {
@@ -83,8 +86,9 @@ test('lifecycle edits require unique caller ids and accept id references', () =>
 
 test('capabilities publish lifecycle constraints', () => {
   const result = capabilities()
-  assert.equal(result.lifecycle.httpMediaUpload, false)
+  assert.equal(result.lifecycle.httpMediaUpload, true)
   assert.equal(result.lifecycle.deleteProject, false)
   assert.equal(result.lifecycle.writerMode, 'exclusive')
   assert.ok(result.lifecycle.routes.includes('POST /v1/projects/:id/edit'))
+  assert.ok(result.lifecycle.routes.includes('POST /v1/media/import'))
 })
