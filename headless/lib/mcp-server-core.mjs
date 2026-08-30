@@ -7,6 +7,7 @@ import {
   ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js'
 import { spawn } from 'node:child_process'
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -212,10 +213,14 @@ function httpErrorFrom(data, status) {
   return { code: 'HTTP_ERROR', message: `HTTP ${status}` }
 }
 
-async function pixelsFetch(serviceUrl, method, route, body) {
+function idempotencyHeaders() {
+  return { 'Idempotency-Key': `mcp-${crypto.randomUUID()}` }
+}
+
+async function pixelsFetch(serviceUrl, method, route, body, extraHeaders = {}) {
   const init = {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...extraHeaders },
   }
   if (body) init.body = JSON.stringify(body)
   const response = await fetch(`${serviceUrl}${route}`, init)
@@ -245,20 +250,24 @@ async function toolCreateProject(serviceUrl, args) {
     name: args.name,
     ...pickDefined(args, ['description', 'width', 'height', 'fps', 'backgroundColor']),
   }
-  return textResult(await pixelsFetch(serviceUrl, 'POST', '/v1/projects', body))
+  return textResult(
+    await pixelsFetch(serviceUrl, 'POST', '/v1/projects', body, idempotencyHeaders()),
+  )
 }
 
 async function toolUpdateProject(serviceUrl, args) {
-  const body = pickDefined(args, [
+  const updates = pickDefined(args, [
     'name',
     'description',
     'width',
     'height',
     'fps',
     'backgroundColor',
-    'expectedRevision',
-    'force',
   ])
+  const body = {
+    updates,
+    ...pickDefined(args, ['expectedRevision', 'force']),
+  }
   return textResult(
     await pixelsFetch(
       serviceUrl,
@@ -275,12 +284,14 @@ async function toolEditProject(serviceUrl, args) {
     persist: Boolean(args.persist),
     ...pickDefined(args, ['expectedRevision', 'force']),
   }
+  const extraHeaders = args.persist ? idempotencyHeaders() : {}
   return textResult(
     await pixelsFetch(
       serviceUrl,
       'POST',
       `/v1/projects/${encodeURIComponent(args.projectId)}/edit`,
       body,
+      extraHeaders,
     ),
   )
 }
@@ -322,14 +333,62 @@ function buildRenderBody(args) {
   }
 }
 
+const RENDER_MIME_EXT = {
+  'video/mp4': 'mp4',
+  'video/webm': 'webm',
+  'video/quicktime': 'mov',
+  'video/x-matroska': 'mkv',
+  'audio/mpeg': 'mp3',
+  'audio/wav': 'wav',
+  'audio/x-wav': 'wav',
+  'audio/mp4': 'm4a',
+}
+
+function parseWarningsHeader(header) {
+  if (!header) return undefined
+  try {
+    return JSON.parse(header)
+  } catch {
+    return undefined
+  }
+}
+
+function extensionFromDisposition(contentDisposition) {
+  const match = /filename="([^"]+)"/.exec(contentDisposition)
+  return match ? path.extname(match[1]).slice(1) : ''
+}
+
+function extensionFromMime(contentType) {
+  const mime = contentType.split(';')[0].trim().toLowerCase()
+  return RENDER_MIME_EXT[mime] ?? ''
+}
+
 async function downloadRenderBinary(serviceUrl, body) {
   const response = await fetch(`${serviceUrl}/v1/render`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!response.ok) throw new Error(`Render download failed: HTTP ${response.status}`)
-  return Buffer.from(await response.arrayBuffer())
+  if (!response.ok) {
+    const data = parseBodyText(await response.text())
+    const error = httpErrorFrom(data, response.status)
+    throw new Error(`Render failed: ${error.code} — ${error.message}`)
+  }
+  return {
+    buffer: Buffer.from(await response.arrayBuffer()),
+    contentType: response.headers.get('content-type') ?? '',
+    contentDisposition: response.headers.get('content-disposition') ?? '',
+    warnings: parseWarningsHeader(response.headers.get('x-pixels-warnings')),
+  }
+}
+
+function renderExtension({ container, contentType, contentDisposition }) {
+  return (
+    container ||
+    extensionFromDisposition(contentDisposition) ||
+    extensionFromMime(contentType) ||
+    'mp4'
+  )
 }
 
 function defaultRenderOutPath() {
@@ -338,33 +397,26 @@ function defaultRenderOutPath() {
   return path.join(outDir, `render-${process.pid}-${Date.now()}.out`)
 }
 
-function assertRenderOk(data) {
-  if (data && data.ok) return
-  throw new Error(`Render failed: ${JSON.stringify(data)}`)
-}
-
-function renderContainer(data) {
-  const settings = data.effectiveSettings
-  if (settings && settings.container) return settings.container
-  return 'mp4'
-}
-
 async function toolRenderProject(serviceUrl, args) {
   let outPath = args.outputPath
   if (!outPath) outPath = defaultRenderOutPath()
   const body = buildRenderBody(args)
-  const data = await pixelsFetch(serviceUrl, 'POST', '/v1/render', body)
-  assertRenderOk(data)
-  const buffer = await downloadRenderBinary(serviceUrl, body)
-  const finalPath = `${outPath}.${renderContainer(data)}`
+  const { buffer, contentType, contentDisposition, warnings } = await downloadRenderBinary(
+    serviceUrl,
+    body,
+  )
+  const ext = renderExtension({
+    container: args.container,
+    contentType,
+    contentDisposition,
+  })
+  const finalPath = `${outPath}.${ext}`
   fs.writeFileSync(finalPath, buffer)
   return textResult({
     ok: true,
     outputPath: finalPath,
     fileSize: buffer.length,
-    durationSeconds: data.durationSeconds,
-    effectiveSettings: data.effectiveSettings,
-    warnings: data.warnings,
+    ...(warnings ? { warnings } : {}),
   })
 }
 
