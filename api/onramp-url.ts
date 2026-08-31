@@ -29,21 +29,23 @@ const DEFAULT_DOMAIN = 'create.creativeplatform.xyz'
 
 interface OnrampOrderRequest {
   partnerUserRef: string
-  user: { email: string; phoneNumber: string }
-  amount: { value: string; currency: string }
+  email: string
+  phoneNumber: string
+  paymentAmount: string
+  paymentCurrency: string
   paymentMethod: string
-  destination: {
-    address: string
-    network: string
-    asset: string
-  }
-  domain?: string
+  purchaseCurrency: string
+  destinationAddress: string
+  destinationNetwork: string
+  domain: string
+  isQuote: boolean
 }
 
 interface OnrampOrderResponse {
-  paymentLink?: string
-  orderId?: string
+  order?: { orderId?: string; status?: string }
+  paymentLink?: { url?: string; paymentLinkType?: string }
   error?: string
+  errorMessage?: string
 }
 
 function getDomain(): string {
@@ -115,15 +117,16 @@ export async function GET(request: Request): Promise<Response> {
 
     const orderBody: OnrampOrderRequest = {
       partnerUserRef,
-      user: { email, phoneNumber: phone },
-      amount: { value: amountValue, currency: 'USD' },
+      email,
+      phoneNumber: phone,
+      paymentAmount: amountValue,
+      paymentCurrency: 'USD',
       paymentMethod,
-      destination: {
-        address,
-        network: DEFAULT_NETWORK,
-        asset: DEFAULT_ASSET,
-      },
+      purchaseCurrency: DEFAULT_ASSET,
+      destinationAddress: address,
+      destinationNetwork: DEFAULT_NETWORK,
       domain: getDomain(),
+      isQuote: false,
     }
 
     const jwt = await generateJwt({
@@ -151,11 +154,13 @@ export async function GET(request: Request): Promise<Response> {
     }
 
     const data = (await orderRes.json()) as OnrampOrderResponse
-    if (!data.paymentLink || typeof data.paymentLink !== 'string') {
+    const paymentLinkUrl = data.paymentLink?.url
+    if (!paymentLinkUrl || typeof paymentLinkUrl !== 'string') {
+      console.error('Coinbase onramp invalid response', JSON.stringify(data))
       return Response.json({ error: 'Invalid onramp order response' }, { status: 502 })
     }
 
-    let paymentLink = data.paymentLink
+    let paymentLink = paymentLinkUrl
     const paymentUrl = new URL(paymentLink)
     if (redirectUrl) {
       paymentUrl.searchParams.set('redirectUrl', redirectUrl)
@@ -164,7 +169,7 @@ export async function GET(request: Request): Promise<Response> {
 
     return Response.json({
       paymentLink,
-      orderId: data.orderId ?? null,
+      orderId: data.order?.orderId ?? null,
       origin: PAY_ORIGIN,
     })
   } catch (e) {
