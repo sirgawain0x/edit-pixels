@@ -72,7 +72,9 @@ function normalizeAmount(value: string | null | undefined): string | null {
 }
 
 export async function GET(request: Request): Promise<Response> {
-  const apiKeyId = process.env.COINBASE_CDP_API_KEY_ID
+  // Accept either env var name: the CDP SDK itself falls back from
+  // CDP_API_KEY_ID to CDP_API_KEY_NAME, and Vercel has the _NAME variant set.
+  const apiKeyId = process.env.COINBASE_CDP_API_KEY_ID ?? process.env.COINBASE_CDP_API_KEY_NAME
   const apiKeySecret = process.env.COINBASE_CDP_API_KEY_SECRET
 
   if (!apiKeyId || !apiKeySecret) {
