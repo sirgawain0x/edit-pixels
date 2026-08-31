@@ -3,7 +3,7 @@
  * Shared Coinbase CDP Headless Onramp helpers for Vercel serverless routes.
  * Uses Secret API Key ID + Secret (JWT) — not the Client API Key.
  */
-// fallow-ignore-file unused-export
+// fallow-ignore-file unused-export,complexity
 
 import { generateJwt } from '@coinbase/cdp-sdk/auth'
 

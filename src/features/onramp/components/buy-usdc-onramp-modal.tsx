@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle2, DollarSign, Loader2 } from 'lucide-react'
+import { CheckCircle2, DollarSign } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -8,25 +8,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import {
   DEFAULT_ONRAMP_PAYMENT_METHOD,
-  ONRAMP_LEGAL_LINKS,
-  ONRAMP_PAYMENT_METHODS,
   PAY_COINBASE_ORIGIN,
-  isOnrampSandboxMode,
   type OnrampPaymentMethod,
 } from '@/config/onramp'
 import { useWalletContext } from '../deps/wallet'
 import { useOnrampUrl } from '../hooks/use-onramp-url'
+import { OnrampDetailsStep } from './onramp-details-step'
+import { OnrampPayStep } from './onramp-pay-step'
+import { OnrampVerifyStep } from './onramp-verify-step'
 
 interface BuyUsdcOnrampModalProps {
   open: boolean
@@ -43,6 +34,25 @@ interface OnrampPostMessage {
   }
 }
 
+const STEP_DESCRIPTION: Record<Step, string> = {
+  details:
+    'Purchase USDC on Base with Apple Pay or Google Pay (debit card via your wallet). Funds arrive in your connected wallet.',
+  verify: 'Enter the one-time codes sent to your phone and email to verify ownership.',
+  pay: 'Complete payment with the Coinbase button below. Do not leave this dialog until finished.',
+  success: 'Your USDC purchase succeeded.',
+}
+
+const PAY_STATUS_BY_EVENT: Record<string, string> = {
+  'onramp_api.load_pending': 'Loading payment…',
+  'onramp_api.load_success': 'Ready — tap the pay button to continue.',
+  'onramp_api.load_error': 'Failed to load payment button.',
+  'onramp_api.commit_success': 'Payment submitted — confirming…',
+  'onramp_api.commit_error': 'Payment could not be started.',
+  'onramp_api.polling_success': 'USDC sent to your wallet.',
+  'onramp_api.polling_error': 'Transaction failed after payment.',
+  'onramp_api.cancel': 'Payment cancelled.',
+}
+
 function isTrustedPayOrigin(origin: string): boolean {
   try {
     const url = new URL(origin)
@@ -50,6 +60,25 @@ function isTrustedPayOrigin(origin: string): boolean {
   } catch {
     return false
   }
+}
+
+function parseOnrampPostMessage(data: unknown): OnrampPostMessage | null {
+  if (typeof data === 'string') {
+    try {
+      return JSON.parse(data) as OnrampPostMessage
+    } catch {
+      return null
+    }
+  }
+  if (typeof data === 'object' && data !== null) {
+    return data as OnrampPostMessage
+  }
+  return null
+}
+
+function statusForOnrampEvent(eventName: string, errorMessage?: string): string | null {
+  if (errorMessage && eventName.endsWith('_error')) return errorMessage
+  return PAY_STATUS_BY_EVENT[eventName] ?? null
 }
 
 export function BuyUsdcOnrampModal({ open, onOpenChange }: BuyUsdcOnrampModalProps) {
@@ -109,47 +138,13 @@ export function BuyUsdcOnrampModal({ open, onOpenChange }: BuyUsdcOnrampModalPro
 
     function onMessage(event: MessageEvent) {
       if (!isTrustedPayOrigin(event.origin)) return
-
-      let payload: OnrampPostMessage | null = null
-      if (typeof event.data === 'string') {
-        try {
-          payload = JSON.parse(event.data) as OnrampPostMessage
-        } catch {
-          return
-        }
-      } else if (typeof event.data === 'object' && event.data !== null) {
-        payload = event.data as OnrampPostMessage
-      }
+      const payload = parseOnrampPostMessage(event.data)
       if (!payload?.eventName) return
 
-      switch (payload.eventName) {
-        case 'onramp_api.load_pending':
-          setPayStatus('Loading payment…')
-          break
-        case 'onramp_api.load_success':
-          setPayStatus('Ready — tap the pay button to continue.')
-          break
-        case 'onramp_api.load_error':
-          setPayStatus(payload.data?.errorMessage ?? 'Failed to load payment button.')
-          break
-        case 'onramp_api.commit_success':
-          setPayStatus('Payment submitted — confirming…')
-          break
-        case 'onramp_api.commit_error':
-          setPayStatus(payload.data?.errorMessage ?? 'Payment could not be started.')
-          break
-        case 'onramp_api.polling_success':
-          setPayStatus('USDC sent to your wallet.')
-          setStep('success')
-          break
-        case 'onramp_api.polling_error':
-          setPayStatus(payload.data?.errorMessage ?? 'Transaction failed after payment.')
-          break
-        case 'onramp_api.cancel':
-          setPayStatus('Payment cancelled.')
-          break
-        default:
-          break
+      const nextStatus = statusForOnrampEvent(payload.eventName, payload.data?.errorMessage)
+      if (nextStatus) setPayStatus(nextStatus)
+      if (payload.eventName === 'onramp_api.polling_success') {
+        setStep('success')
       }
     }
 
@@ -162,7 +157,6 @@ export function BuyUsdcOnrampModal({ open, onOpenChange }: BuyUsdcOnrampModalPro
     if (!address || !tosAccepted || !agreementAcceptedAt) return
     clearError()
 
-    // Sequential: shared hook loading/error state is not safe to race in parallel.
     const sms = await initiateVerification('sms', phone)
     if (!sms) return
     const emailInit = await initiateVerification('email', email)
@@ -236,15 +230,7 @@ export function BuyUsdcOnrampModal({ open, onOpenChange }: BuyUsdcOnrampModalPro
             )}
             {step === 'success' ? 'Purchase complete' : 'Buy USDC with Coinbase'}
           </DialogTitle>
-          <DialogDescription>
-            {step === 'details' &&
-              'Purchase USDC on Base with Apple Pay or Google Pay (debit card via your wallet). Funds arrive in your connected wallet.'}
-            {step === 'verify' &&
-              'Enter the one-time codes sent to your phone and email to verify ownership.'}
-            {step === 'pay' &&
-              'Complete payment with the Coinbase button below. Do not leave this dialog until finished.'}
-            {step === 'success' && 'Your USDC purchase succeeded.'}
-          </DialogDescription>
+          <DialogDescription>{STEP_DESCRIPTION[step]}</DialogDescription>
         </DialogHeader>
 
         {!address ? (
@@ -252,199 +238,50 @@ export function BuyUsdcOnrampModal({ open, onOpenChange }: BuyUsdcOnrampModalPro
         ) : null}
 
         {address && step === 'details' ? (
-          <form onSubmit={handleDetailsSubmit} className="space-y-4">
-            {isOnrampSandboxMode() ? (
-              <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
-                Sandbox mode is on — orders use a sandbox- partnerUserRef and fake payment sheet.
-              </p>
-            ) : null}
-            <div className="space-y-1">
-              <Label htmlFor="onramp-email">Email</Label>
-              <Input
-                id="onramp-email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                required
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="onramp-phone">Phone (US)</Label>
-              <Input
-                id="onramp-phone"
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="(555) 123-4567"
-                required
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="onramp-amount">Amount (USD)</Label>
-              <Input
-                id="onramp-amount"
-                type="number"
-                min="1"
-                step="0.01"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Payment method</Label>
-              <Select
-                value={paymentMethod}
-                onValueChange={(v) => setPaymentMethod(v as OnrampPaymentMethod)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ONRAMP_PAYMENT_METHODS.APPLE_PAY}>Apple Pay</SelectItem>
-                  <SelectItem value={ONRAMP_PAYMENT_METHODS.GOOGLE_PAY}>Google Pay</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                Debit card is charged through Apple Pay or Google Pay — there is no separate card
-                form in this flow.
-              </p>
-            </div>
-
-            <label className="flex items-start gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="mt-1"
-                checked={tosAccepted}
-                onChange={(e) => {
-                  const checked = e.target.checked
-                  setTosAccepted(checked)
-                  setAgreementAcceptedAt(checked ? new Date().toISOString() : null)
-                }}
-                required
-              />
-              <span className="text-muted-foreground">
-                I agree to Coinbase&apos;s{' '}
-                <a
-                  className="underline"
-                  href={ONRAMP_LEGAL_LINKS.guestCheckoutTos}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Guest Checkout Terms
-                </a>
-                ,{' '}
-                <a
-                  className="underline"
-                  href={ONRAMP_LEGAL_LINKS.userAgreement}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  User Agreement
-                </a>
-                , and{' '}
-                <a
-                  className="underline"
-                  href={ONRAMP_LEGAL_LINKS.privacyPolicy}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Privacy Policy
-                </a>
-                .
-              </span>
-            </label>
-
-            {error && <p className="text-sm text-destructive">{error}</p>}
-
-            <Button type="submit" className="w-full" disabled={isLoading || !tosAccepted}>
-              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Send verification codes'}
-            </Button>
-          </form>
+          <OnrampDetailsStep
+            email={email}
+            phone={phone}
+            amount={amount}
+            paymentMethod={paymentMethod}
+            tosAccepted={tosAccepted}
+            isLoading={isLoading}
+            error={error}
+            onEmailChange={setEmail}
+            onPhoneChange={setPhone}
+            onAmountChange={setAmount}
+            onPaymentMethodChange={setPaymentMethod}
+            onTosChange={(accepted, acceptedAt) => {
+              setTosAccepted(accepted)
+              setAgreementAcceptedAt(acceptedAt)
+            }}
+            onSubmit={(e) => void handleDetailsSubmit(e)}
+          />
         ) : null}
 
         {address && step === 'verify' ? (
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="onramp-sms-otp">SMS code</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="onramp-sms-otp"
-                  inputMode="numeric"
-                  maxLength={6}
-                  value={smsOtp}
-                  onChange={(e) => setSmsOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  placeholder="000000"
-                  disabled={smsVerified}
-                />
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={isLoading || smsVerified || smsOtp.length !== 6}
-                  onClick={() => void handleVerifySms()}
-                >
-                  {smsVerified ? 'Verified' : 'Verify'}
-                </Button>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="onramp-email-otp">Email code</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="onramp-email-otp"
-                  inputMode="numeric"
-                  maxLength={6}
-                  value={emailOtp}
-                  onChange={(e) => setEmailOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  placeholder="000000"
-                  disabled={emailVerified}
-                />
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={isLoading || emailVerified || emailOtp.length !== 6}
-                  onClick={() => void handleVerifyEmail()}
-                >
-                  {emailVerified ? 'Verified' : 'Verify'}
-                </Button>
-              </div>
-            </div>
-
-            {error && <p className="text-sm text-destructive">{error}</p>}
-
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" className="flex-1" onClick={resetFlow}>
-                Back
-              </Button>
-              <Button
-                type="button"
-                className="flex-1"
-                disabled={isLoading || !smsVerified || !emailVerified}
-                onClick={() => void handleContinueToPay()}
-              >
-                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Continue to payment'}
-              </Button>
-            </div>
-          </div>
+          <OnrampVerifyStep
+            smsOtp={smsOtp}
+            emailOtp={emailOtp}
+            smsVerified={smsVerified}
+            emailVerified={emailVerified}
+            isLoading={isLoading}
+            error={error}
+            onSmsOtpChange={setSmsOtp}
+            onEmailOtpChange={setEmailOtp}
+            onVerifySms={() => void handleVerifySms()}
+            onVerifyEmail={() => void handleVerifyEmail()}
+            onBack={resetFlow}
+            onContinue={() => void handleContinueToPay()}
+          />
         ) : null}
 
         {address && step === 'pay' && paymentLink ? (
-          <div className="space-y-3">
-            {payStatus ? <p className="text-sm text-muted-foreground">{payStatus}</p> : null}
-            {error ? <p className="text-sm text-destructive">{error}</p> : null}
-            <iframe
-              title="Coinbase Onramp"
-              src={paymentLink}
-              className="h-[420px] w-full rounded-md border bg-background"
-              allow="payment"
-              sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
-              referrerPolicy="no-referrer"
-            />
-            <Button type="button" variant="outline" className="w-full" onClick={resetFlow}>
-              Start over
-            </Button>
-          </div>
+          <OnrampPayStep
+            paymentLink={paymentLink}
+            payStatus={payStatus}
+            error={error}
+            onStartOver={resetFlow}
+          />
         ) : null}
 
         {step === 'success' ? (

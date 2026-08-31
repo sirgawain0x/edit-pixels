@@ -4,6 +4,8 @@
  *
  * Body: { channel: 'sms' | 'email', destination: string }
  */
+// fallow-ignore-file complexity,duplicate-export
+
 import {
   CDP_VERIFICATIONS_PATH,
   asTrimmedString,

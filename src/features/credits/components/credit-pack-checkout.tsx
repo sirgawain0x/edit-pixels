@@ -8,6 +8,7 @@ import { useSmartWalletOps } from '@/hooks/use-smart-wallet-ops'
 import { useUsdcBalance } from '@/hooks/use-usdc-balance'
 import { SETTLEMENT_CREDIT_PACKS, type CreditPackDefinition } from '@/config/credit-pack-settlement'
 import { buildSettlePackOps } from '@/features/credits/api/settle-pack'
+import { totalUsdcForPurchase } from '@/features/credits/usdc-for-purchase'
 import { base } from 'viem/chains'
 import { cn } from '@/shared/ui/cn'
 
@@ -86,10 +87,13 @@ function PackCard({
 }) {
   const priceUsd = (pack.usdc6 / 1_000_000).toFixed(0)
 
+  // Include the ERC-20 gas buffer so buyers holding exactly the pack price
+  // don't pass the UI check and then fail at the paymaster step.
+  const totalUsdc6 = totalUsdcForPurchase(pack.usdc6, BASE_CHAIN_ID)
   const insufficient = useMemo(() => {
     if (usdcBalance === null) return false
-    return Number(usdcBalance) < pack.usdc6 / 1_000_000
-  }, [usdcBalance, pack.usdc6])
+    return Number(usdcBalance) < totalUsdc6 / 1_000_000
+  }, [usdcBalance, totalUsdc6])
 
   const disabled = !onBase || !walletReady || settling || insufficient
 
