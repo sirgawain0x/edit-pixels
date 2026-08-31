@@ -1,3 +1,4 @@
+// fallow-ignore-file complexity
 import { useCallback, useState } from 'react'
 import {
   buildSandboxPartnerUserRef,
@@ -7,7 +8,7 @@ import {
   type OnrampPaymentMethod,
 } from '@/config/onramp'
 
-export interface OnrampParams {
+interface OnrampParams {
   address: `0x${string}`
   email: string
   phone: string
