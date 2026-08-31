@@ -12,6 +12,8 @@ interface ImportMetaEnv {
   readonly VITE_SUPERFLUID_RECEIVER?: string
   readonly VITE_PIXELS_PREMIUM_LOCK_ADDRESS?: string
   readonly VITE_ONRAMP_API_URL?: string
+  /** Set to "true" to use sandbox- partnerUserRef and fake Apple/Google Pay sheets. */
+  readonly VITE_ONRAMP_SANDBOX?: string
 }
 
 interface ImportMeta {
