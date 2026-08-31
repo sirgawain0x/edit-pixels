@@ -15,6 +15,9 @@ import { POST as generateVideoPost } from './api/generate-video'
 import { POST as c2paSignPost } from './api/c2pa/sign'
 import { POST as c2paCertsPost } from './api/c2pa/certs'
 import { POST as c2paCertsChallengePost } from './api/c2pa/certs/challenge'
+import { POST as onrampUrlPost } from './api/onramp-url'
+import { POST as onrampVerifyPost } from './api/onramp-verify'
+import { POST as onrampVerifySubmitPost } from './api/onramp-verify-submit'
 
 // Stamps public/sw.js with the hashed entry-chunk filename at build time so the service
 // worker's CACHE_VERSION — and the sw.js bytes — change on every deploy. Without this the
@@ -124,6 +127,9 @@ void generateVideoPost
 void c2paSignPost
 void c2paCertsPost
 void c2paCertsChallengePost
+void onrampUrlPost
+void onrampVerifyPost
+void onrampVerifySubmitPost
 
 function directorApiDevPlugin(): Plugin {
   return {
