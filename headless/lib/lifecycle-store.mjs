@@ -29,6 +29,9 @@ const MIME_BY_EXT = {
   '.json': 'application/lottie+json',
   '.lottie': 'application/lottie+json',
 }
+const EXT_BY_MIME = Object.fromEntries(
+  Object.entries(MIME_BY_EXT).map(([extension, mimeType]) => [mimeType, extension]),
+)
 
 export function assertPortableId(id, label = 'id') {
   assertSinglePathComponent(id, label)
@@ -456,6 +459,74 @@ export async function updateMediaMetadata(
     })
     return { ...(await getMediaResource(workspace, id)), revision: revisionOf(bytes) }
   })
+}
+
+/** Download remote media to a temp file for import-url staging. */
+export async function downloadMediaUrl(
+  urlString,
+  { maxBytes = 500 * 1024 ** 2 } = {},
+) {
+  let parsed
+  try {
+    parsed = new URL(urlString)
+  } catch {
+    throw new HttpError(400, 'INVALID_URL', 'URL must be a valid http(s) address')
+  }
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new HttpError(400, 'INVALID_URL', 'URL must use http or https')
+  }
+
+  const response = await fetch(urlString, { redirect: 'follow' })
+  if (!response.ok) {
+    throw new HttpError(
+      422,
+      'DOWNLOAD_FAILED',
+      `Failed to download media (${response.status})`,
+    )
+  }
+
+  const contentLength = Number(response.headers.get('content-length'))
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    throw new HttpError(413, 'MEDIA_SIZE_LIMIT', 'Remote media exceeds size limit')
+  }
+
+  let ext = path.extname(parsed.pathname).toLowerCase()
+  const contentType = response.headers.get('content-type')?.split(';')[0].trim().toLowerCase()
+  if (!ext && contentType) ext = EXT_BY_MIME[contentType] ?? ''
+  if (!ext || !MIME_BY_EXT[ext]) {
+    throw new HttpError(
+      415,
+      'UNSUPPORTED_MEDIA_TYPE',
+      'Could not determine supported media type from URL or response headers',
+    )
+  }
+
+  const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'pixels-url-import-'))
+  const target = path.join(tmpDir, `download${ext}`)
+  const chunks = []
+  let size = 0
+
+  try {
+    const reader = response.body?.getReader?.()
+    if (!reader) {
+      throw new HttpError(422, 'DOWNLOAD_FAILED', 'Response body is not readable')
+    }
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      size += value.length
+      if (size > maxBytes) {
+        throw new HttpError(413, 'MEDIA_SIZE_LIMIT', 'Remote media exceeds size limit')
+      }
+      chunks.push(value)
+    }
+    await fs.promises.writeFile(target, Buffer.concat(chunks), { mode: 0o600 })
+  } catch (error) {
+    await fs.promises.rm(tmpDir, { recursive: true, force: true })
+    throw error
+  }
+
+  return { path: target, tmpDir, ext }
 }
 
 export async function stageLocalMedia(
