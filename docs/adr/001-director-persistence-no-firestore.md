@@ -30,8 +30,8 @@ The question: should edit-pixels add **Firestore** for Director sessions, storyb
 **Engine defaults** (overridable via env):
 
 - Project: `creative-ai-491118` (`GOOGLE_CLOUD_PROJECT` / `GCP_PROJECT_ID`)
-- Region: **`us-central1`** (`VERTEX_LOCATION`)
-- Engine ID: `5922098819817799680` (`VERTEX_REASONING_ENGINE_ID`)
+- Region: **`us-east1`** (`VERTEX_LOCATION`)
+- Engine ID: `7129954674127405056` (`VERTEX_REASONING_ENGINE_ID`)
 
 Documented in [`api/director.ts`](../../api/director.ts) and [`api/_vertex-auth.ts`](../../api/_vertex-auth.ts).
 

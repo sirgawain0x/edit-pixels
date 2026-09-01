@@ -3,7 +3,7 @@
  * Vercel serverless endpoint: proxies Creative Director Agent Engine SSE.
  *
  * Engine (streamQuery SSE — not the unary :query URL):
- *   projects/creative-ai-491118/locations/us-central1/reasoningEngines/5922098819817799680
+ *   projects/creative-ai-491118/locations/us-east1/reasoningEngines/7129954674127405056
  * Agent runtime identity (Agent Engine SA — not the caller):
  *   service-1037240986506@gcp-sa-aiplatform-re.iam.gserviceaccount.com
  *
@@ -43,7 +43,7 @@ import {
 } from './_director-firestore'
 import { DirectorSsePersistAccumulator } from './_director-sse-persist'
 
-const DEFAULT_ENGINE_ID = '5922098819817799680'
+const DEFAULT_ENGINE_ID = '7129954674127405056'
 
 interface DirectorRequestBody {
   prompt?: string

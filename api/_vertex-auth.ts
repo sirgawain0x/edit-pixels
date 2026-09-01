@@ -8,7 +8,7 @@ import { getVercelOidcToken } from '@vercel/oidc'
 import { ExternalAccountClient, GoogleAuth, type AnyAuthClient } from 'google-auth-library'
 
 const DEFAULT_PROJECT = 'creative-ai-491118'
-const DEFAULT_LOCATION = 'us-central1'
+const DEFAULT_LOCATION = 'us-east1'
 const CLOUD_PLATFORM_SCOPE = 'https://www.googleapis.com/auth/cloud-platform'
 
 interface WifConfig {
