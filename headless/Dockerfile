@@ -11,7 +11,7 @@
 # Run (the lifecycle service requires a writable workspace for locks/atomic writes):
 #   docker run --rm -p 8787:8787 -v /path/to/PixelsProjects:/workspace pixels-headless
 #   curl localhost:8787/health    # -> {"ok":true,"gpu":true,...}
-FROM node:24-bookworm
+FROM node:22-bookworm
 
 # Google Chrome (proprietary codecs) + software Vulkan (lavapipe) for WebGPU + fonts.
 RUN apt-get update \
@@ -34,7 +34,9 @@ ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 # Install deps (ignore lifecycle scripts: the prepare hook sets up git hooks,
 # which aren't present/needed in the image).
-COPY package.json package-lock.json ./
+# .npmrc sets legacy-peer-deps (required for wallet/Solana peer graph) and must
+# be present before npm ci — otherwise Docker resolves strictly and fails.
+COPY package.json package-lock.json .npmrc ./
 RUN npm ci --ignore-scripts
 
 # Build the harness (dist/headless.html + assets).
@@ -50,6 +52,9 @@ ENV PIXELS_CHROME_ARGS="--no-sandbox"
 # The container port must accept traffic from the published Docker interface.
 # Native serve.mjs runs remain loopback-only unless explicitly overridden.
 ENV PIXELS_HOST=0.0.0.0
+
+# Cloud Run has no host volume mount; use ephemeral container storage.
+RUN mkdir -p /workspace
 
 EXPOSE 8787
 # Exec form keeps Node as PID 1 so Docker's SIGTERM reaches the graceful
