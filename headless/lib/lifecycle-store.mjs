@@ -29,9 +29,11 @@ const MIME_BY_EXT = {
   '.json': 'application/lottie+json',
   '.lottie': 'application/lottie+json',
 }
-const EXT_BY_MIME = Object.fromEntries(
-  Object.entries(MIME_BY_EXT).map(([extension, mimeType]) => [mimeType, extension]),
-)
+/** First registered extension wins when multiple extensions share a MIME type. */
+const EXT_BY_MIME = Object.entries(MIME_BY_EXT).reduce((extByMime, [extension, mimeType]) => {
+  if (!(mimeType in extByMime)) extByMime[mimeType] = extension
+  return extByMime
+}, {})
 
 export function assertPortableId(id, label = 'id') {
   assertSinglePathComponent(id, label)
