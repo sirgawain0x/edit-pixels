@@ -21,8 +21,7 @@ export function DirectorSessionPacks() {
       </p>
       <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
         {t('director.packs.blurb', {
-          defaultValue:
-            'Top up CRTVAI for multiple Director briefs. Packs estimate retail audio minutes; Pro members stretch further.',
+          defaultValue: 'Top up CRTVAI for multiple Director briefs.',
         })}
       </p>
       <ul className="mt-2.5 space-y-1.5">

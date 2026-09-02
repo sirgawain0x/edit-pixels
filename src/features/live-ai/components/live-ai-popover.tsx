@@ -19,8 +19,8 @@ import { isLiveAiBillingEnvReady, getLiveAiBillingConfigIssues } from '../config
 export function LiveAiPopover() {
   const [open, setOpen] = useState(false)
   const [streaming, setStreaming] = useState(false)
-  const { wallet, chain } = useWalletContext()
-  const address = wallet?.address as `0x${string}` | undefined
+  const { account, chain } = useWalletContext()
+  const address = account
   const {
     isPremiumMember,
     isLoading: membershipLoading,

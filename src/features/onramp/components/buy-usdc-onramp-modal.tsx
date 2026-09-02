@@ -36,7 +36,7 @@ interface OnrampPostMessage {
 
 const STEP_DESCRIPTION: Record<Step, string> = {
   details:
-    'Purchase USDC on Base with Apple Pay or Google Pay (debit card via your wallet). Funds arrive in your connected wallet.',
+    'Purchase USDC on Base with Apple Pay or Google Pay (debit card via your wallet). Funds arrive in your smart wallet.',
   verify: 'Enter the one-time codes sent to your phone and email to verify ownership.',
   pay: 'Complete payment with the Coinbase button below. Do not leave this dialog until finished.',
   success: 'Your USDC purchase succeeded.',
@@ -82,8 +82,8 @@ function statusForOnrampEvent(eventName: string, errorMessage?: string): string 
 }
 
 export function BuyUsdcOnrampModal({ open, onOpenChange }: BuyUsdcOnrampModalProps) {
-  const { wallet } = useWalletContext()
-  const address = wallet?.address as `0x${string}` | undefined
+  const { account } = useWalletContext()
+  const address = account
   const {
     initiateVerification,
     submitVerification,
