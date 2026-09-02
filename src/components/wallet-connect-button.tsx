@@ -1,5 +1,13 @@
 import { useCallback, useState } from 'react'
-import { ArrowUpRight, Copy, DollarSign, QrCode, Sparkles, Wallet } from 'lucide-react'
+import {
+  AlertTriangle,
+  ArrowUpRight,
+  Copy,
+  DollarSign,
+  QrCode,
+  Sparkles,
+  Wallet,
+} from 'lucide-react'
 import { useWalletContext } from '@/context/wallet-context'
 import { Button } from '@/components/ui/button'
 import {
@@ -49,13 +57,16 @@ export function WalletConnectButton({
     connect,
     disconnect,
     account,
+    signerAddress,
+    smartAccountStatus,
+    retrySmartAccount,
     chain,
     switchChain,
-    isConnecting,
+    error,
   } = useWalletContext()
-  const address = account
-  const { formatted: usdcFormatted } = useUsdcBalance(chain, address)
-  const { formatted: crtvaiFormatted, symbol: crtvaiSymbol } = useCrtvaiBalance(address)
+  const address = account ?? signerAddress
+  const { formatted: usdcFormatted } = useUsdcBalance(chain, account)
+  const { formatted: crtvaiFormatted, symbol: crtvaiSymbol } = useCrtvaiBalance(account)
   const [copied, setCopied] = useState(false)
   const [buyCreditsOpen, setBuyCreditsOpen] = useState(false)
   const [buyOnrampOpen, setBuyOnrampOpen] = useState(false)
@@ -70,8 +81,9 @@ export function WalletConnectButton({
     })
   }, [address])
 
-  const isInitializing = configured && (!ready || isConnecting)
-  const isConnected = Boolean(authenticated && account)
+  const isInitializing = configured && !ready
+  const isConnected = Boolean(authenticated && address)
+  const smartAccountFailed = smartAccountStatus === 'error'
 
   if (isInitializing) {
     return (
@@ -114,6 +126,20 @@ export function WalletConnectButton({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-[12rem]">
+          {smartAccountFailed && (
+            <DropdownMenuItem
+              onClick={() => retrySmartAccount()}
+              className="flex cursor-pointer items-start gap-2 text-destructive"
+              aria-label="Retry smart wallet setup"
+            >
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+              <span className="text-xs">
+                Smart wallet setup failed
+                {error?.message ? `: ${error.message}` : ''}. Tap to retry.
+              </span>
+            </DropdownMenuItem>
+          )}
+
           {address && (
             <DropdownMenuItem
               onClick={handleCopyAddress}
