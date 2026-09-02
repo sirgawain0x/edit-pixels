@@ -1,3 +1,4 @@
+import { toast } from 'sonner'
 import {
   createContext,
   useCallback,
@@ -192,11 +193,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new Event('pixels:ensure-toaster'))
         }
-        // Lazy import avoids pulling sonner into the critical path when unused.
-        void import('sonner').then(({ toast }) => {
-          toast.error('Wallet auth is not configured', {
-            description: 'Set VITE_PRIVY_APP_ID (and VITE_PRIVY_CLIENT_ID) to enable connect.',
-          })
+        // Sonner is already in the app shell chunk; static import avoids ineffective dynamic import.
+        toast.error('Wallet auth is not configured', {
+          description: 'Set VITE_PRIVY_APP_ID (and VITE_PRIVY_CLIENT_ID) to enable connect.',
         })
       },
       disconnect: async () => {},

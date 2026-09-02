@@ -12,6 +12,7 @@ import {
   deleteGifFrames,
   getGifFrames as getGifFramesFromDB,
   saveGifFrames,
+  clearAllGifFrames,
 } from '@/infrastructure/storage'
 import { createLogger } from '@/shared/logging/logger'
 
@@ -756,8 +757,6 @@ if (import.meta.env.DEV && typeof window !== 'undefined') {
   // Debug helper: Clear all GIF frame caches (memory + IndexedDB)
   window.__clearAllGifCache = async () => {
     gifFrameCache.clearAll()
-    // Clear IndexedDB gifFrames store
-    const { clearAllGifFrames } = await import('@/infrastructure/storage')
     await clearAllGifFrames()
     logger.debug('[GifFrameCache] All caches cleared')
   }
