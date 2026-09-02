@@ -24,7 +24,7 @@ import {
   readCrtvaiMintQuote,
 } from '@/config/metoken'
 import { buildBuyMetokenOps } from '@/features/metoken/api/buy-metoken'
-import { totalUsdcForPurchase } from '@/features/credits/usdc-for-purchase'
+import { totalUsdcForPurchase } from '@/features/metoken/deps/credits-contract'
 import { getBasePublicClient } from '@/config/base-client'
 import { base } from 'viem/chains'
 import { cn } from '@/shared/ui/cn'
