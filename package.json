@@ -148,6 +148,7 @@
     "vite-plus": "0.2.4"
   },
   "optionalDependencies": {
+    "@rolldown/binding-linux-x64-gnu": "1.1.5",
     "@voidzero-dev/vite-plus-linux-x64-gnu": "0.2.4"
   },
   "overrides": {

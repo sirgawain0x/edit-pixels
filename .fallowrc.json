@@ -53,7 +53,10 @@
     ]
   },
   "usedClassMembers": ["addEventListener", "removeEventListener"],
-  "ignoreDependencies": ["@voidzero-dev/vite-plus-linux-x64-gnu"],
+  "ignoreDependencies": [
+    "@rolldown/binding-linux-x64-gnu",
+    "@voidzero-dev/vite-plus-linux-x64-gnu"
+  ],
   "rules": {},
   "ignoreExports": [
     {
