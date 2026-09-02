@@ -148,8 +148,11 @@
     "vite-plus": "0.2.4"
   },
   "optionalDependencies": {
+    "@esbuild/linux-x64": "0.28.1",
     "@rolldown/binding-linux-x64-gnu": "1.1.5",
-    "@voidzero-dev/vite-plus-linux-x64-gnu": "0.2.4"
+    "@tailwindcss/oxide-linux-x64-gnu": "4.2.2",
+    "@voidzero-dev/vite-plus-linux-x64-gnu": "0.2.4",
+    "lightningcss-linux-x64-gnu": "1.32.0"
   },
   "overrides": {
     "esbuild": "0.28.1",

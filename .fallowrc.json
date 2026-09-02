@@ -54,8 +54,11 @@
   },
   "usedClassMembers": ["addEventListener", "removeEventListener"],
   "ignoreDependencies": [
+    "@esbuild/linux-x64",
     "@rolldown/binding-linux-x64-gnu",
-    "@voidzero-dev/vite-plus-linux-x64-gnu"
+    "@tailwindcss/oxide-linux-x64-gnu",
+    "@voidzero-dev/vite-plus-linux-x64-gnu",
+    "lightningcss-linux-x64-gnu"
   ],
   "rules": {},
   "ignoreExports": [
