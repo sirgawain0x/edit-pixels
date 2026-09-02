@@ -41,3 +41,34 @@ export async function moveUsdcToSmartWallet({
   await getBasePublicClient().waitForTransactionReceipt({ hash })
   return hash
 }
+
+export interface TransferUsdcFromSignerParams {
+  walletClient: WalletClient
+  chain: Chain
+  signerAddress: Address
+  recipient: Address
+  amountWei: bigint
+}
+
+export async function transferUsdcFromSigner({
+  walletClient,
+  chain,
+  signerAddress,
+  recipient,
+  amountWei,
+}: TransferUsdcFromSignerParams): Promise<`0x${string}`> {
+  if (amountWei <= 0n) {
+    throw new Error('Transfer amount must be positive')
+  }
+
+  const hash = await walletClient.writeContract({
+    address: USDC_BASE_ADDRESS,
+    abi: erc20Abi,
+    functionName: 'transfer',
+    args: [recipient, amountWei],
+    chain,
+    account: signerAddress,
+  })
+  await getBasePublicClient().waitForTransactionReceipt({ hash })
+  return hash
+}
