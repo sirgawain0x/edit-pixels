@@ -63,8 +63,9 @@ export function WalletConnectButton({
     chain,
     switchChain,
     error,
+    isProvisioningSmartAccount,
   } = useWalletContext()
-  const address = account ?? signerAddress
+  const displayAddress = account ?? signerAddress
   const { formatted: usdcFormatted } = useUsdcBalance(chain, account)
   const { formatted: crtvaiFormatted, symbol: crtvaiSymbol } = useCrtvaiBalance(account)
   const [copied, setCopied] = useState(false)
@@ -74,16 +75,17 @@ export function WalletConnectButton({
   const [sendOpen, setSendOpen] = useState(false)
 
   const handleCopyAddress = useCallback(() => {
-    if (!address) return
-    void navigator.clipboard.writeText(address).then(() => {
+    if (!account) return
+    void navigator.clipboard.writeText(account).then(() => {
       setCopied(true)
       window.setTimeout(() => setCopied(false), 1500)
     })
-  }, [address])
+  }, [account])
 
   const isInitializing = configured && !ready
-  const isConnected = Boolean(authenticated && address)
+  const isConnected = Boolean(authenticated && displayAddress)
   const smartAccountFailed = smartAccountStatus === 'error'
+  const smartAccountActionsReady = Boolean(account)
 
   if (isInitializing) {
     return (
@@ -109,7 +111,11 @@ export function WalletConnectButton({
     )
   }
 
-  const displayText = address ? truncateAddress(address) : 'Connected'
+  const displayText = account
+    ? truncateAddress(account)
+    : signerAddress
+      ? truncateAddress(signerAddress)
+      : 'Connected'
 
   return (
     <>
@@ -140,17 +146,21 @@ export function WalletConnectButton({
             </DropdownMenuItem>
           )}
 
-          {address && (
+          {account ? (
             <DropdownMenuItem
               onClick={handleCopyAddress}
               className="flex cursor-pointer items-center justify-between gap-2 font-mono text-xs"
-              aria-label="Copy full address"
+              aria-label="Copy smart wallet address"
             >
-              <span>{truncateAddress(address)}</span>
+              <span>{truncateAddress(account)}</span>
               <Copy className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
               {copied && <span className="sr-only">Copied</span>}
             </DropdownMenuItem>
-          )}
+          ) : isProvisioningSmartAccount ? (
+            <DropdownMenuItem disabled className="text-xs text-muted-foreground">
+              Smart wallet setting up…
+            </DropdownMenuItem>
+          ) : null}
 
           <DropdownMenuItem disabled className="text-muted-foreground">
             USDC: {usdcFormatted}
@@ -161,6 +171,7 @@ export function WalletConnectButton({
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => setReceiveOpen(true)}
+            disabled={!smartAccountActionsReady}
             className="flex cursor-pointer items-center gap-2"
             aria-label="Receive funds"
           >
@@ -170,6 +181,7 @@ export function WalletConnectButton({
 
           <DropdownMenuItem
             onClick={() => setSendOpen(true)}
+            disabled={!smartAccountActionsReady}
             className="flex cursor-pointer items-center gap-2"
             aria-label="Send tokens"
           >
@@ -179,6 +191,7 @@ export function WalletConnectButton({
 
           <DropdownMenuItem
             onClick={() => setBuyOnrampOpen(true)}
+            disabled={!smartAccountActionsReady}
             className="flex cursor-pointer items-center gap-2"
             aria-label="Buy USDC"
           >
@@ -188,6 +201,7 @@ export function WalletConnectButton({
 
           <DropdownMenuItem
             onClick={() => setBuyCreditsOpen(true)}
+            disabled={!smartAccountActionsReady}
             className="flex cursor-pointer items-center gap-2"
             aria-label="Buy CRTVAI"
           >
