@@ -14,7 +14,7 @@ import {
   readCrtvaiMintQuote,
 } from '@/config/metoken'
 import { buildBuyMetokenOps } from '@/features/metoken/api/buy-metoken'
-import { moveUsdcToSmartWallet } from '@/features/metoken/api/move-usdc-to-smart-wallet'
+import { moveUsdcToSmartWallet } from '@/hooks/usdc-wallet-transfers'
 import { totalUsdcForPurchase } from '@/features/metoken/deps/credits-contract'
 import {
   getErrorMessage,

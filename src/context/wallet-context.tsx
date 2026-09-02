@@ -64,6 +64,9 @@ const PRIVY_APP_ID = import.meta.env.VITE_PRIVY_APP_ID
 const PRIVY_CLIENT_ID = import.meta.env.VITE_PRIVY_CLIENT_ID
 const isPrivyConfigured = Boolean(PRIVY_APP_ID)
 
+/** Stable Alchemy smart-account id — forces ERC-4337 (sma-b), not EIP-7702. */
+const PIXELS_SMART_ACCOUNT_ID = 'pixels-sca'
+
 function WalletContextInner({ children }: { children: ReactNode }) {
   const { ready, authenticated, user, login, logout, connectWallet, getAccessToken } = usePrivy()
   const { wallets, ready: walletsReady } = useWallets()
@@ -116,8 +119,9 @@ function WalletContextInner({ children }: { children: ReactNode }) {
     }
   }, [activeWallet, activeWallet?.chainId, authenticated, chain])
 
-  // Bootstrap client (no account) — used only to call requestAccount and avoid EIP-7702.
-  const bootstrapSmartWalletClient = useMemo<SmartWalletClient | null>(() => {
+  // Single smart wallet client — requestAccount runs on this instance so internal
+  // account state stays aligned with prepareCalls/sendCalls (avoids EIP-7702).
+  const smartWalletClient = useMemo<SmartWalletClient | null>(() => {
     if (!walletClient || !ALCHEMY_API_KEY) return null
     return createSmartWalletClient({
       transport: alchemyWalletTransport({ apiKey: ALCHEMY_API_KEY }),
@@ -128,14 +132,18 @@ function WalletContextInner({ children }: { children: ReactNode }) {
   }, [walletClient, chain])
 
   useEffect(() => {
-    if (!bootstrapSmartWalletClient || !signerAddress) {
+    if (!smartWalletClient || !signerAddress) {
       setSmartAccountAddress(undefined)
       return
     }
     let cancelled = false
     void (async () => {
       try {
-        const smartAccount = await bootstrapSmartWalletClient.requestAccount({ signerAddress })
+        const smartAccount = await smartWalletClient.requestAccount({
+          signerAddress,
+          id: PIXELS_SMART_ACCOUNT_ID,
+          creationHint: { accountType: 'sma-b' },
+        })
         if (!cancelled) {
           setSmartAccountAddress(smartAccount.address)
           setError(null)
@@ -150,18 +158,7 @@ function WalletContextInner({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [bootstrapSmartWalletClient, signerAddress])
-
-  const smartWalletClient = useMemo<SmartWalletClient | null>(() => {
-    if (!walletClient || !ALCHEMY_API_KEY || !smartAccountAddress) return null
-    return createSmartWalletClient({
-      transport: alchemyWalletTransport({ apiKey: ALCHEMY_API_KEY }),
-      chain,
-      signer: walletClient as never,
-      account: smartAccountAddress,
-      ...(ALCHEMY_POLICY_ID ? { paymaster: { policyId: ALCHEMY_POLICY_ID } } : {}),
-    }).extend(swapActions) as SmartWalletClient
-  }, [walletClient, chain, smartAccountAddress])
+  }, [smartWalletClient, signerAddress])
 
   const connect = useCallback(() => {
     setError(null)
@@ -186,7 +183,9 @@ function WalletContextInner({ children }: { children: ReactNode }) {
   )
 
   const walletReady =
-    ready && walletsReady && (!authenticated || !ALCHEMY_API_KEY || Boolean(smartAccountAddress))
+    ready &&
+    walletsReady &&
+    (!authenticated || !ALCHEMY_API_KEY || Boolean(smartWalletClient && smartAccountAddress))
 
   const value = useMemo(
     () => ({

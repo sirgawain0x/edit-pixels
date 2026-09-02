@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useSendTokenForm } from '@/features/wallet/hooks/use-send-token-form'
+import { SendTokenFundingHints } from '@/features/wallet/components/send-token-funding-hints'
 import type { SendToken } from '@/features/wallet/lib/send-token-math'
 import { cn } from '@/shared/ui/cn'
 
@@ -113,14 +114,17 @@ export function SendTokenModal({ open, onOpenChange }: SendTokenModalProps) {
               onChange={(e) => form.setAmountInput(e.target.value)}
               disabled={form.sending}
             />
-            {form.token === 'usdc' && form.gasBufferUsdc6 > 0 && (
-              <p className="text-xs text-muted-foreground">
-                A small USDC reserve is kept for transaction gas.
-              </p>
-            )}
-            {form.insufficientBalance && form.amountInput && (
-              <p className="text-xs text-destructive">Insufficient balance.</p>
-            )}
+            <SendTokenFundingHints
+              token={form.token}
+              amountInput={form.amountInput}
+              gasBufferUsdc6={form.gasBufferUsdc6}
+              insufficientBalance={form.insufficientBalance}
+              canSendFromSigner={form.canSendFromSigner}
+              needsMoveToSmartWallet={form.needsMoveToSmartWallet}
+              transferring={form.transferring}
+              sending={form.sending}
+              onMoveUsdcToSmartWallet={() => void form.handleMoveUsdcToSmartWallet()}
+            />
           </div>
 
           {!form.onBase && form.token === 'crtvai' && (
@@ -137,6 +141,8 @@ export function SendTokenModal({ open, onOpenChange }: SendTokenModalProps) {
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Sending…
               </>
+            ) : form.canSendFromSigner ? (
+              `Send ${form.tokenSymbol} from signer`
             ) : (
               `Send ${form.tokenSymbol}`
             )}
