@@ -254,6 +254,9 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      'mipd/dist/esm/store.js': fileURLToPath(
+        new URL('./src/vendor/mipd-store.js', import.meta.url),
+      ),
     },
     // Keep every UI dependency on the same React dispatcher. This also prevents
     // an optimizer refresh from leaving Radix on a stale React module during HMR.

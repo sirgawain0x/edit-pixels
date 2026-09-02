@@ -64,7 +64,7 @@ function ProjectsIndex() {
     connect,
   } = useWalletContext()
   const walletConnected = Boolean(authenticated && wallet)
-  // Wait for Privy to finish initializing before treating the user as disconnected.
+  // Wait for Privy init only — smart account provisioning runs in the background.
   const requireWalletForNewProject = walletConfigured && walletReady && !walletConnected
   const walletInitializing = walletConfigured && !walletReady
   const [editingProject, setEditingProject] = useState<Project | null>(null)
