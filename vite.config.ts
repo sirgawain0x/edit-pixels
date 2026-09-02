@@ -251,6 +251,12 @@ export default defineConfig({
     // Keep warnings focused on unexpected growth rather than this known outlier.
     chunkSizeWarningLimit: 1200,
     rollupOptions: {
+      // @tailwindcss/vite does not emit transform sourcemaps yet (Rolldown SOURCEMAP_BROKEN).
+      // Suppress until upstream fixes; JS sourcemaps remain enabled via build.sourcemap.
+      checks: {
+        sourcemapBroken: false,
+        pluginTimings: false,
+      },
       // Multi-entry: the editor app (index.html) plus the headless render
       // harness (headless.html), a UI-less entry that exposes window.pixels
       // for the Node/Playwright headless render+edit CLI.

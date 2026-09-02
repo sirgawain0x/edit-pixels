@@ -558,6 +558,41 @@ export const mediaImportRequestSchema = z
   })
   .strict()
 
+export const mediaImportUrlRequestSchema = z
+  .object({
+    url: z.string().url(),
+    id: z.string().optional(),
+    project: z.string().optional(),
+  })
+  .strict()
+
+export const workspaceSyncRequestSchema = z
+  .object({
+    direction: z.enum(['hydrate', 'dehydrate']),
+    gs_prefix: z
+      .string()
+      .regex(/^gs:\/\/[^/]+\/.+/, 'gs_prefix must be gs://bucket/path'),
+    tenant_id: z.string().optional(),
+    session_id: z.string().optional(),
+  })
+  .strict()
+
+export const c2paEmbedRequestSchema = z
+  .object({
+    master_url: z.string().url(),
+    creator_did: z.string().min(1),
+    cert_id: z.string().optional(),
+    ingredients: z
+      .array(
+        z.object({
+          title: z.string(),
+          url: z.string().url(),
+        }),
+      )
+      .optional(),
+  })
+  .strict()
+
 const RENDER_OPTIONS = {
   codecs: ['h264', 'h265', 'vp9', 'vp8', 'av1'],
   containers: ['mp4', 'webm', 'mov', 'mkv', 'mp3', 'wav', 'm4a'],
@@ -684,6 +719,7 @@ export function capabilities() {
       lifecycleEdit: z.toJSONSchema(lifecycleEditRequestSchema, { target: 'draft-7' }),
       mediaProbe: z.toJSONSchema(mediaProbeRequestSchema, { target: 'draft-7' }),
       mediaImport: z.toJSONSchema(mediaImportRequestSchema, { target: 'draft-7' }),
+      mediaImportUrl: z.toJSONSchema(mediaImportUrlRequestSchema, { target: 'draft-7' }),
     },
     lifecycle: {
       routes: [
@@ -697,6 +733,7 @@ export function capabilities() {
         'GET /v1/media',
         'GET /v1/media/:id',
         'POST /v1/media/import',
+        'POST /v1/media/import-url',
         'POST /v1/media/:id/probe',
         'POST /v1/render',
       ],

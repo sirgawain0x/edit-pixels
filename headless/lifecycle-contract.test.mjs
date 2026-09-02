@@ -91,4 +91,5 @@ test('capabilities publish lifecycle constraints', () => {
   assert.equal(result.lifecycle.writerMode, 'exclusive')
   assert.ok(result.lifecycle.routes.includes('POST /v1/projects/:id/edit'))
   assert.ok(result.lifecycle.routes.includes('POST /v1/media/import'))
+  assert.ok(result.lifecycle.routes.includes('POST /v1/media/import-url'))
 })

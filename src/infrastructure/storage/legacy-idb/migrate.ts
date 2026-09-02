@@ -19,7 +19,11 @@
 
 import { createLogger, createOperationId } from '@/shared/logging/logger'
 import { requireWorkspaceRoot } from '@/infrastructure/storage/workspace-fs/root'
-import { readJson, writeJsonAtomic } from '@/infrastructure/storage/workspace-fs/fs-primitives'
+import {
+  readJson,
+  removeEntry,
+  writeJsonAtomic,
+} from '@/infrastructure/storage/workspace-fs/fs-primitives'
 import { MARKER_FILENAME } from '@/infrastructure/storage/workspace-fs/paths'
 import type { WorkspaceMarker } from '@/infrastructure/storage/workspace-fs/bootstrap'
 import type { Project } from '@/types/project'
@@ -175,7 +179,6 @@ async function writeMigrationErrors(errors: MigrationReport['errors']): Promise<
   if (errors.length === 0) {
     // Clear any previous error marker from an earlier failed run.
     try {
-      const { removeEntry } = await import('@/infrastructure/storage/workspace-fs/fs-primitives')
       await removeEntry(root, [MIGRATION_ERRORS_FILENAME])
     } catch {
       // Best-effort cleanup.
