@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { Coins, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
+import { getErrorMessage, invalidateWalletTokenBalances } from '@/hooks/invalidate-wallet-balances'
 import { Button } from '@/components/ui/button'
 import { useWalletContext } from '@/context/wallet-context'
 import { useSmartWalletOps } from '@/hooks/use-smart-wallet-ops'
@@ -41,11 +42,9 @@ export function CreditPackCheckout() {
         const { ops } = buildSettlePackOps(pack.id, usdc6, account)
         await sendOps(ops)
         toast.success(`Purchased ${pack.credits} credits`)
-        void queryClient.invalidateQueries({ queryKey: ['usdc-balance', chain?.id, account] })
-        void queryClient.invalidateQueries({ queryKey: ['crtvai-balance', account] })
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e)
-        toast.error(`Purchase failed: ${msg}`)
+        invalidateWalletTokenBalances(queryClient, chain?.id, account)
+      } catch (error) {
+        toast.error(`Purchase failed: ${getErrorMessage(error)}`)
       } finally {
         setSettlingId(null)
       }
