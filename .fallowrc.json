@@ -58,7 +58,8 @@
     "@rolldown/binding-linux-x64-gnu",
     "@tailwindcss/oxide-linux-x64-gnu",
     "@voidzero-dev/vite-plus-linux-x64-gnu",
-    "lightningcss-linux-x64-gnu"
+    "lightningcss-linux-x64-gnu",
+    "mipd"
   ],
   "rules": {},
   "ignoreExports": [
@@ -175,6 +176,11 @@
     {
       "file": "src/features/generative/types.ts",
       "exports": ["*"]
+    },
+    {
+      // Resolved via Vite alias to mipd/dist/esm/store.js at build time.
+      "file": "src/vendor/mipd-store.js",
+      "exports": ["createStore"]
     }
   ]
 }

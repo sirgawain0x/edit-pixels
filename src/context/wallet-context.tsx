@@ -28,6 +28,10 @@ import { DEFAULT_CHAIN, getChainById } from '@/config/chains'
 
 type SmartWalletClient = AlchemySmartWalletClient & SwapActions
 
+export type SmartAccountStatus = 'idle' | 'pending' | 'ready' | 'error'
+
+const SMART_ACCOUNT_REQUEST_TIMEOUT_MS = 30_000
+
 export interface WalletContextValue {
   ready: boolean
   authenticated: boolean
@@ -40,6 +44,10 @@ export interface WalletContextValue {
   account: Address | undefined
   /** Privy signer EOA (embedded or external wallet). */
   signerAddress: Address | undefined
+  smartAccountStatus: SmartAccountStatus
+  /** True while Alchemy smart account provisioning is in flight. */
+  isProvisioningSmartAccount: boolean
+  retrySmartAccount: () => void
   user: User | null
   walletClient: WalletClient | null
   smartWalletClient: SmartWalletClient | null
@@ -72,6 +80,8 @@ function WalletContextInner({ children }: { children: ReactNode }) {
   const { wallets, ready: walletsReady } = useWallets()
   const [walletClient, setWalletClient] = useState<WalletClient | null>(null)
   const [smartAccountAddress, setSmartAccountAddress] = useState<Address | undefined>()
+  const [smartAccountStatus, setSmartAccountStatus] = useState<SmartAccountStatus>('idle')
+  const [smartAccountRetryKey, setSmartAccountRetryKey] = useState(0)
   const [chain, setChain] = useState<Chain>(DEFAULT_CHAIN)
   const [isConnecting, setIsConnecting] = useState(false)
   const [error, setError] = useState<Error | null>(null)
@@ -134,23 +144,35 @@ function WalletContextInner({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!smartWalletClient || !signerAddress) {
       setSmartAccountAddress(undefined)
+      setSmartAccountStatus('idle')
       return
     }
     let cancelled = false
+    setSmartAccountStatus('pending')
     void (async () => {
       try {
-        const smartAccount = await smartWalletClient.requestAccount({
-          signerAddress,
-          id: PIXELS_SMART_ACCOUNT_ID,
-          creationHint: { accountType: 'sma-b' },
-        })
+        const smartAccount = await Promise.race([
+          smartWalletClient.requestAccount({
+            signerAddress,
+            id: PIXELS_SMART_ACCOUNT_ID,
+            creationHint: { accountType: 'sma-b' },
+          }),
+          new Promise<never>((_, reject) => {
+            window.setTimeout(
+              () => reject(new Error('Smart account provisioning timed out')),
+              SMART_ACCOUNT_REQUEST_TIMEOUT_MS,
+            )
+          }),
+        ])
         if (!cancelled) {
           setSmartAccountAddress(smartAccount.address)
+          setSmartAccountStatus('ready')
           setError(null)
         }
       } catch (e) {
         if (!cancelled) {
           setSmartAccountAddress(undefined)
+          setSmartAccountStatus('error')
           setError(e instanceof Error ? e : new Error(String(e)))
         }
       }
@@ -158,7 +180,13 @@ function WalletContextInner({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [smartWalletClient, signerAddress])
+  }, [smartWalletClient, signerAddress, smartAccountRetryKey])
+
+  const retrySmartAccount = useCallback(() => {
+    setError(null)
+    setSmartAccountStatus('idle')
+    setSmartAccountRetryKey((key) => key + 1)
+  }, [])
 
   const connect = useCallback(() => {
     setError(null)
@@ -182,10 +210,8 @@ function WalletContextInner({ children }: { children: ReactNode }) {
     [activeWallet],
   )
 
-  const walletReady =
-    ready &&
-    walletsReady &&
-    (!authenticated || !ALCHEMY_API_KEY || Boolean(smartWalletClient && smartAccountAddress))
+  const walletReady = ready && walletsReady
+  const isProvisioningSmartAccount = smartAccountStatus === 'pending'
 
   const value = useMemo(
     () => ({
@@ -197,6 +223,9 @@ function WalletContextInner({ children }: { children: ReactNode }) {
       wallet: activeWallet,
       account: smartAccountAddress,
       signerAddress,
+      smartAccountStatus,
+      isProvisioningSmartAccount,
+      retrySmartAccount,
       user,
       walletClient,
       smartWalletClient,
@@ -214,6 +243,9 @@ function WalletContextInner({ children }: { children: ReactNode }) {
       activeWallet,
       smartAccountAddress,
       signerAddress,
+      smartAccountStatus,
+      isProvisioningSmartAccount,
+      retrySmartAccount,
       user,
       walletClient,
       smartWalletClient,
@@ -249,6 +281,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       wallet: null,
       account: undefined,
       signerAddress: undefined,
+      smartAccountStatus: 'idle',
+      isProvisioningSmartAccount: false,
+      retrySmartAccount: () => {},
       user: null,
       walletClient: null,
       smartWalletClient: null,
