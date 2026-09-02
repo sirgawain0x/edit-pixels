@@ -1,0 +1,12 @@
+# Cloud Build config for pixels-headless (repo root context, Dockerfile in headless/).
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - headless/Dockerfile
+      - -t
+      - ${_IMAGE}
+      - .
+images:
+  - ${_IMAGE}

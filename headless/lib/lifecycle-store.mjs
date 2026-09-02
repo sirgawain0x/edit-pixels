@@ -29,6 +29,11 @@ const MIME_BY_EXT = {
   '.json': 'application/lottie+json',
   '.lottie': 'application/lottie+json',
 }
+/** First registered extension wins when multiple extensions share a MIME type. */
+const EXT_BY_MIME = Object.entries(MIME_BY_EXT).reduce((extByMime, [extension, mimeType]) => {
+  if (!(mimeType in extByMime)) extByMime[mimeType] = extension
+  return extByMime
+}, {})
 
 export function assertPortableId(id, label = 'id') {
   assertSinglePathComponent(id, label)
@@ -456,6 +461,118 @@ export async function updateMediaMetadata(
     })
     return { ...(await getMediaResource(workspace, id)), revision: revisionOf(bytes) }
   })
+}
+
+function parseHttpMediaUrl(urlString) {
+  let parsed
+  try {
+    parsed = new URL(urlString)
+  } catch {
+    throw new HttpError(400, 'INVALID_URL', 'URL must be a valid http(s) address')
+  }
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new HttpError(400, 'INVALID_URL', 'URL must use http or https')
+  }
+  return parsed
+}
+
+// fallow-ignore-next-line complexity
+function pathExtensionFromUrl(urlString) {
+  if (!urlString) return ''
+  try {
+    const ext = path.extname(new URL(urlString).pathname).toLowerCase()
+    return ext && MIME_BY_EXT[ext] ? ext : ''
+  } catch {
+    return ''
+  }
+}
+
+// fallow-ignore-next-line complexity
+function resolveDownloadExtension(originalParsed, contentTypeHeader, finalUrlString) {
+  const contentType = contentTypeHeader?.split(';')[0].trim().toLowerCase()
+  const mimeExt =
+    contentType && EXT_BY_MIME[contentType] && MIME_BY_EXT[EXT_BY_MIME[contentType]]
+      ? EXT_BY_MIME[contentType]
+      : ''
+
+  let pathExt = pathExtensionFromUrl(finalUrlString)
+  if (!pathExt) pathExt = pathExtensionFromUrl(originalParsed.href)
+
+  let ext = pathExt
+  if (mimeExt) {
+    if (!pathExt) {
+      ext = mimeExt
+    } else if (MIME_BY_EXT[pathExt] !== contentType) {
+      ext = mimeExt
+    }
+  }
+
+  if (!ext || !MIME_BY_EXT[ext]) {
+    throw new HttpError(
+      415,
+      'UNSUPPORTED_MEDIA_TYPE',
+      'Could not determine supported media type from URL or response headers',
+    )
+  }
+  return ext
+}
+
+// fallow-ignore-next-line complexity
+async function readLimitedResponseBody(response, maxBytes) {
+  const contentLength = Number(response.headers.get('content-length'))
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    throw new HttpError(413, 'MEDIA_SIZE_LIMIT', 'Remote media exceeds size limit')
+  }
+  const reader = response.body?.getReader?.()
+  if (!reader) {
+    throw new HttpError(422, 'DOWNLOAD_FAILED', 'Response body is not readable')
+  }
+  const chunks = []
+  let size = 0
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    size += value.length
+    if (size > maxBytes) {
+      throw new HttpError(413, 'MEDIA_SIZE_LIMIT', 'Remote media exceeds size limit')
+    }
+    chunks.push(value)
+  }
+  return Buffer.concat(chunks)
+}
+
+/** Download remote media to a temp file for import-url staging. */
+export async function downloadMediaUrl(
+  urlString,
+  { maxBytes = 500 * 1024 ** 2 } = {},
+) {
+  const parsed = parseHttpMediaUrl(urlString)
+  const response = await fetch(urlString, { redirect: 'follow' })
+  if (!response.ok) {
+    throw new HttpError(
+      422,
+      'DOWNLOAD_FAILED',
+      `Failed to download media (${response.status})`,
+    )
+  }
+
+  const ext = resolveDownloadExtension(
+    parsed,
+    response.headers.get('content-type'),
+    response.url,
+  )
+  const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'pixels-url-import-'))
+  const target = path.join(tmpDir, `download${ext}`)
+
+  try {
+    const bytes = await readLimitedResponseBody(response, maxBytes)
+    await fs.promises.writeFile(target, bytes, { mode: 0o600 })
+  } catch (error) {
+    await fs.promises.rm(tmpDir, { recursive: true, force: true })
+    throw error
+  }
+
+  return { path: target, tmpDir, ext }
 }
 
 export async function stageLocalMedia(

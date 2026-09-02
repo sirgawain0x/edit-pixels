@@ -66,6 +66,7 @@ import {
   layoutRequestSchema,
   lifecycleEditRequestSchema,
   mediaImportRequestSchema,
+  mediaImportUrlRequestSchema,
   mediaProbeRequestSchema,
   projectCreateRequestSchema,
   projectSaveRequestSchema,
@@ -78,6 +79,7 @@ import {
   assertAtomicReplace,
   assertPortableId,
   createProjectResource,
+  downloadMediaUrl,
   getMediaResource,
   getProjectResource,
   listMediaResources,
@@ -130,6 +132,17 @@ const IMAGE_EXT_BY_MIME = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp
 /** Strip non-ASCII so a value is always a legal HTTP header (never 500s a response). */
 function asciiHeader(value) {
   return JSON.stringify(value).replace(/[^\t\x20-\x7E]/g, ' ')
+}
+
+/** Optional Bearer auth when PIXELS_API_KEY is set (required for network exposure). */
+// fallow-ignore-next-line complexity
+function assertApiKey(req, route) {
+  const expected = process.env.PIXELS_API_KEY?.trim()
+  if (!expected) return
+  if (route === 'GET /health') return
+  const header = req.headers.authorization ?? ''
+  if (header === `Bearer ${expected}`) return
+  throw new HttpError(401, 'UNAUTHORIZED', 'Missing or invalid Authorization Bearer token')
 }
 
 function sendJson(res, status, obj) {
@@ -470,6 +483,38 @@ async function main() {
     }
   }
 
+  // fallow-ignore-next-line complexity
+  const handleV1MediaImportUrl = async (req, res) => {
+    const body = validate(mediaImportUrlRequestSchema, await readJsonBody(req))
+    let downloaded
+    let staged
+    try {
+      downloaded = await downloadMediaUrl(body.url)
+      staged = await stageLocalMedia(workspace, downloaded.path, body.id)
+      const probe = await queue.enqueue(
+        () =>
+          session.page.evaluate((payload) => window.pixels.probeMedia(payload), {
+            url: mediaUrlOf(staged.id),
+            fileName: path.basename(staged.target),
+            mimeType: staged.mimeType,
+          }),
+        { timeoutMs: editTimeoutMs, kind: 'media-probe' },
+      )
+      const media = await commitStagedMedia(staged, probe, {
+        workspace,
+        projectId: body.project,
+      })
+      sendJson(res, 201, resourceEnvelope(media))
+    } catch (error) {
+      if (staged) await rollbackStagedMedia(staged)
+      throw error
+    } finally {
+      if (downloaded?.tmpDir) {
+        await fs.promises.rm(downloaded.tmpDir, { recursive: true, force: true }).catch(() => {})
+      }
+    }
+  }
+
   const handleV1MediaProbe = async (req, res, id) => {
     const body = validate(
       mediaProbeRequestSchema,
@@ -658,7 +703,9 @@ async function main() {
                               })
                           : route === 'POST /v1/media/import'
                             ? () => handleV1MediaImport(req, res)
-                            : mediaProbeMatch && req.method === 'POST'
+                            : route === 'POST /v1/media/import-url'
+                              ? () => handleV1MediaImportUrl(req, res)
+                              : mediaProbeMatch && req.method === 'POST'
                             ? () =>
                                 handleV1MediaProbe(
                                   req,
@@ -692,6 +739,22 @@ async function main() {
                                           : null
     if (!handler) {
       sendJson(res, 404, { error: `No route: ${route}` })
+      return
+    }
+    try {
+      assertApiKey(req, route)
+    } catch (error) {
+      if (!res.headersSent) {
+        const status = error instanceof HttpError ? error.statusCode : 401
+        sendJson(res, status, {
+          ok: false,
+          apiVersion: HEADLESS_API_VERSION,
+          error: {
+            code: error.code ?? 'UNAUTHORIZED',
+            message: error.message ?? 'Unauthorized',
+          },
+        })
+      }
       return
     }
     handler().catch((e) => {

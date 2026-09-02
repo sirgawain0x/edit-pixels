@@ -7,6 +7,7 @@ import {
   acquireWriterLock,
   atomicWriteFile,
   createProjectResource,
+  downloadMediaUrl,
   getProjectResource,
   listProjectResources,
   resolveHeadlessDir,
@@ -123,4 +124,76 @@ test('media staging streams supported files and rejects traversal ids', async (t
     () => stageLocalMedia(root, source, '../escape'),
     (error) => error.code === 'INVALID_ID',
   )
+})
+
+function mockFetchResponse({ contentType, bytes, url }) {
+  return {
+    ok: true,
+    url,
+    headers: {
+      get(name) {
+        if (name === 'content-type') return contentType
+        if (name === 'content-length') return String(bytes.length)
+        return null
+      },
+    },
+    body: {
+      getReader() {
+        let sent = false
+        return {
+          async read() {
+            if (sent) return { done: true }
+            sent = true
+            return { done: false, value: bytes }
+          },
+        }
+      },
+    },
+  }
+}
+
+test('downloadMediaUrl prefers canonical extension for shared MIME types', async (t) => {
+  const originalFetch = globalThis.fetch
+  t.after(() => {
+    globalThis.fetch = originalFetch
+  })
+  globalThis.fetch = async () => mockFetchResponse({ contentType: 'audio/ogg', bytes: Buffer.from([1, 2]) })
+
+  const withoutPathExt = await downloadMediaUrl('https://example.com/audio')
+  assert.equal(withoutPathExt.ext, '.ogg')
+
+  globalThis.fetch = async () => mockFetchResponse({ contentType: 'audio/ogg', bytes: Buffer.from([1, 2]) })
+  const withPathExt = await downloadMediaUrl('https://example.com/voice.opus')
+  assert.equal(withPathExt.ext, '.opus')
+
+  await fs.promises.rm(withoutPathExt.tmpDir, { recursive: true, force: true })
+  await fs.promises.rm(withPathExt.tmpDir, { recursive: true, force: true })
+})
+
+test('downloadMediaUrl uses final URL and Content-Type after redirects', async (t) => {
+  const originalFetch = globalThis.fetch
+  t.after(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  globalThis.fetch = async () =>
+    mockFetchResponse({
+      contentType: 'audio/ogg',
+      bytes: Buffer.from([1, 2]),
+      url: 'https://cdn.example.com/voice.ogg',
+    })
+  const redirected = await downloadMediaUrl('https://example.com/download.html')
+  assert.equal(redirected.ext, '.ogg')
+
+  globalThis.fetch = async () =>
+    mockFetchResponse({
+      contentType: 'audio/ogg',
+      bytes: Buffer.from([1, 2]),
+      url: 'https://example.com/download.html',
+    })
+  const misleadingPath = await downloadMediaUrl('https://example.com/download.html')
+  assert.equal(misleadingPath.ext, '.ogg')
+
+  await fs.promises.rm(redirected.tmpDir, { recursive: true, force: true })
+  await fs.promises.rm(misleadingPath.tmpDir, { recursive: true, force: true })
 })
