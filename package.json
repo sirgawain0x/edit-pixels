@@ -61,6 +61,7 @@
     "@daydreamlive/react": "^0.3.2",
     "@daydreamlive/sdk": "^0.1.1",
     "@google-cloud/firestore": "9.0.0",
+    "@google-cloud/storage": "7.22.0",
     "@hookform/resolvers": "5.2.2",
     "@huggingface/transformers": "4.1.0",
     "@lottiefiles/dotlottie-web": "0.76.0",

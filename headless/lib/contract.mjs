@@ -566,6 +566,33 @@ export const mediaImportUrlRequestSchema = z
   })
   .strict()
 
+export const workspaceSyncRequestSchema = z
+  .object({
+    direction: z.enum(['hydrate', 'dehydrate']),
+    gs_prefix: z
+      .string()
+      .regex(/^gs:\/\/[^/]+\/.+/, 'gs_prefix must be gs://bucket/path'),
+    tenant_id: z.string().optional(),
+    session_id: z.string().optional(),
+  })
+  .strict()
+
+export const c2paEmbedRequestSchema = z
+  .object({
+    master_url: z.string().url(),
+    creator_did: z.string().min(1),
+    cert_id: z.string().optional(),
+    ingredients: z
+      .array(
+        z.object({
+          title: z.string(),
+          url: z.string().url(),
+        }),
+      )
+      .optional(),
+  })
+  .strict()
+
 const RENDER_OPTIONS = {
   codecs: ['h264', 'h265', 'vp9', 'vp8', 'av1'],
   containers: ['mp4', 'webm', 'mov', 'mkv', 'mp3', 'wav', 'm4a'],

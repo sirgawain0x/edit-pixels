@@ -72,8 +72,15 @@ import {
   projectSaveRequestSchema,
   projectUpdateRequestSchema,
   renderRequestSchema,
+  workspaceSyncRequestSchema,
+  c2paEmbedRequestSchema,
   validate,
 } from './lib/contract.mjs'
+import {
+  hydrateWorkspace,
+  dehydrateWorkspace,
+} from './lib/gcs-workspace.mjs'
+import { embedC2paManifest } from './lib/c2pa-embed.mjs'
 import {
   acquireWriterLock,
   assertAtomicReplace,
@@ -515,6 +522,35 @@ async function main() {
     }
   }
 
+  const handleV1WorkspaceSync = async (req, res) => {
+    const body = validate(workspaceSyncRequestSchema, await readJsonBody(req))
+    const result =
+      body.direction === 'hydrate'
+        ? await hydrateWorkspace({ workspaceRoot: workspace, gsPrefix: body.gs_prefix })
+        : await dehydrateWorkspace({ workspaceRoot: workspace, gsPrefix: body.gs_prefix })
+    sendJson(res, 200, {
+      ok: true,
+      apiVersion: HEADLESS_API_VERSION,
+      ...result,
+    })
+  }
+
+  const handleV1C2paEmbed = async (req, res) => {
+    const body = validate(c2paEmbedRequestSchema, await readJsonBody(req))
+    const { buffer, mimeType } = await embedC2paManifest({
+      masterUrl: body.master_url,
+      creatorDid: body.creator_did,
+      ingredientUrls: body.ingredients,
+      certId: body.cert_id,
+    })
+    res.writeHead(200, {
+      'Content-Type': mimeType,
+      'Content-Length': buffer.length,
+      'Content-Disposition': 'attachment; filename="signed-master.mp4"',
+    })
+    res.end(buffer)
+  }
+
   const handleV1MediaProbe = async (req, res, id) => {
     const body = validate(
       mediaProbeRequestSchema,
@@ -705,7 +741,11 @@ async function main() {
                             ? () => handleV1MediaImport(req, res)
                             : route === 'POST /v1/media/import-url'
                               ? () => handleV1MediaImportUrl(req, res)
-                              : mediaProbeMatch && req.method === 'POST'
+                              : route === 'POST /v1/workspace/sync'
+                                ? () => handleV1WorkspaceSync(req, res)
+                                : route === 'POST /v1/c2pa/embed'
+                                  ? () => handleV1C2paEmbed(req, res)
+                                  : mediaProbeMatch && req.method === 'POST'
                             ? () =>
                                 handleV1MediaProbe(
                                   req,

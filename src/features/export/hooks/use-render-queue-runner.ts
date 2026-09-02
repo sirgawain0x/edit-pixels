@@ -13,6 +13,7 @@
 
 import { useEffect } from 'react'
 import { createLogger, createOperationId } from '@/shared/logging/logger'
+import { saveExportFile } from '@/infrastructure/storage'
 import { getNextQueuedJob, useRenderQueueStore } from '../stores/render-queue-store'
 import type { RenderJob } from '../stores/render-queue-store'
 import { registerJobController, unregisterJobController } from '../utils/render-queue-control'
@@ -50,13 +51,11 @@ async function renderQueuedJob(job: RenderJob): Promise<void> {
       { trySmartCopyExport },
       { convertTimelineToComposition },
       { resolveMediaUrls },
-      { saveExportFile },
     ] = await Promise.all([
       import('../utils/render-pipeline'),
       import('../utils/smart-copy'),
       import('../utils/timeline-to-composition'),
       import('@/features/export/deps/media-library'),
-      import('@/infrastructure/storage'),
     ])
 
     const { snapshot } = job

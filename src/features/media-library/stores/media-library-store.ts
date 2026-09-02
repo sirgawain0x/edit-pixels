@@ -14,6 +14,7 @@ import { createLogger, createOperationId } from '@/shared/logging/logger'
 import { proxyService } from '../services/proxy-service'
 import { frameInterpolationService } from '../services/frame-interpolation-service'
 import { upscaleService } from '../services/upscale-service'
+import { importFilmstripCache } from '../deps/timeline-services'
 import { getSharedProxyKey } from '../utils/proxy-key'
 import { createImportActions } from './media-import-actions'
 import { createDeleteActions } from './media-delete-actions'
@@ -715,7 +716,6 @@ if (!hotStore) {
 
   proxyService.setMediaResolver((mediaId) => useMediaLibraryStore.getState().mediaById[mediaId])
   proxyService.setFilmstripPrewarm(async (mediaId, proxyFile, duration, window) => {
-    const { importFilmstripCache } = await import('../deps/timeline-services')
     const { filmstripCache } = await importFilmstripCache()
     await filmstripCache.prewarmPriorityWindow(mediaId, proxyFile, duration, window)
   })

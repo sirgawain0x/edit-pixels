@@ -58,6 +58,13 @@ import {
   importWaveformCache,
 } from '@/features/editor/deps/timeline-cache'
 import { clearPreviewAudioCache } from '@/features/editor/deps/composition-runtime'
+import {
+  deleteDecodedPreviewAudio,
+  deleteGifFrames,
+  deleteWaveform,
+  saveThumbnail,
+  updateMedia,
+} from '@/infrastructure/storage'
 import { CAPTION_STYLE_PRESETS } from '@/shared/typography/caption-style-presets'
 import * as SelectPrimitive from '@radix-ui/react-select'
 import { useUiSoundStore } from '@/shared/state/ui-sound-store'
@@ -228,19 +235,13 @@ async function clearProjectCaches(
 ): Promise<BatchActionResult> {
   if (mediaItems.length === 0) return createBatchResult(0, [])
 
-  const [
-    { deleteWaveform, deleteGifFrames, deleteDecodedPreviewAudio },
-    { deletePreviewAudioConform },
-    { gifFrameCache },
-    { filmstripCache },
-    { waveformCache },
-  ] = await Promise.all([
-    import('@/infrastructure/storage'),
-    import('@/features/editor/deps/composition-runtime'),
-    importGifFrameCache(),
-    importFilmstripCache(),
-    importWaveformCache(),
-  ])
+  const [{ deletePreviewAudioConform }, { gifFrameCache }, { filmstripCache }, { waveformCache }] =
+    await Promise.all([
+      import('@/features/editor/deps/composition-runtime'),
+      importGifFrameCache(),
+      importFilmstripCache(),
+      importWaveformCache(),
+    ])
 
   // Clear in-memory preview audio cache (not keyed per-media, so clear all)
   clearPreviewAudioCache()
@@ -315,12 +316,10 @@ async function regenerateProjectThumbnails(
 ): Promise<BatchActionResult> {
   if (mediaItems.length === 0) return createBatchResult(0, [])
 
-  const [{ mediaLibraryService }, { generateThumbnail }, { saveThumbnail, updateMedia }] =
-    await Promise.all([
-      importMediaLibraryService(),
-      importThumbnailGenerator(),
-      import('@/infrastructure/storage'),
-    ])
+  const [{ mediaLibraryService }, { generateThumbnail }] = await Promise.all([
+    importMediaLibraryService(),
+    importThumbnailGenerator(),
+  ])
 
   let succeeded = 0
   const failedItems: string[] = []

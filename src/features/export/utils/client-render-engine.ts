@@ -34,6 +34,16 @@ import { createLogger } from '@/shared/logging/logger'
 import { blobUrlManager } from '@/infrastructure/browser/blob-url-manager'
 import { resolveMediaUrl, resolveProxyUrl } from '@/features/export/deps/media-library'
 import { VideoSourcePool } from '@/features/export/deps/player-contract'
+import {
+  getCachedActivePreviewFallbackBitmap,
+  getCachedPredecodedBitmap,
+  isActivePreviewFrameCurrent,
+  isActivePreviewFrameDecodeReady,
+  isActivePreviewFrameSuperseded,
+  isActivePreviewSourceTarget,
+  isActivePreviewTargetSuperseded,
+  waitForInflightPredecodedBitmap,
+} from '@/features/export/deps/preview-contract'
 import { recordPreviewCompositionRender } from '@/shared/logging/preview-scrub-performance'
 import { recordPreviewCanvasPool } from '@/shared/logging/preview-scrub-performance'
 
@@ -1498,31 +1508,15 @@ export async function createCompositionRenderer(
   // scrub may call renderFrame immediately; a fire-and-forget import lets that
   // first frame enter blocking MediaBunny before cancellation is wired.
   if (renderMode === 'preview' || isComparisonMode) {
-    try {
-      const {
-        getCachedPredecodedBitmap,
-        getCachedActivePreviewFallbackBitmap,
-        isActivePreviewFrameCurrent,
-        isActivePreviewFrameDecodeReady,
-        isActivePreviewSourceTarget,
-        isActivePreviewFrameSuperseded,
-        isActivePreviewTargetSuperseded,
-        waitForInflightPredecodedBitmap,
-      } = await import('@/features/export/deps/preview-contract')
-      itemRenderContext.getCachedPredecodedBitmap = getCachedPredecodedBitmap
-      itemRenderContext.waitForInflightPredecodedBitmap = waitForInflightPredecodedBitmap
-      if (renderMode === 'preview') {
-        itemRenderContext.getCachedActivePreviewFallbackBitmap =
-          getCachedActivePreviewFallbackBitmap
-        itemRenderContext.isActivePreviewFrameCurrent = isActivePreviewFrameCurrent
-        itemRenderContext.isActivePreviewFrameDecodeReady = isActivePreviewFrameDecodeReady
-        itemRenderContext.isActivePreviewSourceTarget = isActivePreviewSourceTarget
-        itemRenderContext.isActivePreviewFrameSuperseded = isActivePreviewFrameSuperseded
-        itemRenderContext.isActivePreviewTargetSuperseded = isActivePreviewTargetSuperseded
-      }
-    } catch {
-      // Preview can still fall back to its ordinary media path if the optional
-      // worker adapter is unavailable in a constrained runtime.
+    itemRenderContext.getCachedPredecodedBitmap = getCachedPredecodedBitmap
+    itemRenderContext.waitForInflightPredecodedBitmap = waitForInflightPredecodedBitmap
+    if (renderMode === 'preview') {
+      itemRenderContext.getCachedActivePreviewFallbackBitmap = getCachedActivePreviewFallbackBitmap
+      itemRenderContext.isActivePreviewFrameCurrent = isActivePreviewFrameCurrent
+      itemRenderContext.isActivePreviewFrameDecodeReady = isActivePreviewFrameDecodeReady
+      itemRenderContext.isActivePreviewSourceTarget = isActivePreviewSourceTarget
+      itemRenderContext.isActivePreviewFrameSuperseded = isActivePreviewFrameSuperseded
+      itemRenderContext.isActivePreviewTargetSuperseded = isActivePreviewTargetSuperseded
     }
   }
 
