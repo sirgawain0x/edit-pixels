@@ -477,10 +477,36 @@ function parseHttpMediaUrl(urlString) {
 }
 
 // fallow-ignore-next-line complexity
-function resolveDownloadExtension(parsed, contentTypeHeader) {
-  let ext = path.extname(parsed.pathname).toLowerCase()
+function pathExtensionFromUrl(urlString) {
+  if (!urlString) return ''
+  try {
+    const ext = path.extname(new URL(urlString).pathname).toLowerCase()
+    return ext && MIME_BY_EXT[ext] ? ext : ''
+  } catch {
+    return ''
+  }
+}
+
+// fallow-ignore-next-line complexity
+function resolveDownloadExtension(originalParsed, contentTypeHeader, finalUrlString) {
   const contentType = contentTypeHeader?.split(';')[0].trim().toLowerCase()
-  if (!ext && contentType) ext = EXT_BY_MIME[contentType] ?? ''
+  const mimeExt =
+    contentType && EXT_BY_MIME[contentType] && MIME_BY_EXT[EXT_BY_MIME[contentType]]
+      ? EXT_BY_MIME[contentType]
+      : ''
+
+  let pathExt = pathExtensionFromUrl(finalUrlString)
+  if (!pathExt) pathExt = pathExtensionFromUrl(originalParsed.href)
+
+  let ext = pathExt
+  if (mimeExt) {
+    if (!pathExt) {
+      ext = mimeExt
+    } else if (MIME_BY_EXT[pathExt] !== contentType) {
+      ext = mimeExt
+    }
+  }
+
   if (!ext || !MIME_BY_EXT[ext]) {
     throw new HttpError(
       415,
@@ -530,7 +556,11 @@ export async function downloadMediaUrl(
     )
   }
 
-  const ext = resolveDownloadExtension(parsed, response.headers.get('content-type'))
+  const ext = resolveDownloadExtension(
+    parsed,
+    response.headers.get('content-type'),
+    response.url,
+  )
   const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'pixels-url-import-'))
   const target = path.join(tmpDir, `download${ext}`)
 
