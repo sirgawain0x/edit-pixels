@@ -64,6 +64,9 @@ const PRIVY_APP_ID = import.meta.env.VITE_PRIVY_APP_ID
 const PRIVY_CLIENT_ID = import.meta.env.VITE_PRIVY_CLIENT_ID
 const isPrivyConfigured = Boolean(PRIVY_APP_ID)
 
+/** Stable Alchemy smart-account id — forces ERC-4337 (sma-b), not EIP-7702. */
+const PIXELS_SMART_ACCOUNT_ID = 'pixels-sca'
+
 function WalletContextInner({ children }: { children: ReactNode }) {
   const { ready, authenticated, user, login, logout, connectWallet, getAccessToken } = usePrivy()
   const { wallets, ready: walletsReady } = useWallets()
@@ -135,7 +138,11 @@ function WalletContextInner({ children }: { children: ReactNode }) {
     let cancelled = false
     void (async () => {
       try {
-        const smartAccount = await bootstrapSmartWalletClient.requestAccount({ signerAddress })
+        const smartAccount = await bootstrapSmartWalletClient.requestAccount({
+          signerAddress,
+          id: PIXELS_SMART_ACCOUNT_ID,
+          creationHint: { accountType: 'sma-b' },
+        })
         if (!cancelled) {
           setSmartAccountAddress(smartAccount.address)
           setError(null)
