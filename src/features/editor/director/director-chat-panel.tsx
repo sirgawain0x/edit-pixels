@@ -403,19 +403,12 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
                           'Drop a track onto the timeline first. The Director builds beat-synced storyboards from audio already in your edit.',
                       })}
                 </p>
-                {isPremiumMember ? (
-                  <p className="text-[11px] text-emerald-300/90">
-                    {t('director.empty.premium', {
-                      defaultValue: 'Pro rate active — half-price Director minutes.',
-                    })}
-                  </p>
-                ) : (
-                  <p className="text-[11px] text-muted-foreground/90">
-                    {t('director.empty.proValue', {
-                      defaultValue: 'Cloud Director · beat-synced research · Pro members pay half.',
-                    })}
-                  </p>
-                )}
+                <p className="text-[11px] text-muted-foreground/90">
+                  {t('director.empty.tagline', {
+                    defaultValue:
+                      'Cloud Director · beat-synced research · pay per minute of audio.',
+                  })}
+                </p>
               </div>
 
               {walletConfigured && authenticated && !hasCrtvai && <DirectorSessionPacks />}

@@ -20,15 +20,17 @@ export interface SendOpsResult {
 }
 
 export function useSmartWalletOps() {
-  const { smartWalletClient, chain } = useWalletContext()
+  const { smartWalletClient, chain, account } = useWalletContext()
 
   const sendOps = useCallback(
     async (ops: SmartWalletOp[]): Promise<SendOpsResult> => {
-      if (!smartWalletClient) throw new Error('Wallet not ready')
+      if (!smartWalletClient) throw new Error('Smart wallet not ready')
+      if (!account) throw new Error('Smart account not provisioned yet')
 
       const capabilities = chain ? buildGasPaymasterCapabilities(chain.id) : null
 
       let prepared = await smartWalletClient.prepareCalls({
+        account,
         calls: ops.map((op) => ({
           to: op.target,
           data: op.data,
@@ -43,6 +45,7 @@ export function useSmartWalletOps() {
         log.warn('Paymaster requested ERC-20 permit; signing and re-preparing')
         const signature = await smartWalletClient.signSignatureRequest(prepared.signatureRequest)
         prepared = await smartWalletClient.prepareCalls({
+          account,
           calls: prepared.modifiedRequest.calls,
           capabilities: prepared.modifiedRequest.capabilities,
           paymasterPermitSignature: signature,
@@ -65,8 +68,8 @@ export function useSmartWalletOps() {
       if (!txHash) throw new Error('Transaction confirmed without a receipt')
       return { txHash, txHashes }
     },
-    [smartWalletClient, chain],
+    [smartWalletClient, chain, account],
   )
 
-  return { sendOps, ready: Boolean(smartWalletClient) }
+  return { sendOps, ready: Boolean(smartWalletClient && account) }
 }

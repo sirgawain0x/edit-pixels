@@ -50,21 +50,6 @@ export function DirectorInvoiceCard({
         })}
       </p>
 
-      {quote.tier === 'premium' ? (
-        <p className="mt-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1.5 text-[11px] text-emerald-200/90">
-          {t('director.invoice.premium', {
-            defaultValue: 'Pro rate — Creative Org / Pixels Premium members save 50% vs retail.',
-          })}
-        </p>
-      ) : (
-        <p className="mt-2 rounded-md border border-border/70 bg-secondary/40 px-2 py-1.5 text-[11px] text-muted-foreground">
-          {t('director.invoice.proUpsell', {
-            defaultValue:
-              'Pro tip: Creative Org DAO or Pixels Premium unlocks half-price Director minutes plus cloud research tools.',
-          })}
-        </p>
-      )}
-
       <dl className="mt-3 space-y-1.5 font-mono text-[11px]">
         <div className="flex justify-between gap-3">
           <dt className="text-muted-foreground">Audio</dt>
@@ -77,7 +62,6 @@ export function DirectorInvoiceCard({
           <dt className="text-muted-foreground">Rate</dt>
           <dd className="text-foreground">
             {(quote.usdc6PerMinute / 1_000_000).toFixed(2)} USD / min
-            <span className="ml-1 text-muted-foreground">({quote.tier})</span>
           </dd>
         </div>
         <div className="flex justify-between gap-3 border-t border-border/60 pt-1.5">
