@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { isAddress } from 'viem'
+import { isAddress, parseUnits } from 'viem'
 import { useQueryClient } from '@tanstack/react-query'
 import { base } from 'viem/chains'
 import { useWalletContext } from '@/context/wallet-context'
 import { useSmartWalletOps } from '@/hooks/use-smart-wallet-ops'
 import { useUsdcBalance } from '@/hooks/use-usdc-balance'
 import { useCrtvaiBalance } from '@/hooks/use-crtvai-balance'
-import { getErrorMessage, invalidateWalletTokenBalances } from '@/hooks/invalidate-wallet-balances'
-import { USDC_ADDRESS_BY_CHAIN_ID } from '@/config/chains'
-import { CRTVAI_DECIMALS, CRTVAI_METOKEN_ADDRESS, USDC_DECIMALS } from '@/config/metoken'
+import { getErrorMessage, invalidateUsdcBalance } from '@/hooks/invalidate-wallet-balances'
+import { CRTVAI_DECIMALS, USDC_DECIMALS } from '@/config/metoken'
 import { getPurchaseGasBufferUsdc6 } from '@/config/gas-sponsorship'
-import { buildErc20TransferOp } from '@/features/wallet/api/build-erc20-transfer-op'
+import { submitTokenSend, tokenSendErrorMessage } from '@/features/wallet/api/submit-token-send'
+import { moveUsdcToSmartWallet } from '@/hooks/usdc-wallet-transfers'
 import {
   computeMaxSendableWei,
   formatMaxSendAmount,
@@ -22,15 +22,12 @@ import {
 
 const BASE_CHAIN_ID = base.id
 
-function truncateTxHash(hash: string): string {
-  return `${hash.slice(0, 8)}…${hash.slice(-6)}`
-}
-
 export function useSendTokenForm(open: boolean, onOpenChange: (open: boolean) => void) {
-  const { account, chain } = useWalletContext()
+  const { account, signerAddress, chain, walletClient } = useWalletContext()
   const queryClient = useQueryClient()
   const { sendOps, ready: walletReady } = useSmartWalletOps()
   const { balance: usdcBalance, formatted: usdcFormatted } = useUsdcBalance(chain, account)
+  const { balance: signerUsdcBalance } = useUsdcBalance(chain, signerAddress)
   const {
     balance: crtvaiBalance,
     formatted: crtvaiFormatted,
@@ -41,6 +38,7 @@ export function useSendTokenForm(open: boolean, onOpenChange: (open: boolean) =>
   const [recipient, setRecipient] = useState('')
   const [amountInput, setAmountInput] = useState('')
   const [sending, setSending] = useState(false)
+  const [transferring, setTransferring] = useState(false)
 
   const onBase = chain?.id === BASE_CHAIN_ID
   const crtvaiAvailable = onBase
@@ -83,31 +81,96 @@ export function useSendTokenForm(open: boolean, onOpenChange: (open: boolean) =>
     [amountWei, token, crtvaiBalance, usdcBalance, gasBufferUsdc6],
   )
 
+  const canSendFromSigner = useMemo(() => {
+    if (token !== 'usdc' || !amountWei || !signerUsdcBalance || !onBase) return false
+    try {
+      const signerRaw = parseUnits(signerUsdcBalance, USDC_DECIMALS)
+      return signerRaw >= amountWei && insufficientBalance
+    } catch {
+      return false
+    }
+  }, [token, amountWei, signerUsdcBalance, onBase, insufficientBalance])
+
+  const needsMoveToSmartWallet = useMemo(() => {
+    if (token !== 'usdc' || !amountWei || !account || !signerUsdcBalance || !usdcBalance)
+      return false
+    try {
+      const smartRaw = parseUnits(usdcBalance, USDC_DECIMALS)
+      const signerRaw = parseUnits(signerUsdcBalance, USDC_DECIMALS)
+      const required = amountWei + BigInt(gasBufferUsdc6)
+      return smartRaw < required && signerRaw > 0n && !canSendFromSigner
+    } catch {
+      return false
+    }
+  }, [token, amountWei, account, signerUsdcBalance, usdcBalance, gasBufferUsdc6, canSendFromSigner])
+
   const handleMax = useCallback(() => {
     setAmountInput(formatMaxSendAmount(maxSendableWei, decimals))
   }, [maxSendableWei, decimals])
 
-  const handleSend = useCallback(async () => {
-    if (!account || !chain || !amountWei || !recipientValid || sendToSelf) return
-
-    const tokenAddress =
-      token === 'usdc' ? USDC_ADDRESS_BY_CHAIN_ID[chain.id] : CRTVAI_METOKEN_ADDRESS
-    if (!tokenAddress) {
-      toast.error('Token not available on this network')
+  const handleMoveUsdcToSmartWallet = useCallback(async () => {
+    if (!walletClient || !account || !signerAddress || !signerUsdcBalance || !chain || !amountWei)
       return
+
+    setTransferring(true)
+    try {
+      const requiredUsdc6 = Number(amountWei + BigInt(gasBufferUsdc6))
+      await moveUsdcToSmartWallet({
+        walletClient,
+        chain,
+        smartAccount: account,
+        signerAddress,
+        signerUsdcBalance,
+        smartUsdcBalance: usdcBalance,
+        requiredUsdc6,
+      })
+      toast.success('USDC moved to smart wallet')
+      invalidateUsdcBalance(queryClient, chain.id, account)
+      invalidateUsdcBalance(queryClient, chain.id, signerAddress)
+    } catch (error) {
+      toast.error(`Transfer failed: ${getErrorMessage(error)}`)
+    } finally {
+      setTransferring(false)
     }
+  }, [
+    walletClient,
+    account,
+    signerAddress,
+    signerUsdcBalance,
+    chain,
+    amountWei,
+    gasBufferUsdc6,
+    usdcBalance,
+    queryClient,
+  ])
+
+  const handleSend = useCallback(async () => {
+    if (!chain || !amountWei || !recipientValid || sendToSelf) return
+    if (!canSendFromSigner && !account) return
 
     setSending(true)
     try {
-      const op = buildErc20TransferOp(tokenAddress, recipient, amountWei)
-      const { txHash } = await sendOps([op])
-      toast.success(`Sent ${amountInput} ${tokenSymbol} · ${truncateTxHash(txHash)}`)
-      setRecipient('')
-      setAmountInput('')
-      onOpenChange(false)
-      invalidateWalletTokenBalances(queryClient, chain.id, account)
+      await submitTokenSend({
+        token,
+        chain,
+        amountWei,
+        recipient,
+        canSendFromSigner,
+        walletClient,
+        signerAddress,
+        account,
+        sendOps,
+        queryClient,
+        amountInput,
+        tokenSymbol,
+        onOpenChange,
+        clearForm: () => {
+          setRecipient('')
+          setAmountInput('')
+        },
+      })
     } catch (error) {
-      toast.error(`Send failed: ${getErrorMessage(error)}`)
+      toast.error(tokenSendErrorMessage(error))
     } finally {
       setSending(false)
     }
@@ -118,6 +181,9 @@ export function useSendTokenForm(open: boolean, onOpenChange: (open: boolean) =>
     recipient,
     recipientValid,
     sendToSelf,
+    canSendFromSigner,
+    walletClient,
+    signerAddress,
     token,
     sendOps,
     amountInput,
@@ -127,12 +193,13 @@ export function useSendTokenForm(open: boolean, onOpenChange: (open: boolean) =>
   ])
 
   const canSend =
-    walletReady &&
+    (walletReady || canSendFromSigner) &&
     recipientValid &&
     !sendToSelf &&
     amountWei !== null &&
-    !insufficientBalance &&
+    (!insufficientBalance || canSendFromSigner) &&
     !sending &&
+    !transferring &&
     (token !== 'crtvai' || onBase)
 
   return {
@@ -154,6 +221,10 @@ export function useSendTokenForm(open: boolean, onOpenChange: (open: boolean) =>
     onBase,
     handleMax,
     handleSend,
+    handleMoveUsdcToSmartWallet,
     canSend,
+    canSendFromSigner,
+    needsMoveToSmartWallet,
+    transferring,
   }
 }
