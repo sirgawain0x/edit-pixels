@@ -147,6 +147,9 @@
     "typescript": "5.9.3",
     "vite-plus": "0.2.4"
   },
+  "optionalDependencies": {
+    "@voidzero-dev/vite-plus-linux-x64-gnu": "0.2.4"
+  },
   "overrides": {
     "esbuild": "0.28.1",
     "typescript": "5.9.3"
