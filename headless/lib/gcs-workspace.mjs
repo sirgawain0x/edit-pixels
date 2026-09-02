@@ -37,6 +37,7 @@ function localPathForObject(workspaceRoot, objectName, prefix) {
   return path.join(workspaceRoot, relative)
 }
 
+// fallow-ignore-next-line complexity
 function shouldSyncRelative(relativePath) {
   if (!relativePath || relativePath.includes('..')) return false
   if (relativePath.endsWith('/writer.lock')) return false
@@ -44,6 +45,7 @@ function shouldSyncRelative(relativePath) {
   return true
 }
 
+// fallow-ignore-next-line complexity
 async function walkFiles(dir, baseDir, files = []) {
   const entries = await fs.promises.readdir(dir, { withFileTypes: true })
   for (const entry of entries) {

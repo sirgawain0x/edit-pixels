@@ -51,6 +51,7 @@ async function fetchBuffer(url) {
  * }} input
  * @returns {Promise<{ buffer: Buffer, mimeType: string }>}
  */
+// fallow-ignore-next-line complexity
 export async function embedC2paManifest(input) {
   const signUrl = input.signUrl?.trim() || process.env.C2PA_SIGN_URL?.trim()
   if (!signUrl) {

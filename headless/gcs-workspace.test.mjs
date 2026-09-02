@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { parseGsPrefix, buildWorkspaceGsPrefix } from './gcs-workspace.mjs'
+import { parseGsPrefix, buildWorkspaceGsPrefix } from './lib/gcs-workspace.mjs'
 
 test('parseGsPrefix extracts bucket and prefix', () => {
   assert.deepEqual(parseGsPrefix('gs://my-bucket/workspaces/director/s1'), {
