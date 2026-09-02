@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { Copy, DollarSign, Sparkles, Wallet } from 'lucide-react'
+import { ArrowUpRight, Copy, DollarSign, QrCode, Sparkles, Wallet } from 'lucide-react'
 import { useWalletContext } from '@/context/wallet-context'
 import { Button } from '@/components/ui/button'
 import {
@@ -21,6 +21,7 @@ import { useUsdcBalance } from '@/hooks/use-usdc-balance'
 import { useCrtvaiBalance } from '@/hooks/use-crtvai-balance'
 import { BuyUsdcOnrampModal } from '@/features/onramp'
 import { BuyCreditsModal } from '@/features/credits'
+import { ReceiveFundsModal, SendTokenModal } from '@/features/wallet'
 import { cn } from '@/shared/ui/cn'
 
 function truncateAddress(address: string): string {
@@ -47,19 +48,19 @@ export function WalletConnectButton({
     configured,
     connect,
     disconnect,
-    wallet,
+    account,
     chain,
     switchChain,
     isConnecting,
   } = useWalletContext()
-  const address = wallet?.address
-  const { formatted: usdcFormatted } = useUsdcBalance(chain, address as `0x${string}` | undefined)
-  const { formatted: crtvaiFormatted, symbol: crtvaiSymbol } = useCrtvaiBalance(
-    address as `0x${string}` | undefined,
-  )
+  const address = account
+  const { formatted: usdcFormatted } = useUsdcBalance(chain, address)
+  const { formatted: crtvaiFormatted, symbol: crtvaiSymbol } = useCrtvaiBalance(address)
   const [copied, setCopied] = useState(false)
   const [buyCreditsOpen, setBuyCreditsOpen] = useState(false)
   const [buyOnrampOpen, setBuyOnrampOpen] = useState(false)
+  const [receiveOpen, setReceiveOpen] = useState(false)
+  const [sendOpen, setSendOpen] = useState(false)
 
   const handleCopyAddress = useCallback(() => {
     if (!address) return
@@ -70,7 +71,7 @@ export function WalletConnectButton({
   }, [address])
 
   const isInitializing = configured && (!ready || isConnecting)
-  const isConnected = Boolean(authenticated && wallet)
+  const isConnected = Boolean(authenticated && account)
 
   if (isInitializing) {
     return (
@@ -133,6 +134,24 @@ export function WalletConnectButton({
             {crtvaiSymbol}: {crtvaiFormatted}
           </DropdownMenuItem>
           <DropdownMenuItem
+            onClick={() => setReceiveOpen(true)}
+            className="flex cursor-pointer items-center gap-2"
+            aria-label="Receive funds"
+          >
+            <QrCode className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+            Receive
+          </DropdownMenuItem>
+
+          <DropdownMenuItem
+            onClick={() => setSendOpen(true)}
+            className="flex cursor-pointer items-center gap-2"
+            aria-label="Send tokens"
+          >
+            <ArrowUpRight className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+            Send
+          </DropdownMenuItem>
+
+          <DropdownMenuItem
             onClick={() => setBuyOnrampOpen(true)}
             className="flex cursor-pointer items-center gap-2"
             aria-label="Buy USDC"
@@ -180,6 +199,8 @@ export function WalletConnectButton({
 
       <BuyCreditsModal open={buyCreditsOpen} onOpenChange={setBuyCreditsOpen} />
       <BuyUsdcOnrampModal open={buyOnrampOpen} onOpenChange={setBuyOnrampOpen} />
+      <ReceiveFundsModal open={receiveOpen} onOpenChange={setReceiveOpen} />
+      <SendTokenModal open={sendOpen} onOpenChange={setSendOpen} />
     </>
   )
 }

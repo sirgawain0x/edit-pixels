@@ -8,6 +8,7 @@ import { useSmartWalletOps } from '@/hooks/use-smart-wallet-ops'
 import { useUsdcBalance } from '@/hooks/use-usdc-balance'
 import { SETTLEMENT_CREDIT_PACKS, type CreditPackDefinition } from '@/config/credit-pack-settlement'
 import { buildSettlePackOps } from '@/features/credits/api/settle-pack'
+import { totalUsdcForPurchase } from '@/features/credits/usdc-for-purchase'
 import { base } from 'viem/chains'
 import { cn } from '@/shared/ui/cn'
 
@@ -58,6 +59,7 @@ export function CreditPackCheckout() {
         <PackCard
           key={pack.id}
           pack={pack}
+          chainId={chain?.id}
           onBase={onBase}
           walletReady={walletReady}
           usdcBalance={usdcBalance}
@@ -71,6 +73,7 @@ export function CreditPackCheckout() {
 
 function PackCard({
   pack,
+  chainId,
   onBase,
   walletReady,
   usdcBalance,
@@ -78,6 +81,7 @@ function PackCard({
   onBuy,
 }: {
   pack: CreditPackDefinition
+  chainId: number | undefined
   onBase: boolean
   walletReady: boolean
   usdcBalance: string | null
@@ -87,9 +91,10 @@ function PackCard({
   const priceUsd = (pack.usdc6 / 1_000_000).toFixed(0)
 
   const insufficient = useMemo(() => {
-    if (usdcBalance === null) return false
-    return Number(usdcBalance) < pack.usdc6 / 1_000_000
-  }, [usdcBalance, pack.usdc6])
+    if (usdcBalance === null || !chainId) return false
+    const requiredUsd = totalUsdcForPurchase(pack.usdc6, chainId) / 1_000_000
+    return Number(usdcBalance) < requiredUsd
+  }, [usdcBalance, pack.usdc6, chainId])
 
   const disabled = !onBase || !walletReady || settling || insufficient
 
@@ -107,7 +112,9 @@ function PackCard({
 
       {!onBase && <p className="mt-2 text-[11px] text-amber-500">Switch to Base to buy.</p>}
       {insufficient && (
-        <p className="mt-2 text-[11px] text-destructive">Insufficient USDC balance.</p>
+        <p className="mt-2 text-[11px] text-destructive">
+          Insufficient USDC balance (includes gas reserve).
+        </p>
       )}
 
       <Button

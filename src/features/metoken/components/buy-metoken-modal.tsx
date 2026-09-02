@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Coins, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { parseUnits, formatUnits } from 'viem'
+import { parseUnits, formatUnits, erc20Abi } from 'viem'
 import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import {
@@ -18,11 +18,14 @@ import { useUsdcBalance } from '@/hooks/use-usdc-balance'
 import { useCrtvaiBalance } from '@/hooks/use-crtvai-balance'
 import {
   CRTVAI_DECIMALS,
+  USDC_BASE_ADDRESS,
   USDC_DECIMALS,
   readCrtvaiCurrentPrice,
   readCrtvaiMintQuote,
 } from '@/config/metoken'
 import { buildBuyMetokenOps } from '@/features/metoken/api/buy-metoken'
+import { totalUsdcForPurchase } from '@/features/credits/usdc-for-purchase'
+import { getBasePublicClient } from '@/config/base-client'
 import { base } from 'viem/chains'
 import { cn } from '@/shared/ui/cn'
 
@@ -36,10 +39,11 @@ interface BuyMetokenModalProps {
 const BASE_CHAIN_ID = base.id
 
 export function BuyMetokenModal({ open, onOpenChange, initialUsdcAmount }: BuyMetokenModalProps) {
-  const { account, chain } = useWalletContext()
+  const { account, signerAddress, chain, walletClient } = useWalletContext()
   const queryClient = useQueryClient()
   const { sendOps, ready: walletReady } = useSmartWalletOps()
   const { balance: usdcBalance, formatted: usdcFormatted } = useUsdcBalance(chain, account)
+  const { balance: signerUsdcBalance } = useUsdcBalance(chain, signerAddress)
   const { formatted: crtvaiFormatted, symbol } = useCrtvaiBalance(account)
 
   const [usdcInput, setUsdcInput] = useState('')
@@ -47,19 +51,40 @@ export function BuyMetokenModal({ open, onOpenChange, initialUsdcAmount }: BuyMe
   const [currentPrice, setCurrentPrice] = useState<string | null>(null)
   const [quoting, setQuoting] = useState(false)
   const [minting, setMinting] = useState(false)
+  const [transferring, setTransferring] = useState(false)
 
   const onBase = chain?.id === BASE_CHAIN_ID
 
-  const hasSufficientUsdc = useMemo(() => {
-    if (!usdcInput || !usdcBalance) return true
+  const requiredUsdc6 = useMemo(() => {
+    if (!usdcInput || !onBase || !chain?.id) return 0
     try {
-      const inputRaw = parseUnits(usdcInput, USDC_DECIMALS)
+      const inputUsdc6 = Number(parseUnits(usdcInput, USDC_DECIMALS))
+      return totalUsdcForPurchase(inputUsdc6, chain.id)
+    } catch {
+      return 0
+    }
+  }, [usdcInput, onBase, chain?.id])
+
+  const hasSufficientUsdc = useMemo(() => {
+    if (!usdcInput || !usdcBalance || requiredUsdc6 === 0) return true
+    try {
       const balanceRaw = parseUnits(usdcBalance, USDC_DECIMALS)
-      return inputRaw <= balanceRaw
+      return BigInt(requiredUsdc6) <= balanceRaw
     } catch {
       return false
     }
-  }, [usdcInput, usdcBalance])
+  }, [usdcInput, usdcBalance, requiredUsdc6])
+
+  const needsEoaTransfer = useMemo(() => {
+    if (!signerUsdcBalance || !usdcBalance || requiredUsdc6 === 0) return false
+    try {
+      const smartRaw = parseUnits(usdcBalance, USDC_DECIMALS)
+      const eoaRaw = parseUnits(signerUsdcBalance, USDC_DECIMALS)
+      return smartRaw < BigInt(requiredUsdc6) && eoaRaw > 0n
+    } catch {
+      return false
+    }
+  }, [signerUsdcBalance, usdcBalance, requiredUsdc6])
 
   // Prefill + fetch current price on open
   useEffect(() => {
@@ -120,6 +145,52 @@ export function BuyMetokenModal({ open, onOpenChange, initialUsdcAmount }: BuyMe
     }
   }, [open, onBase, usdcInput])
 
+  const handleMoveUsdcToSmartWallet = useCallback(async () => {
+    if (!walletClient || !account || !signerAddress || !signerUsdcBalance) return
+    let eoaRaw: bigint
+    let smartRaw: bigint
+    try {
+      eoaRaw = parseUnits(signerUsdcBalance, USDC_DECIMALS)
+      smartRaw = parseUnits(usdcBalance ?? '0', USDC_DECIMALS)
+    } catch {
+      toast.error('Invalid USDC balance')
+      return
+    }
+    const shortfall = BigInt(requiredUsdc6) > smartRaw ? BigInt(requiredUsdc6) - smartRaw : 0n
+    const amount = shortfall > 0n && shortfall < eoaRaw ? shortfall : eoaRaw
+    if (amount <= 0n) return
+
+    setTransferring(true)
+    try {
+      const hash = await walletClient.writeContract({
+        address: USDC_BASE_ADDRESS,
+        abi: erc20Abi,
+        functionName: 'transfer',
+        args: [account, amount],
+        chain,
+        account: signerAddress,
+      })
+      await getBasePublicClient().waitForTransactionReceipt({ hash })
+      toast.success('USDC moved to smart wallet')
+      void queryClient.invalidateQueries({ queryKey: ['usdc-balance', chain?.id, account] })
+      void queryClient.invalidateQueries({ queryKey: ['usdc-balance', chain?.id, signerAddress] })
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      toast.error(`Transfer failed: ${msg}`)
+    } finally {
+      setTransferring(false)
+    }
+  }, [
+    walletClient,
+    account,
+    signerAddress,
+    signerUsdcBalance,
+    usdcBalance,
+    requiredUsdc6,
+    chain,
+    queryClient,
+  ])
+
   const handleMint = useCallback(async () => {
     if (!account || !usdcInput || !onBase) return
     let usdcRaw: bigint
@@ -150,7 +221,8 @@ export function BuyMetokenModal({ open, onOpenChange, initialUsdcAmount }: BuyMe
     }
   }, [account, usdcInput, onBase, chain?.id, sendOps, onOpenChange, queryClient])
 
-  const canMint = onBase && walletReady && usdcInput && hasSufficientUsdc && !quoting && !minting
+  const canMint =
+    onBase && walletReady && usdcInput && hasSufficientUsdc && !quoting && !minting && !transferring
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -218,8 +290,32 @@ export function BuyMetokenModal({ open, onOpenChange, initialUsdcAmount }: BuyMe
           {!onBase && (
             <p className="text-xs text-amber-500">Switch to Base network to mint CRTVAI.</p>
           )}
-          {!hasSufficientUsdc && usdcInput && (
-            <p className="text-xs text-destructive">Insufficient USDC balance.</p>
+          {!hasSufficientUsdc && usdcInput && !needsEoaTransfer && (
+            <p className="text-xs text-destructive">
+              Insufficient USDC balance (includes gas reserve).
+            </p>
+          )}
+          {needsEoaTransfer && (
+            <div className="space-y-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+              <p>USDC is in your signer wallet. Move it to your smart wallet before minting.</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full"
+                disabled={transferring || minting}
+                onClick={() => void handleMoveUsdcToSmartWallet()}
+              >
+                {transferring ? (
+                  <>
+                    <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                    Moving USDC…
+                  </>
+                ) : (
+                  'Move USDC to smart wallet'
+                )}
+              </Button>
+            </div>
           )}
 
           <Button

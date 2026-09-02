@@ -36,7 +36,10 @@ export interface WalletContextValue {
   connect: () => void
   disconnect: () => Promise<void>
   wallet: ConnectedWallet | null
+  /** Alchemy ERC-4337 smart account — used for balances, onramp, and on-chain ops. */
   account: Address | undefined
+  /** Privy signer EOA (embedded or external wallet). */
+  signerAddress: Address | undefined
   user: User | null
   walletClient: WalletClient | null
   smartWalletClient: SmartWalletClient | null
@@ -65,6 +68,7 @@ function WalletContextInner({ children }: { children: ReactNode }) {
   const { ready, authenticated, user, login, logout, connectWallet, getAccessToken } = usePrivy()
   const { wallets, ready: walletsReady } = useWallets()
   const [walletClient, setWalletClient] = useState<WalletClient | null>(null)
+  const [smartAccountAddress, setSmartAccountAddress] = useState<Address | undefined>()
   const [chain, setChain] = useState<Chain>(DEFAULT_CHAIN)
   const [isConnecting, setIsConnecting] = useState(false)
   const [error, setError] = useState<Error | null>(null)
@@ -74,6 +78,8 @@ function WalletContextInner({ children }: { children: ReactNode }) {
     const embedded = getEmbeddedConnectedWallet(wallets)
     return embedded ?? wallets[0] ?? null
   }, [wallets, walletsReady])
+
+  const signerAddress = activeWallet ? (activeWallet.address as Address) : undefined
 
   useEffect(() => {
     let cancelled = false
@@ -110,7 +116,8 @@ function WalletContextInner({ children }: { children: ReactNode }) {
     }
   }, [activeWallet, activeWallet?.chainId, authenticated, chain])
 
-  const smartWalletClient = useMemo<SmartWalletClient | null>(() => {
+  // Bootstrap client (no account) — used only to call requestAccount and avoid EIP-7702.
+  const bootstrapSmartWalletClient = useMemo<SmartWalletClient | null>(() => {
     if (!walletClient || !ALCHEMY_API_KEY) return null
     return createSmartWalletClient({
       transport: alchemyWalletTransport({ apiKey: ALCHEMY_API_KEY }),
@@ -119,6 +126,42 @@ function WalletContextInner({ children }: { children: ReactNode }) {
       ...(ALCHEMY_POLICY_ID ? { paymaster: { policyId: ALCHEMY_POLICY_ID } } : {}),
     }).extend(swapActions) as SmartWalletClient
   }, [walletClient, chain])
+
+  useEffect(() => {
+    if (!bootstrapSmartWalletClient || !signerAddress) {
+      setSmartAccountAddress(undefined)
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        const smartAccount = await bootstrapSmartWalletClient.requestAccount({ signerAddress })
+        if (!cancelled) {
+          setSmartAccountAddress(smartAccount.address)
+          setError(null)
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setSmartAccountAddress(undefined)
+          setError(e instanceof Error ? e : new Error(String(e)))
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [bootstrapSmartWalletClient, signerAddress])
+
+  const smartWalletClient = useMemo<SmartWalletClient | null>(() => {
+    if (!walletClient || !ALCHEMY_API_KEY || !smartAccountAddress) return null
+    return createSmartWalletClient({
+      transport: alchemyWalletTransport({ apiKey: ALCHEMY_API_KEY }),
+      chain,
+      signer: walletClient as never,
+      account: smartAccountAddress,
+      ...(ALCHEMY_POLICY_ID ? { paymaster: { policyId: ALCHEMY_POLICY_ID } } : {}),
+    }).extend(swapActions) as SmartWalletClient
+  }, [walletClient, chain, smartAccountAddress])
 
   const connect = useCallback(() => {
     setError(null)
@@ -142,15 +185,19 @@ function WalletContextInner({ children }: { children: ReactNode }) {
     [activeWallet],
   )
 
+  const walletReady =
+    ready && walletsReady && (!authenticated || !ALCHEMY_API_KEY || Boolean(smartAccountAddress))
+
   const value = useMemo(
     () => ({
-      ready: ready && walletsReady,
+      ready: walletReady,
       authenticated,
       configured: true,
       connect,
       disconnect,
       wallet: activeWallet,
-      account: activeWallet ? (activeWallet.address as Address) : undefined,
+      account: smartAccountAddress,
+      signerAddress,
       user,
       walletClient,
       smartWalletClient,
@@ -161,12 +208,13 @@ function WalletContextInner({ children }: { children: ReactNode }) {
       getAccessToken,
     }),
     [
-      ready,
-      walletsReady,
+      walletReady,
       authenticated,
       connect,
       disconnect,
       activeWallet,
+      smartAccountAddress,
+      signerAddress,
       user,
       walletClient,
       smartWalletClient,
@@ -201,6 +249,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       disconnect: async () => {},
       wallet: null,
       account: undefined,
+      signerAddress: undefined,
       user: null,
       walletClient: null,
       smartWalletClient: null,

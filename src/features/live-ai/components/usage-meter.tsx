@@ -24,11 +24,9 @@ function formatUsdStreamed(usdc6: number): string {
  * Shows elapsed time and current hourly USDC rate.
  */
 export function UsageMeter({ streamActive }: { streamActive: boolean }) {
-  const { wallet } = useWalletContext()
-  const address = wallet?.address
-  const { intervalCostUsdc6, isPremiumMember, isLoading } = usePremiumMembership(
-    address as `0x${string}` | undefined,
-  )
+  const { account } = useWalletContext()
+  const address = account
+  const { intervalCostUsdc6, isPremiumMember, isLoading } = usePremiumMembership(address)
   const [elapsedMs, setElapsedMs] = useState(0)
 
   const hourlyRate = hourlyUsdcFromInterval(intervalCostUsdc6)
