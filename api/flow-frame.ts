@@ -1,8 +1,8 @@
 /**
- * Temporary public image hosting for Flow frames (Evolink needs HTTPS URLs).
+ * Temporary public image hosting for Flow frames (Vertex Veo needs HTTPS URLs).
  *
  * POST /api/flow-frame — auth required; body multipart or JSON { dataUri, contentType? }
- * GET  /api/flow-frame?id=... — public read for Evolink fetch (unguessable id)
+ * GET  /api/flow-frame?id=... — public read for generative fetch (unguessable id)
  */
 // fallow-ignore-file complexity,code-duplication
 

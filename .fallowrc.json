@@ -160,6 +160,14 @@
     {
       "file": "api/c2pa/certs/challenge.ts",
       "exports": ["*"]
+    },
+    {
+      "file": "src/config/credits.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "src/features/generative/types.ts",
+      "exports": ["*"]
     }
   ]
 }

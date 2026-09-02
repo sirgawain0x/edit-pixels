@@ -21,6 +21,7 @@ export interface ConfirmDirectorInvoiceArgs {
       audioDurationSeconds?: number
       paymentTxHash?: string
       walletAddress?: string
+      projectId?: string
     },
   ) => Promise<void>
 }
@@ -46,6 +47,7 @@ export async function confirmDirectorInvoice(args: ConfirmDirectorInvoiceArgs): 
     ...(audioUri ? { audioUri } : {}),
     audioDurationSeconds: quote.audioDurationSeconds,
     ...(paymentTxHash ? { paymentTxHash } : {}),
-    ...(account ? { walletAddress: account } : {}),
+    ...(account ? { walletAddress: account, userId: account } : {}),
+    ...(invoice.projectId ? { projectId: invoice.projectId } : {}),
   })
 }

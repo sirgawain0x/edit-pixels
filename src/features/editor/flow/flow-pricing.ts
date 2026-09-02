@@ -5,10 +5,11 @@
 
 import {
   quoteNanobananaCredits,
-  quoteSeedanceCredits,
+  quoteVeoCredits,
+  normalizeVeoQuality,
   type NanobananaQuality,
-  type SeedanceQuality,
-  type SeedanceSpeed,
+  type VeoQuality,
+  type VeoTier,
 } from '@/config/credits'
 import { usdc6ToMetokenWei } from '@/config/metoken'
 import { clampFlowDuration } from '@/config/flow'
@@ -18,9 +19,8 @@ export const FLOW_USDC6_PER_CREDIT = 100_000
 
 export interface FlowQuoteInput {
   duration: number
-  quality: SeedanceQuality
-  speed: SeedanceSpeed
-  generateAudio: boolean
+  quality: VeoQuality
+  tier: VeoTier
   /** How many Gemini stills to generate (0–2). Uploaded frames cost 0. */
   stillCount: number
   stillQuality?: NanobananaQuality
@@ -41,11 +41,11 @@ export function quoteFlowGeneration(input: FlowQuoteInput): FlowQuote {
   const duration = clampFlowDuration(input.duration)
   const stillQuality = input.stillQuality ?? '2K'
   const stillCount = Math.min(2, Math.max(0, Math.floor(input.stillCount)))
-  const videoCredits = quoteSeedanceCredits({
+  const quality = normalizeVeoQuality(input.quality, input.tier)
+  const videoCredits = quoteVeoCredits({
     duration,
-    quality: input.quality,
-    speed: input.speed,
-    generateAudio: input.generateAudio,
+    quality,
+    tier: input.tier,
   })
   const stillCredits = stillCount > 0 ? stillCount * quoteNanobananaCredits(stillQuality) : 0
   const totalCredits = videoCredits + stillCredits

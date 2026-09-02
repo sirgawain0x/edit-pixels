@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useParams } from '@tanstack/react-router'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { Clapperboard, Loader2, Send, Square, Trash2, Wrench } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -17,6 +18,7 @@ import { confirmDirectorInvoice } from './confirm-director-invoice'
 import { quoteDirectorBrief } from './director-pricing'
 import { DirectorInvoiceCard, type PendingDirectorInvoice } from './director-invoice-card'
 import { DirectorSessionPacks } from './director-session-packs'
+import { DirectorPastBriefs } from './director-past-briefs'
 import { useDirectorStore } from './director-store'
 import {
   buildDirectorTimelineAudioContext,
@@ -134,6 +136,10 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
   const reportLocalError = useDirectorStore((s) => s.reportLocalError)
   const cancel = useDirectorStore((s) => s.cancel)
   const clearChat = useDirectorStore((s) => s.clearChat)
+  const sessionId = useDirectorStore((s) => s.sessionId)
+  const resumeSession = useDirectorStore((s) => s.resumeSession)
+
+  const { projectId } = useParams({ from: '/editor/$projectId' })
 
   const { account, connect, authenticated, configured: walletConfigured } = useWalletContext()
   const { balance, refreshBalance } = useCredits()
@@ -223,6 +229,7 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
         brief: trimmed,
         apiPrompt: `${trimmed}\n\n${formatTimelineAudioForPrompt(audioContext)}`,
         audioUri: publicAudioUriForDirector(audioContext.primary.src),
+        projectId,
         quote,
       })
     },
@@ -236,6 +243,7 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
       reportLocalError,
       t,
       walletConfigured,
+      projectId,
     ],
   )
 
@@ -354,6 +362,14 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
           </Button>
         )}
       </header>
+
+      <DirectorPastBriefs
+        walletAddress={account}
+        projectId={projectId}
+        activeSessionId={sessionId}
+        disabled={busy}
+        onResume={resumeSession}
+      />
 
       <div
         ref={scrollRef}

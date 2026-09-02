@@ -9,6 +9,7 @@ export interface PendingDirectorInvoice {
   brief: string
   apiPrompt: string
   audioUri?: string
+  projectId?: string
   quote: DirectorQuote
 }
 

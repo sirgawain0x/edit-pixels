@@ -4,7 +4,7 @@ import { createLogger } from '@/shared/logging/logger'
 const log = createLogger('ImageUploadService')
 
 /**
- * Convert a local Blob into a publicly fetchable HTTPS URL for Evolink.
+ * Convert a local Blob into a publicly fetchable HTTPS URL for Vertex generative APIs.
  * Uploads via `/api/flow-frame` (auth required); falls back is not used for Flow.
  */
 export async function getPublicImageUrl(

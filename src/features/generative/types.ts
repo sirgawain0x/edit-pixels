@@ -1,22 +1,25 @@
 // fallow-ignore-file unused-export,unused-type
 // ---------------------------------------------------------------------------
-// Evolink.ai shared types
+// Generative / Vertex AI shared types
 // ---------------------------------------------------------------------------
 
-/** Task status from evolink.ai async APIs. */
-export type EvolinkTaskStatus = 'pending' | 'processing' | 'completed' | 'failed'
+/** Task status from async generative APIs. */
+export type GenerativeTaskStatus = 'pending' | 'processing' | 'completed' | 'failed'
+
+/** @deprecated Use GenerativeTaskStatus */
+export type EvolinkTaskStatus = GenerativeTaskStatus
 
 /** Unified task detail response (videos + images share this shape). */
-export interface EvolinkTaskDetail {
+export interface GenerativeTaskDetail {
   id: string
-  status: EvolinkTaskStatus
+  status: GenerativeTaskStatus
   progress: number
   model: string
   /** Present when status === 'completed'. */
   output?: {
     video_url?: string
     image_url?: string
-    /** Nanobanana may return multiple images. */
+    /** May return multiple images. */
     image_urls?: string[]
   }
   /** Present when status === 'failed'. */
@@ -26,49 +29,60 @@ export interface EvolinkTaskDetail {
     estimated_time?: number
     video_duration?: number
   }
-  usage?: {
-    billing_rule: string
-    credits_reserved: number
-    user_group: string
-  }
 }
 
+/** @deprecated Use GenerativeTaskDetail */
+export type EvolinkTaskDetail = GenerativeTaskDetail
+
 // ---------------------------------------------------------------------------
-// Seedance 2.0 (image-to-video)
+// Veo 3.1 (image-to-video)
 // ---------------------------------------------------------------------------
 
-export type SeedanceSpeed = 'standard' | 'fast'
+export type VeoTier = 'standard' | 'fast' | 'lite'
 
-export type SeedanceQuality = '480p' | '720p' | '1080p'
+export type VeoQuality = '720p' | '1080p' | '4K'
 
-export type SeedanceAspectRatio = '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '21:9' | 'adaptive'
+/** @deprecated Use VeoTier */
+export type SeedanceSpeed = VeoTier
+/** @deprecated Use VeoQuality */
+export type SeedanceQuality = VeoQuality
 
-export interface SeedanceRequest {
+export type VeoAspectRatio = '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '21:9' | 'adaptive'
+
+/** @deprecated Use VeoAspectRatio */
+export type SeedanceAspectRatio = VeoAspectRatio
+
+export interface VeoRequest {
   model: string
   prompt: string
   image_urls: string[]
   duration?: number
-  quality?: SeedanceQuality
-  aspect_ratio?: SeedanceAspectRatio
-  generate_audio?: boolean
+  quality?: VeoQuality
+  tier?: VeoTier
+  aspect_ratio?: VeoAspectRatio
 }
 
-export interface SeedanceResponse {
+export interface VeoResponse {
   id: string
   model: string
-  status: EvolinkTaskStatus
+  status: GenerativeTaskStatus
   progress: number
-  task_info?: { can_cancel?: boolean; estimated_time?: number; video_duration?: number }
-  usage?: { billing_rule: string; credits_reserved: number; user_group: string }
 }
 
-/** Maps SeedanceSpeed to the actual API model id. */
-export function seedanceModelId(speed: SeedanceSpeed): string {
-  return speed === 'fast' ? 'seedance-2.0-fast-image-to-video' : 'seedance-2.0-image-to-video'
+/** Maps Veo tier to Vertex model id. */
+export function veoModelId(tier: VeoTier): string {
+  if (tier === 'fast') return 'veo-3.1-fast-generate-preview'
+  if (tier === 'lite') return 'veo-3.1-lite-generate-preview'
+  return 'veo-3.1-generate-preview'
+}
+
+/** @deprecated Use veoModelId */
+export function seedanceModelId(tier: VeoTier): string {
+  return veoModelId(tier)
 }
 
 // ---------------------------------------------------------------------------
-// Nanobanana 2 (image generation)
+// Gemini image (stills)
 // ---------------------------------------------------------------------------
 
 export type NanobananaSize =
@@ -86,27 +100,19 @@ export type NanobananaSize =
 
 export type NanobananaQuality = '0.5K' | '1K' | '2K' | '4K'
 
-export type NanobananaThinking = 'auto' | 'min' | 'high'
-
 export interface NanobananaRequest {
-  model: 'gemini-3.1-flash-image-preview'
+  model: 'gemini-2.5-flash-image'
   prompt: string
   size?: NanobananaSize
   quality?: NanobananaQuality
   image_urls?: string[]
-  model_params?: {
-    web_search?: boolean
-    thinking_level?: NanobananaThinking
-  }
 }
 
 export interface NanobananaResponse {
   id: string
   model: string
-  status: EvolinkTaskStatus
+  status: GenerativeTaskStatus
   progress: number
-  task_info?: { can_cancel?: boolean; estimated_time?: number }
-  usage?: { billing_rule: string; credits_reserved: number; user_group: string }
 }
 
 // ---------------------------------------------------------------------------
@@ -118,10 +124,10 @@ export type ImageSource =
   | { type: 'file'; blob: Blob; objectUrl: string }
   | { type: 'generated'; url: string; prompt: string }
 
-/** State of an async evolink.ai task. */
+/** State of an async generative task. */
 export interface TaskState {
   taskId: string | null
-  status: EvolinkTaskStatus | 'idle' | 'cancelled'
+  status: GenerativeTaskStatus | 'idle' | 'cancelled'
   progress: number
   resultUrl: string | null
   error: string | null

@@ -6,6 +6,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { POST as directorPost } from './api/director'
+import { GET as directorSessionsGet } from './api/director-sessions'
 import { GET as generateTaskGet } from './api/generate-task'
 import { POST as flowFramePost } from './api/flow-frame'
 import { POST as flowRunPost } from './api/flow-run'
@@ -118,6 +119,7 @@ async function handleDirectorDevRequest(
 
 // Keep serverless API modules reachable as entries for fallow / Vercel.
 void generateTaskGet
+void directorSessionsGet
 void flowFramePost
 void flowRunPost
 void generateImagePost
@@ -141,8 +143,38 @@ function directorApiDevPlugin(): Plugin {
         if (process.env[key] === undefined) process.env[key] = value
       }
 
+      // fallow-ignore-next-line complexity
       server.middlewares.use((req, res, next) => {
         const path = req.url?.split('?')[0]
+        if (path === '/api/director-sessions' && req.method === 'GET') {
+          // fallow-ignore-next-line complexity
+          void (async () => {
+            const host = req.headers.host ?? 'localhost'
+            const request = new Request(`http://${host}${req.url ?? '/api/director-sessions'}`, {
+              method: 'GET',
+              headers: {
+                origin: req.headers.origin ?? '',
+                referer: req.headers.referer ?? '',
+                host: req.headers.host ?? '',
+              },
+            })
+            const response = await directorSessionsGet(request)
+            res.statusCode = response.status
+            response.headers.forEach((value, key) => {
+              res.setHeader(key, value)
+            })
+            res.end(await response.text())
+          })().catch((error) => {
+            console.error('Director sessions API middleware error', error)
+            if (!res.headersSent) {
+              res.statusCode = 500
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Director sessions proxy failed' }))
+            }
+          })
+          return
+        }
+
         if (req.method !== 'POST' || path !== '/api/director') {
           next()
           return

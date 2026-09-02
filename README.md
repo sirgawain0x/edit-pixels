@@ -230,7 +230,7 @@ npm run routes              # Regenerate the TanStack Router route tree
 
 ### MCP server for AI agents
 
-Pixels ships a headless lifecycle API and a stdio MCP server so AI agents can create, edit, and render Pixels projects programmatically. See `docs/agent-prompt.md` for a ready-to-use agent prompt (shared by OpenClaw and Hermes), and the in-app [AI Agents and MCP](https://create.creativeplatform.xyz/docs/ai-agents-mcp) guide for setup and runtime packaging.
+Pixels ships a headless lifecycle API and a stdio MCP server so AI agents can create, edit, and render Pixels projects programmatically. See `docs/agent-prompt.md` for a ready-to-use agent prompt (shared by OpenClaw and Hermes), and the in-app [AI Agents and MCP](https://create.creativeplatform.xyz/docs/ai-agents-mcp) guide for setup and runtime packaging. For Creative Director persistence (Firestore sessions/storyboards/billing audit), see [`docs/adr/002-director-firestore-persistence.md`](docs/adr/002-director-firestore-persistence.md).
 
 ```bash
 # Run the MCP server directly for a workspace

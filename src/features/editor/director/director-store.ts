@@ -36,6 +36,7 @@ interface DirectorState {
     options?: {
       audioUri?: string
       userId?: string
+      projectId?: string
       /** Full prompt sent to the API (defaults to text) */
       apiPrompt?: string
       audioDurationSeconds?: number
@@ -43,6 +44,8 @@ interface DirectorState {
       walletAddress?: string
     },
   ) => Promise<void>
+  /** Resume an Agent Engine session from Firestore index. */
+  resumeSession: (sessionId: string) => void
   /** Local UX error (e.g. missing timeline audio) — does not call the API. */
   reportLocalError: (message: string) => void
   cancel: () => void
@@ -232,6 +235,7 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
           prompt: apiPrompt,
           userId: options?.userId,
           sessionId: get().sessionId ?? undefined,
+          projectId: options?.projectId,
           audioUri: options?.audioUri,
           audioDurationSeconds: options?.audioDurationSeconds,
           paymentTxHash: options?.paymentTxHash,
@@ -268,6 +272,15 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
     activeController?.abort()
     activeController = null
     finalizeAssistantReply(set, get)
+  },
+
+  resumeSession: (sessionId) => {
+    const trimmed = sessionId.trim()
+    if (!trimmed) return
+    set({
+      sessionId: trimmed,
+      lastError: null,
+    })
   },
 
   clearChat: () => {
