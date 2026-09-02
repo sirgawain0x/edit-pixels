@@ -59,8 +59,12 @@ const enPartialModules = import.meta.glob<{ default: LocaleTree }>('./locales/pa
   eager: true,
 })
 
-// Lazy: all language partial dirs — loaded on demand when switching language.
-const lazyPartialModules = import.meta.glob<{ default: LocaleTree }>('./locales/partials/*/*.json')
+// Lazy: non-English partial dirs — loaded on demand when switching language.
+// English is excluded because it is already merged eagerly above.
+const lazyPartialModules = import.meta.glob<{ default: LocaleTree }>([
+  './locales/partials/*/*.json',
+  '!./locales/partials/en/*.json',
+])
 
 // Build the merged English tree eagerly.
 const enMerged: LocaleTree = structuredClone(baseLocales.en ?? {})

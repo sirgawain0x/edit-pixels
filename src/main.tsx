@@ -1,5 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { toast } from 'sonner'
 import { i18n, i18nReady } from './i18n'
 import { App } from './app'
 import { recoverDevVitePreload } from './app/vite-preload-recovery'
@@ -52,7 +53,6 @@ async function saveCurrentProjectBeforeReload(): Promise<boolean> {
 async function showSaveBeforeReloadFailedToast() {
   window.dispatchEvent(new Event('freecut:ensure-toaster'))
   try {
-    const { toast } = await import('sonner')
     toast.error(i18n.t('editor.editor.projectSaveFailed'))
   } catch (error) {
     log.warn('Failed to show save-before-reload error:', error)
@@ -79,14 +79,6 @@ async function showUpdateAvailableToast(
 
   updateToastVisible = true
   window.dispatchEvent(new Event('pixels:ensure-toaster'))
-  let toast: typeof import('sonner').toast
-  try {
-    ;({ toast } = await import('sonner'))
-  } catch (error) {
-    updateToastVisible = false
-    log.warn('Failed to load update notification toast:', error)
-    return
-  }
 
   toast.error(i18n.t('appShell.newVersionAvailable'), {
     duration: Infinity,

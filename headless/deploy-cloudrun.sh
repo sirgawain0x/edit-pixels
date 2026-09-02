@@ -29,7 +29,7 @@ gcloud run deploy "${SERVICE}" \
   --concurrency 1 \
   --min-instances 0 \
   --max-instances 3 \
-  --set-env-vars "PIXELS_HOST=0.0.0.0,PIXELS_API_KEY=${API_KEY}" \
+  --set-env-vars "PIXELS_HOST=0.0.0.0,PIXELS_API_KEY=${API_KEY}${C2PA_SIGN_URL:+,C2PA_SIGN_URL=${C2PA_SIGN_URL}}" \
   --port 8787
 
 URL="$(gcloud run services describe "${SERVICE}" --project "${PROJECT_ID}" --region "${REGION}" --format='value(status.url)')"

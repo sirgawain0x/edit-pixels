@@ -32,10 +32,16 @@ import {
   exists,
   listDirectory,
   readJson,
+  removeEntry,
   writeJsonAtomic,
   WorkspaceFileCorruptError,
 } from './fs-primitives'
-import { PROJECTS_DIR, projectJsonPath, projectTrashedMarkerPath } from './paths'
+import {
+  PROJECTS_DIR,
+  projectJsonPath,
+  projectMediaLinksPath,
+  projectTrashedMarkerPath,
+} from './paths'
 import { writeWorkspaceIndex, type WorkspaceIndexEntry } from './workspace-index'
 import { withKeyLock } from './with-key-lock'
 
@@ -157,7 +163,6 @@ export async function restoreProject(id: string): Promise<void> {
     return
   }
 
-  const { removeEntry } = await import('./fs-primitives')
   await removeEntry(root, projectTrashedMarkerPath(id))
   await withKeyLock(INDEX_LOCK_KEY, () => rebuildAndWriteIndex(root))
   logger.info(`Restored project ${id}`)
@@ -223,7 +228,6 @@ export async function getTrashedProjectMediaIds(id: string): Promise<string[]> {
   if (!(await markerExists(root, id))) {
     return []
   }
-  const { projectMediaLinksPath } = await import('./paths')
   const links = await readJson<{ mediaIds?: Array<{ id: string }> }>(
     root,
     projectMediaLinksPath(id),
