@@ -102,3 +102,4 @@ ds-bundle/
 
 artifacts/
 .playwright-cli/
+.env*
