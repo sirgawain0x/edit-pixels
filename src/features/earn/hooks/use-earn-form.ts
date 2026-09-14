@@ -22,8 +22,7 @@ import { USDC_DECIMALS } from '@/config/metoken'
 import { USDC_ADDRESS_BY_CHAIN_ID } from '@/config/chains'
 import { ALCHEMY_API_KEY } from '@/config/alchemy'
 import { getBasePublicClient } from '@/config/base-client'
-import { buildErc20TransferOp } from '@/features/wallet/api/build-erc20-transfer-op'
-import { parsePositiveAmountWei } from '@/features/wallet/lib/send-token-math'
+import { buildErc20TransferOp, parsePositiveAmountWei } from '@/features/earn/deps/wallet'
 import {
   pollEarnActionUntilSettled,
   postEarnDeposit,
