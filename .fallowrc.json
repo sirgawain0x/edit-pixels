@@ -138,6 +138,26 @@
       "exports": ["*"]
     },
     {
+      "file": "api/earn/vault.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/earn/position.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/earn/action.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/earn/deposit.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/earn/withdraw.ts",
+      "exports": ["*"]
+    },
+    {
       "file": "api/generate-task.ts",
       "exports": ["*"]
     },

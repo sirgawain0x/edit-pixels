@@ -7,6 +7,7 @@ import {
   DollarSign,
   QrCode,
   Sparkles,
+  TrendingUp,
   Wallet,
 } from 'lucide-react'
 import type { SmartAccountStatus } from '@/context/wallet-context'
@@ -31,6 +32,7 @@ import {
 import { SWITCHABLE_CHAINS } from '@/config/chains'
 import { BuyUsdcOnrampModal } from '@/features/onramp'
 import { BuyCreditsModal } from '@/features/credits'
+import { EarnModal } from '@/features/earn'
 import { ReceiveFundsModal, SendTokenModal } from '@/features/wallet'
 import { cn } from '@/shared/ui/cn'
 
@@ -128,6 +130,7 @@ function ConnectedWalletMenu({
   const [buyOnrampOpen, setBuyOnrampOpen] = useState(false)
   const [receiveOpen, setReceiveOpen] = useState(false)
   const [sendOpen, setSendOpen] = useState(false)
+  const [earnOpen, setEarnOpen] = useState(false)
 
   const handleCopyAddress = useCallback(() => {
     if (!account) return
@@ -205,6 +208,16 @@ function ConnectedWalletMenu({
           </DropdownMenuItem>
 
           <DropdownMenuItem
+            onClick={() => setEarnOpen(true)}
+            disabled={!smartAccountActionsReady}
+            className="flex cursor-pointer items-center gap-2"
+            aria-label="Earn yield"
+          >
+            <TrendingUp className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+            Earn
+          </DropdownMenuItem>
+
+          <DropdownMenuItem
             onClick={() => setBuyOnrampOpen(true)}
             disabled={!smartAccountActionsReady}
             className="flex cursor-pointer items-center gap-2"
@@ -256,6 +269,7 @@ function ConnectedWalletMenu({
       <BuyUsdcOnrampModal open={buyOnrampOpen} onOpenChange={setBuyOnrampOpen} />
       <ReceiveFundsModal open={receiveOpen} onOpenChange={setReceiveOpen} />
       <SendTokenModal open={sendOpen} onOpenChange={setSendOpen} />
+      <EarnModal open={earnOpen} onOpenChange={setEarnOpen} />
     </>
   )
 }
