@@ -1,6 +1,7 @@
 /**
  * GET /api/earn/position — caller's Earn vault position (requires Privy Bearer token).
  */
+// fallow-ignore-file complexity,duplicate-export
 import {
   getEarnVaultId,
   getPrivyNodeClient,

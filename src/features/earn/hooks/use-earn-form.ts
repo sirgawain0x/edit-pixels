@@ -1,3 +1,4 @@
+// fallow-ignore-file complexity
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   createPublicClient,

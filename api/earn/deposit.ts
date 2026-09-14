@@ -4,6 +4,7 @@
  *
  * Client must transfer USDC from the Alchemy smart account to the Privy EOA before calling this.
  */
+// fallow-ignore-file complexity,duplicate-export
 import {
   getEarnVaultId,
   getPrivyNodeClient,

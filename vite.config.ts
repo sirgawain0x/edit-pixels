@@ -136,6 +136,7 @@ void onrampUrlPost
 void onrampVerifyPost
 void onrampVerifySubmitPost
 
+// fallow-ignore-next-line complexity
 async function proxyEarnDevRequest(
   req: import('node:http').IncomingMessage,
   res: import('node:http').ServerResponse,

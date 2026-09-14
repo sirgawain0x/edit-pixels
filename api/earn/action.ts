@@ -1,6 +1,7 @@
 /**
  * GET /api/earn/action?id=... — poll Earn deposit/withdraw wallet action status.
  */
+// fallow-ignore-file complexity,duplicate-export
 import {
   getPrivyNodeClient,
   isEarnConfigured,

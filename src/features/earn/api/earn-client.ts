@@ -63,10 +63,7 @@ export async function postEarnWithdraw(
   return (await response.json()) as EarnActionInfo
 }
 
-export async function fetchEarnAction(
-  accessToken: string,
-  actionId: string,
-): Promise<EarnActionInfo> {
+async function fetchEarnAction(accessToken: string, actionId: string): Promise<EarnActionInfo> {
   const response = await fetch(getEarnActionApiUrl(actionId), {
     headers: { Authorization: `Bearer ${accessToken}` },
   })

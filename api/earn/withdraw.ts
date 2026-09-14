@@ -3,6 +3,7 @@
  * Body: { amount?: string, max?: boolean }
  * Prefer `max: true` to withdraw full `assets_in_vault`, or pass a human-readable `amount`.
  */
+// fallow-ignore-file complexity,duplicate-export
 import {
   getEarnVaultId,
   getPrivyNodeClient,

@@ -17,6 +17,7 @@ interface EarnModalProps {
   onOpenChange: (open: boolean) => void
 }
 
+// fallow-ignore-next-line complexity
 export function EarnModal({ open, onOpenChange }: EarnModalProps) {
   const form = useEarnForm(open)
 

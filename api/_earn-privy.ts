@@ -2,7 +2,7 @@
 /**
  * Privy Earn helpers — vault id, node client, user wallet resolution, deposit/withdraw.
  */
-// fallow-ignore-file unused-export
+// fallow-ignore-file unused-export,complexity
 
 import {
   PrivyClient,

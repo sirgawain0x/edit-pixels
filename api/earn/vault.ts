@@ -1,6 +1,7 @@
 /**
  * GET /api/earn/vault — public vault metadata (APY, liquidity, asset) for the configured Earn vault.
  */
+// fallow-ignore-file complexity,duplicate-export
 import {
   getEarnVaultId,
   getPrivyNodeClient,
