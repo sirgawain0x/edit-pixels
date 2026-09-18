@@ -1,10 +1,9 @@
 // fallow-ignore-file unused-export
 
 import { createLogger } from '@/shared/logging/logger'
-import type { SignedRequestParams } from '@/features/generative/services/generative-proxy-client'
 import type { SeedanceAspectRatio, SeedanceResolution } from '@/config/seedance'
 import type { PixelsRenderProvider } from '@/config/pixels-render'
-import type { GenerativeTaskDetail } from '@/features/generative/types'
+import type { GenerativeTaskDetail, SignedRequestParams } from '@/features/editor/deps/generative'
 
 const log = createLogger('SeedanceClient')
 
