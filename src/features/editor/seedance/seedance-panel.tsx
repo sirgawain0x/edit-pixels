@@ -144,6 +144,7 @@ export const SeedancePanel = memo(function SeedancePanel() {
     }
   }, [auth, authenticated, connect, idea, resolution, t, timelineContext, walletConfigured])
 
+  // fallow-ignore-next-line complexity
   const confirmAndGenerate = useCallback(async () => {
     if (!auth || !brief || !selectedQuote || !renderProvider) return
     if (!currentProjectId) {

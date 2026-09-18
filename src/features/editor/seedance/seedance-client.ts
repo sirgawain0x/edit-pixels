@@ -68,26 +68,42 @@ async function withAuth<T extends Record<string, unknown>>(
   }
 }
 
-export async function planSeedanceShot(
+async function postSeedanceApi<T>(
+  path: string,
   auth: SignedRequestParams,
-  body: { idea: string; timelineContext?: string },
-): Promise<SeedanceShotBrief> {
+  body: Record<string, unknown>,
+  errorLabel: string,
+  signal?: AbortSignal,
+): Promise<T> {
   const signed = await withAuth(auth, body)
   const { token, ...payload } = signed
-  log.debug('POST /api/seedance-plan')
-  const response = await fetch('/api/seedance-plan', {
+  log.debug(`POST ${path}`)
+  const response = await fetch(path, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(payload),
+    signal,
   })
   if (!response.ok) {
     const err = (await response.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `Planning failed (${response.status})`)
+    throw new Error(err.error ?? `${errorLabel} (${response.status})`)
   }
-  const data = (await response.json()) as { brief: SeedanceShotBrief }
+  return (await response.json()) as T
+}
+
+export async function planSeedanceShot(
+  auth: SignedRequestParams,
+  body: { idea: string; timelineContext?: string },
+): Promise<SeedanceShotBrief> {
+  const data = await postSeedanceApi<{ brief: SeedanceShotBrief }>(
+    '/api/seedance-plan',
+    auth,
+    body,
+    'Planning failed',
+  )
   return data.brief
 }
 
@@ -95,44 +111,19 @@ export async function quoteSeedance(
   auth: SignedRequestParams,
   body: { duration: number; resolution: SeedanceResolution },
 ): Promise<SeedanceQuoteResponse> {
-  const signed = await withAuth(auth, body)
-  const { token, ...payload } = signed
-  log.debug('POST /api/seedance-quote')
-  const response = await fetch('/api/seedance-quote', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(payload),
-  })
-  if (!response.ok) {
-    const err = (await response.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `Quote failed (${response.status})`)
-  }
-  return (await response.json()) as SeedanceQuoteResponse
+  return postSeedanceApi<SeedanceQuoteResponse>('/api/seedance-quote', auth, body, 'Quote failed')
 }
 
 export async function quotePixelsRender(
   auth: SignedRequestParams,
   body: { duration: number; resolution: SeedanceResolution },
 ): Promise<PixelsRenderQuotesResponse> {
-  const signed = await withAuth(auth, body)
-  const { token, ...payload } = signed
-  log.debug('POST /api/pixels-render-quote')
-  const response = await fetch('/api/pixels-render-quote', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(payload),
-  })
-  if (!response.ok) {
-    const err = (await response.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `Quote failed (${response.status})`)
-  }
-  return (await response.json()) as PixelsRenderQuotesResponse
+  return postSeedanceApi<PixelsRenderQuotesResponse>(
+    '/api/pixels-render-quote',
+    auth,
+    body,
+    'Quote failed',
+  )
 }
 
 export async function generateVeoPixels(
@@ -146,23 +137,13 @@ export async function generateVeoPixels(
   },
   signal?: AbortSignal,
 ): Promise<GenerativeTaskDetail> {
-  const signed = await withAuth(auth, body)
-  const { token, ...payload } = signed
-  log.debug('POST /api/pixels-render-veo')
-  const response = await fetch('/api/pixels-render-veo', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(payload),
+  return postSeedanceApi<GenerativeTaskDetail>(
+    '/api/pixels-render-veo',
+    auth,
+    body,
+    'Veo render failed',
     signal,
-  })
-  if (!response.ok) {
-    const err = (await response.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `Veo render failed (${response.status})`)
-  }
-  return (await response.json()) as GenerativeTaskDetail
+  )
 }
 
 export async function generateSeedance(
@@ -179,21 +160,11 @@ export async function generateSeedance(
   },
   signal?: AbortSignal,
 ): Promise<SeedanceGenerateResponse> {
-  const signed = await withAuth(auth, body)
-  const { token, ...payload } = signed
-  log.debug('POST /api/seedance-generate')
-  const response = await fetch('/api/seedance-generate', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(payload),
+  return postSeedanceApi<SeedanceGenerateResponse>(
+    '/api/seedance-generate',
+    auth,
+    body,
+    'Generation failed',
     signal,
-  })
-  if (!response.ok) {
-    const err = (await response.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `Generation failed (${response.status})`)
-  }
-  return (await response.json()) as SeedanceGenerateResponse
+  )
 }
