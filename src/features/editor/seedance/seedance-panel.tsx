@@ -14,11 +14,8 @@ import {
 } from '@/components/ui/select'
 import { useWalletContext } from '@/context/wallet-context'
 import { useCredits } from '@/features/editor/deps/credits-contract'
-import {
-  importMediaLibraryService,
-  useMediaLibraryStore,
-} from '@/features/editor/deps/media-library'
-import { useGenerativeAuth } from '@/features/editor/deps/generative'
+import { useMediaLibraryStore } from '@/features/editor/deps/media-library'
+import { pollTask, proxyGetTask, useGenerativeAuth } from '@/features/editor/deps/generative'
 import { BuyMetokenModal } from '@/features/editor/deps/metoken'
 import {
   getDirectorTreasuryAddress,
@@ -34,17 +31,25 @@ import {
   formatTimelineAudioForPrompt,
 } from '../director/timeline-audio'
 import { usePlaybackStore } from '@/shared/state/playback'
-import { blobUrlManager } from '@/infrastructure/browser/blob-url-manager'
-import { insertGeneratedVideoOnNewTrack } from '../utils/insert-generated-video'
 import {
   isSeedanceGenerateEnabled,
-  quoteSeedanceGeneration,
   type SeedanceAspectRatio,
   type SeedanceResolution,
 } from '@/config/seedance'
+import {
+  quotePixelsRenderOptions,
+  type PixelsRenderProvider,
+} from '@/config/pixels-render'
 import { cn } from '@/shared/ui/cn'
-import { generateSeedance, planSeedanceShot, quoteSeedance } from './seedance-client'
-import type { SeedanceShotBrief } from './seedance-client'
+import {
+  generateSeedance,
+  generateVeoPixels,
+  planSeedanceShot,
+  quotePixelsRender,
+} from './seedance-client'
+import type { PixelsRenderQuotesResponse, SeedanceShotBrief } from './seedance-client'
+import { PixelsRenderProviderPicker } from './pixels-render-provider-picker'
+import { importRenderVideoToTimeline } from './import-render-to-timeline'
 
 type Phase = 'idle' | 'planning' | 'ready' | 'generating'
 
@@ -57,24 +62,29 @@ export const SeedancePanel = memo(function SeedancePanel() {
   const auth = useGenerativeAuth()
   const canPayOnChain = Boolean(getDirectorTreasuryAddress() && walletOpsReady)
   const currentProjectId = useMediaLibraryStore((s) => s.currentProjectId)
-  const loadMediaItems = useMediaLibraryStore((s) => s.loadMediaItems)
   const items = useItemsStore((s) => s.items)
   const fps = useTimelineSettingsStore((s) => s.fps)
 
   const [idea, setIdea] = useState('')
   const [brief, setBrief] = useState<SeedanceShotBrief | null>(null)
   const [resolution, setResolution] = useState<SeedanceResolution>('720p')
-  const [quoteId, setQuoteId] = useState<string | null>(null)
+  const [renderProvider, setRenderProvider] = useState<PixelsRenderProvider | null>(null)
+  const [serverQuotes, setServerQuotes] = useState<PixelsRenderQuotesResponse | null>(null)
   const [phase, setPhase] = useState<Phase>('idle')
   const [status, setStatus] = useState<string | null>(null)
   const [buyOpen, setBuyOpen] = useState(false)
 
-  const localQuote = useMemo(() => {
-    if (!brief) return null
-    return quoteSeedanceGeneration({ duration: brief.duration, resolution })
+  const renderOptions = useMemo(() => {
+    if (!brief) return []
+    return quotePixelsRenderOptions(brief.duration, resolution)
   }, [brief, resolution])
 
-  const insufficient = localQuote ? balance < localQuote.crtvaiDisplay : false
+  const selectedQuote = useMemo(() => {
+    if (!renderProvider || !serverQuotes) return null
+    return renderProvider === 'veo' ? serverQuotes.veo : serverQuotes.seedance
+  }, [renderProvider, serverQuotes])
+
+  const insufficient = selectedQuote ? balance < selectedQuote.crtvaiDisplay : false
   const busy = phase === 'planning' || phase === 'generating'
 
   const timelineContext = useMemo(() => {
@@ -84,10 +94,10 @@ export const SeedancePanel = memo(function SeedancePanel() {
 
   useEffect(() => {
     if (!auth || !brief || phase !== 'ready') return
-    void quoteSeedance(auth, { duration: brief.duration, resolution })
-      .then((serverQuote) => setQuoteId(serverQuote.quoteId))
+    void quotePixelsRender(auth, { duration: brief.duration, resolution })
+      .then(setServerQuotes)
       .catch(() => {
-        // Keep prior quote on transient failure; generate will re-quote server-side.
+        // Client-side quotes still shown; server re-validates on generate.
       })
   }, [auth, brief, phase, resolution])
 
@@ -111,6 +121,8 @@ export const SeedancePanel = memo(function SeedancePanel() {
     }
 
     setPhase('planning')
+    setRenderProvider(null)
+    setServerQuotes(null)
     setStatus(t('seedance.status.planning', { defaultValue: 'Planning shot with Gemini…' }))
     try {
       const planned = await planSeedanceShot(auth, {
@@ -118,11 +130,11 @@ export const SeedancePanel = memo(function SeedancePanel() {
         timelineContext,
       })
       setBrief(planned)
-      const serverQuote = await quoteSeedance(auth, {
+      const quotes = await quotePixelsRender(auth, {
         duration: planned.duration,
         resolution,
       })
-      setQuoteId(serverQuote.quoteId)
+      setServerQuotes(quotes)
       setPhase('ready')
       setStatus(null)
     } catch (e) {
@@ -133,7 +145,7 @@ export const SeedancePanel = memo(function SeedancePanel() {
   }, [auth, authenticated, connect, idea, resolution, t, timelineContext, walletConfigured])
 
   const confirmAndGenerate = useCallback(async () => {
-    if (!auth || !brief || !localQuote || !quoteId) return
+    if (!auth || !brief || !selectedQuote || !renderProvider) return
     if (!currentProjectId) {
       toast.error(t('seedance.error.project', { defaultValue: 'Open a project first.' }))
       return
@@ -147,64 +159,102 @@ export const SeedancePanel = memo(function SeedancePanel() {
     }
 
     const playheadFrame = usePlaybackStore.getState().currentFrame
+    const crtvaiWei = BigInt(selectedQuote.crtvaiRequired)
     setPhase('generating')
     setStatus(t('seedance.status.paying', { defaultValue: 'Confirming payment…' }))
 
     try {
       let paymentTxHash: string | undefined
       if (canPayOnChain) {
-        const { txHash } = await sendOps([buildDirectorPaymentOp(localQuote.crtvaiWei)])
+        const { txHash } = await sendOps([buildDirectorPaymentOp(crtvaiWei)])
         paymentTxHash = txHash
         refreshBalance()
       }
 
-      setStatus(t('seedance.status.generating', { defaultValue: 'Generating with Seedance 2.5…' }))
-      const result = await generateSeedance(auth, {
-        prompt: brief.prompt,
-        duration: brief.duration,
-        resolution,
-        aspect_ratio: (brief.aspect_ratio as SeedanceAspectRatio) || '16:9',
-        quoteId,
-        requestId: crypto.randomUUID(),
-        ...(paymentTxHash ? { paymentTxHash } : {}),
-      })
+      let videoUrl: string | undefined
 
-      if (result.status !== 'completed' || !result.output?.video_url) {
-        throw new Error(result.error?.message ?? 'Generation failed')
+      if (renderProvider === 'seedance') {
+        const seedanceQuoteId = serverQuotes?.seedance.quoteId
+        if (!seedanceQuoteId) {
+          throw new Error('Seedance quote unavailable')
+        }
+        setStatus(
+          t('seedance.status.generatingSeedance', {
+            defaultValue: 'Generating with Seedance 2.5…',
+          }),
+        )
+        const result = await generateSeedance(auth, {
+          prompt: brief.prompt,
+          duration: brief.duration,
+          resolution,
+          aspect_ratio: (brief.aspect_ratio as SeedanceAspectRatio) || '16:9',
+          quoteId: seedanceQuoteId,
+          requestId: crypto.randomUUID(),
+          ...(paymentTxHash ? { paymentTxHash } : {}),
+        })
+        if (result.status !== 'completed' || !result.output?.video_url) {
+          throw new Error(result.error?.message ?? 'Generation failed')
+        }
+        videoUrl = result.output.video_url
+      } else {
+        setStatus(
+          t('seedance.status.generatingVeo', {
+            defaultValue: 'Generating Gemini still + Veo 3.1…',
+          }),
+        )
+        const task = await generateVeoPixels(auth, {
+          prompt: brief.prompt,
+          duration: brief.duration,
+          aspect_ratio: brief.aspect_ratio,
+          requestId: crypto.randomUUID(),
+          ...(paymentTxHash ? { paymentTxHash } : {}),
+        })
+        const final = await pollTask((signal) => proxyGetTask(task.id, signal, auth), {
+          onProgress: (d) => {
+            setStatus(
+              t('seedance.status.progress', {
+                defaultValue: 'Rendering… {{pct}}%',
+                pct: Math.round(d.progress ?? 0),
+              }),
+            )
+          },
+        })
+        if (final.status !== 'completed' || !final.output?.video_url) {
+          throw new Error(final.error?.message || 'Veo generation failed')
+        }
+        videoUrl = final.output.video_url
       }
 
       setStatus(t('seedance.status.importing', { defaultValue: 'Importing to timeline…' }))
-      const response = await fetch(result.output.video_url)
-      if (!response.ok) throw new Error('Failed to download generated video')
-      const blob = await response.blob()
-      const file = new File([blob], `seedance-${Date.now()}.mp4`, {
-        type: blob.type || 'video/mp4',
-      })
+      const tags =
+        renderProvider === 'seedance'
+          ? ['ai-generated', 'seedance']
+          : ['ai-generated', 'veo', 'pixels']
+      const { inserted, fileName } = await importRenderVideoToTimeline(
+        videoUrl,
+        currentProjectId,
+        playheadFrame,
+        tags,
+      )
 
-      const { mediaLibraryService } = await importMediaLibraryService()
-      const media = await mediaLibraryService.importGeneratedVideo(file, currentProjectId, {
-        tags: ['ai-generated', 'seedance'],
-      })
-      const blobUrl = blobUrlManager.acquire(media.id, file)
-      await loadMediaItems()
-
-      const inserted = insertGeneratedVideoOnNewTrack(media, blobUrl, playheadFrame)
       if (inserted) {
         toast.success(
           t('seedance.success.timeline', {
-            defaultValue: 'Seedance clip added at the playhead.',
+            defaultValue: 'Clip added at the playhead.',
           }),
         )
       } else {
         toast.warning(
           t('seedance.success.library', {
             defaultValue: 'Video saved to library but could not place on timeline.',
+            fileName,
           }),
         )
       }
 
       setBrief(null)
-      setQuoteId(null)
+      setServerQuotes(null)
+      setRenderProvider(null)
       setPhase('idle')
       setStatus(null)
     } catch (e) {
@@ -218,18 +268,20 @@ export const SeedancePanel = memo(function SeedancePanel() {
     canPayOnChain,
     currentProjectId,
     insufficient,
-    loadMediaItems,
-    localQuote,
-    quoteId,
     refreshBalance,
+    renderProvider,
     resolution,
+    selectedQuote,
     sendOps,
+    serverQuotes?.seedance.quoteId,
     t,
   ])
 
   if (!isSeedanceGenerateEnabled()) {
     return null
   }
+
+  const canConfirm = phase === 'ready' && brief && selectedQuote && renderProvider
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
@@ -243,7 +295,7 @@ export const SeedancePanel = memo(function SeedancePanel() {
         <p className="mt-0.5 text-[11px] text-muted-foreground">
           {t('seedance.blurb', {
             defaultValue:
-              'Plan a shot with Gemini, review CRTVAI cost, then generate with Seedance 2.5.',
+              'Plan with Gemini, compare render providers and CRTVAI cost, then confirm.',
           })}
         </p>
       </header>
@@ -263,28 +315,11 @@ export const SeedancePanel = memo(function SeedancePanel() {
           />
         </div>
 
-        <div className="space-y-1">
-          <Label className="text-[11px]">{t('seedance.resolution', { defaultValue: 'Resolution' })}</Label>
-          <Select
-            value={resolution}
-            onValueChange={(v) => setResolution(v as SeedanceResolution)}
-            disabled={busy}
-          >
-            <SelectTrigger className="h-8 text-[11px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="720p">720p (default)</SelectItem>
-              <SelectItem value="480p">480p</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
         {brief && (
           <div className="space-y-2 rounded-xl border border-border/70 bg-secondary/20 p-3">
             <div className="flex items-center gap-1.5 text-[11px] font-medium text-foreground">
               <Clapperboard className="h-3.5 w-3.5 text-primary" />
-              {t('seedance.plannedShot', { defaultValue: 'Planned shot' })}
+              {t('seedance.plannedShot', { defaultValue: 'Planned shot (Gemini)' })}
             </div>
             <p className="text-[11px] leading-relaxed text-muted-foreground">{brief.prompt}</p>
             <dl className="grid grid-cols-2 gap-1 font-mono text-[10px] text-muted-foreground">
@@ -304,15 +339,59 @@ export const SeedancePanel = memo(function SeedancePanel() {
           </div>
         )}
 
-        {localQuote && phase !== 'idle' && (
+        {brief && phase !== 'idle' && (
+          <>
+            <div className="space-y-1">
+              <Label className="text-[11px]">
+                {t('seedance.seedanceResolution', {
+                  defaultValue: 'Seedance resolution (Veo uses 720p)',
+                })}
+              </Label>
+              <Select
+                value={resolution}
+                onValueChange={(v) => {
+                  setResolution(v as SeedanceResolution)
+                  setRenderProvider(null)
+                }}
+                disabled={busy}
+              >
+                <SelectTrigger className="h-8 text-[11px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="720p">720p (default)</SelectItem>
+                  <SelectItem value="480p">480p</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <PixelsRenderProviderPicker
+              options={renderOptions}
+              selected={renderProvider}
+              onSelect={setRenderProvider}
+              disabled={busy}
+            />
+          </>
+        )}
+
+        {selectedQuote && (
           <div className="rounded-xl border border-primary/30 bg-secondary/25 p-3">
             <dl className="space-y-1 font-mono text-[11px]">
               <div className="flex justify-between">
+                <dt className="text-muted-foreground">
+                  {t('seedance.selectedProvider', { defaultValue: 'Selected' })}
+                </dt>
+                <dd className="text-foreground">{selectedQuote.label}</dd>
+              </div>
+              <div className="flex justify-between">
                 <dt className="text-muted-foreground">Due</dt>
                 <dd className="font-semibold">
-                  {localQuote.crtvaiDisplay.toFixed(localQuote.crtvaiDisplay < 1 ? 3 : 2)} CRTVAI
+                  {selectedQuote.crtvaiDisplay.toFixed(
+                    selectedQuote.crtvaiDisplay < 1 ? 3 : 2,
+                  )}{' '}
+                  CRTVAI
                   <span className="ml-1.5 font-normal text-muted-foreground">
-                    ({localQuote.formattedUsd})
+                    ({selectedQuote.formattedUsd})
                   </span>
                 </dd>
               </div>
@@ -353,11 +432,11 @@ export const SeedancePanel = memo(function SeedancePanel() {
       </div>
 
       <div className="shrink-0 space-y-2 border-t border-border/60 p-3">
-        {phase === 'ready' && brief && localQuote ? (
+        {canConfirm ? (
           <Button
             type="button"
             className="h-9 w-full gap-1.5 text-[12px]"
-            disabled={busy}
+            disabled={busy || !renderProvider}
             onClick={() => void confirmAndGenerate()}
           >
             {busy ? (
@@ -365,10 +444,14 @@ export const SeedancePanel = memo(function SeedancePanel() {
             ) : (
               <Sparkles className="h-3.5 w-3.5" />
             )}
-            {t('seedance.confirmGenerate', {
-              defaultValue: 'Confirm {{amount}} CRTVAI & generate',
-              amount: localQuote.crtvaiDisplay.toFixed(localQuote.crtvaiDisplay < 1 ? 3 : 2),
-            })}
+            {selectedQuote
+              ? t('seedance.confirmGenerate', {
+                  defaultValue: 'Confirm {{amount}} CRTVAI & generate',
+                  amount: selectedQuote.crtvaiDisplay.toFixed(
+                    selectedQuote.crtvaiDisplay < 1 ? 3 : 2,
+                  ),
+                })
+              : t('seedance.pickProvider', { defaultValue: 'Pick a render provider' })}
           </Button>
         ) : (
           <Button
@@ -393,8 +476,8 @@ export const SeedancePanel = memo(function SeedancePanel() {
         open={buyOpen}
         onOpenChange={setBuyOpen}
         initialUsdcAmount={
-          localQuote
-            ? Math.max(1, Math.ceil(localQuote.estimatedUsdc6 / 1_000_000)).toFixed(2)
+          selectedQuote
+            ? Math.max(1, Math.ceil(selectedQuote.estimatedUsdc6 / 1_000_000)).toFixed(2)
             : '1.00'
         }
       />

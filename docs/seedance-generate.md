@@ -1,6 +1,6 @@
-# Creative Pixels — Seedance generate (v1)
+# Creative Pixels — generate & drop (v1)
 
-Paid text-to-video generation via Higgsfield Seedance 2.5, with Gemini shot planning and CRTVAI billing.
+Gemini shot planning, dual render-provider CRTVAI quotes, and timeline drop at the playhead.
 
 ## Feature flag
 
@@ -33,10 +33,13 @@ Credentials stay server-side only. They are never bundled into the browser.
 ## Flow
 
 1. **Plan** — `POST /api/seedance-plan` calls Gemini (not Creative Director Agent Engine).
-2. **Quote** — `POST /api/seedance-quote` returns CRTVAI cost at undiscounted Higgsfield list rates.
-3. **Confirm** — user pays CRTVAI to treasury (when enforced).
-4. **Generate** — `POST /api/seedance-generate` calls Higgsfield Seedance 2.5 (`bytedance/seedance-2.5/text-to-video`).
-5. **Drop** — client imports the MP4 and places it on a new video track at the playhead.
+2. **Quote both** — `POST /api/pixels-render-quote` returns CRTVAI estimates for:
+   - **Google Veo 3.1** — Gemini still + Veo image-to-video (720p standard)
+   - **Higgsfield Seedance 2.5** — text-to-video at undiscounted list rates (default 5s / 720p)
+3. **Pick** — user must choose a render provider (no silent default).
+4. **Confirm** — user pays CRTVAI to treasury for the selected quote (when enforced).
+5. **Generate** — `POST /api/pixels-render-veo` or `POST /api/seedance-generate`.
+6. **Drop** — client imports the MP4 and places it on a new video track at the playhead.
 
 ## CRTVAI billing stub
 

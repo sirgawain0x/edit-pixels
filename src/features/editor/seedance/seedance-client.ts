@@ -3,6 +3,8 @@
 import { createLogger } from '@/shared/logging/logger'
 import type { SignedRequestParams } from '@/features/generative/services/generative-proxy-client'
 import type { SeedanceAspectRatio, SeedanceResolution } from '@/config/seedance'
+import type { PixelsRenderProvider } from '@/config/pixels-render'
+import type { GenerativeTaskDetail } from '@/features/generative/types'
 
 const log = createLogger('SeedanceClient')
 
@@ -21,6 +23,25 @@ export interface SeedanceQuoteResponse {
   crtvaiRequired: string
   crtvaiDisplay: number
   formattedUsd: string
+}
+
+export interface PixelsRenderQuoteLine {
+  provider: PixelsRenderProvider
+  duration: number
+  estimatedUsdc6: number
+  crtvaiRequired: string
+  crtvaiDisplay: number
+  formattedUsd: string
+  label: string
+  detail: string
+  quoteId?: string
+  resolution?: SeedanceResolution
+  stillCount?: number
+}
+
+export interface PixelsRenderQuotesResponse {
+  veo: PixelsRenderQuoteLine
+  seedance: PixelsRenderQuoteLine & { quoteId: string }
 }
 
 export interface SeedanceGenerateResponse {
@@ -91,6 +112,58 @@ export async function quoteSeedance(
     throw new Error(err.error ?? `Quote failed (${response.status})`)
   }
   return (await response.json()) as SeedanceQuoteResponse
+}
+
+export async function quotePixelsRender(
+  auth: SignedRequestParams,
+  body: { duration: number; resolution: SeedanceResolution },
+): Promise<PixelsRenderQuotesResponse> {
+  const signed = await withAuth(auth, body)
+  const { token, ...payload } = signed
+  log.debug('POST /api/pixels-render-quote')
+  const response = await fetch('/api/pixels-render-quote', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) {
+    const err = (await response.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `Quote failed (${response.status})`)
+  }
+  return (await response.json()) as PixelsRenderQuotesResponse
+}
+
+export async function generateVeoPixels(
+  auth: SignedRequestParams,
+  body: {
+    prompt: string
+    duration: number
+    aspect_ratio: string
+    requestId: string
+    paymentTxHash?: string
+  },
+  signal?: AbortSignal,
+): Promise<GenerativeTaskDetail> {
+  const signed = await withAuth(auth, body)
+  const { token, ...payload } = signed
+  log.debug('POST /api/pixels-render-veo')
+  const response = await fetch('/api/pixels-render-veo', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+    signal,
+  })
+  if (!response.ok) {
+    const err = (await response.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `Veo render failed (${response.status})`)
+  }
+  return (await response.json()) as GenerativeTaskDetail
 }
 
 export async function generateSeedance(
