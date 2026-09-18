@@ -25,6 +25,12 @@
     },
     "api/generate-task.ts": {
       "maxDuration": 30
+    },
+    "api/seedance-generate.ts": {
+      "maxDuration": 300
+    },
+    "api/seedance-plan.ts": {
+      "maxDuration": 60
     }
   },
   "rewrites": [

@@ -29,3 +29,4 @@ export {
   sourceToTimelineFrames,
 } from '@/features/timeline/utils/source-calculations'
 export { linkItems } from '@/features/timeline/stores/actions/item-actions'
+export { buildMediaTimelineItem } from '@/features/timeline/utils/media-timeline-item-builder'

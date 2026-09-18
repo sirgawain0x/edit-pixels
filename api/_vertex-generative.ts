@@ -20,6 +20,7 @@ import {
 } from './_generative-pricing.js'
 
 const GEMINI_IMAGE_MODEL = 'gemini-2.5-flash-image'
+const GEMINI_TEXT_MODEL = 'gemini-2.5-flash'
 
 export function isVertexGenerativeConfigured(): boolean {
   return isVertexAuthConfigured() && Boolean(getVertexProject())
@@ -107,6 +108,75 @@ export async function generateGeminiImage(
     }
   }
   throw new Error('Gemini image generation returned no image data')
+}
+
+export interface SeedanceShotBrief {
+  prompt: string
+  duration: number
+  aspect_ratio: string
+  framing: string
+}
+
+/** Gemini planning for Seedance — prompt, duration, framing only (no Higgsfield). */
+export async function planSeedanceShotBrief(
+  idea: string,
+  timelineContext?: string,
+): Promise<SeedanceShotBrief> {
+  const url = modelUrl(GEMINI_TEXT_MODEL, 'generateContent')
+  const system = [
+    'You are a Creative Director planning a single text-to-video shot for Seedance 2.5.',
+    'Return ONLY valid JSON with keys: prompt (string), duration (integer 4-30), aspect_ratio (one of 16:9, 4:3, 1:1, 3:4, 9:16, 21:9), framing (short string describing camera/framing).',
+    'The prompt must be vivid, cinematic, and self-contained for a text-to-video model.',
+    'Do not mention Higgsfield, APIs, or billing.',
+  ].join('\n')
+
+  const userParts = [idea.trim()]
+  if (timelineContext?.trim()) {
+    userParts.push('\n\nTimeline context:\n', timelineContext.trim())
+  }
+
+  const body = {
+    contents: [
+      {
+        role: 'user',
+        parts: [{ text: `${system}\n\nCreator idea:\n${userParts.join('')}` }],
+      },
+    ],
+    generationConfig: {
+      responseMimeType: 'application/json',
+      temperature: 0.7,
+    },
+  }
+
+  const result = await vertexFetch<{
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
+  }>(url, { method: 'POST', body: JSON.stringify(body) })
+
+  const text = result.candidates?.[0]?.content?.parts?.find((p) => p.text)?.text
+  if (!text) {
+    throw new Error('Gemini shot planning returned no text')
+  }
+
+  let parsed: Record<string, unknown>
+  try {
+    parsed = JSON.parse(text) as Record<string, unknown>
+  } catch {
+    throw new Error('Gemini shot planning returned invalid JSON')
+  }
+
+  const prompt = typeof parsed.prompt === 'string' ? parsed.prompt.trim() : ''
+  const durationRaw = typeof parsed.duration === 'number' ? parsed.duration : 5
+  const aspect_ratio =
+    typeof parsed.aspect_ratio === 'string' ? parsed.aspect_ratio.trim() : '16:9'
+  const framing = typeof parsed.framing === 'string' ? parsed.framing.trim() : 'Medium shot'
+
+  if (!prompt) {
+    throw new Error('Gemini shot planning returned empty prompt')
+  }
+
+  const duration = Math.min(30, Math.max(4, Math.round(durationRaw)))
+
+  return { prompt, duration, aspect_ratio, framing }
 }
 
 export interface ImageBytesInput {
