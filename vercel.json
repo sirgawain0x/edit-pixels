@@ -25,6 +25,18 @@
     },
     "api/generate-task.ts": {
       "maxDuration": 30
+    },
+    "api/seedance-generate.ts": {
+      "maxDuration": 300
+    },
+    "api/seedance-plan.ts": {
+      "maxDuration": 60
+    },
+    "api/pixels-render-veo.ts": {
+      "maxDuration": 300
+    },
+    "api/pixels-render-quote.ts": {
+      "maxDuration": 30
     }
   },
   "rewrites": [

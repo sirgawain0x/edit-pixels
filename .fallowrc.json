@@ -178,6 +178,26 @@
       "exports": ["*"]
     },
     {
+      "file": "api/seedance-plan.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/seedance-quote.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/seedance-generate.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/pixels-render-quote.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/pixels-render-veo.ts",
+      "exports": ["*"]
+    },
+    {
       "file": "api/c2pa/sign.ts",
       "exports": ["*"]
     },
