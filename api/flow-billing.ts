@@ -6,6 +6,7 @@
 import {
   isDirectorBillingEnforced,
   quoteDirectorRetail,
+  releaseDirectorPayment,
   verifyAndConsumeDirectorPayment,
   type DirectorBillingQuote,
   type PaymentVerifyResult,
@@ -28,6 +29,11 @@ export function quoteFlowCreditsUsdc6(credits: number): {
 
 export function quoteDirectorForReuse(audioDurationSeconds: number): DirectorBillingQuote | null {
   return quoteDirectorRetail(audioDurationSeconds)
+}
+
+/** Undo a consumed payment hash after a pre-delivery generative failure. */
+export async function releaseFlowPayment(txHash: string): Promise<void> {
+  await releaseDirectorPayment(txHash)
 }
 
 /** Verify treasury transfer and mark tx consumed for `purpose`. */

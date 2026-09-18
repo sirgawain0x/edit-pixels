@@ -37,6 +37,9 @@
     },
     "api/pixels-render-quote.ts": {
       "maxDuration": 30
+    },
+    "api/pixels-generate-task.ts": {
+      "maxDuration": 30
     }
   },
   "rewrites": [

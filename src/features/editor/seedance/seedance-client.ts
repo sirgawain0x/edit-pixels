@@ -43,14 +43,31 @@ export interface PixelsRenderQuotesResponse {
   seedance: PixelsRenderQuoteLine & { quoteId: string }
 }
 
+export type SeedanceGenerateStatus = 'processing' | 'completed' | 'failed'
+
 export interface SeedanceGenerateResponse {
   id: string
-  status: 'completed' | 'failed'
+  status: SeedanceGenerateStatus
   progress: number
   model: string
+  veoTaskId?: string
   output?: { video_url?: string }
-  error?: { message?: string }
+  error?: { code?: string; message?: string; type?: string }
   mock?: boolean
+  costUsdc6?: number
+  crtvaiRequired?: string
+}
+
+export class PixelsGenerateApiError extends Error {
+  readonly code: string
+  readonly status: number
+
+  constructor(code: string, message: string, status: number) {
+    super(message)
+    this.name = 'PixelsGenerateApiError'
+    this.code = code
+    this.status = status
+  }
 }
 
 async function withAuth<T extends Record<string, unknown>>(
@@ -66,6 +83,32 @@ async function withAuth<T extends Record<string, unknown>>(
     walletAddress: params.walletAddress,
     token,
   }
+}
+
+function parseApiError(
+  status: number,
+  body: { error?: string; balance?: string; requiredMetoken?: string },
+  fallback: string,
+): PixelsGenerateApiError {
+  const code = body.error ?? fallback
+  if (code === 'insufficient_crtvai') {
+    return new PixelsGenerateApiError(
+      code,
+      'Insufficient CRTVAI for this generation.',
+      status,
+    )
+  }
+  if (code === 'payment_required') {
+    return new PixelsGenerateApiError(code, 'Payment is required before generating.', status)
+  }
+  if (code === 'quote_mismatch') {
+    return new PixelsGenerateApiError(
+      code,
+      'Quote expired — re-plan and pick a provider again.',
+      status,
+    )
+  }
+  return new PixelsGenerateApiError(code, code, status)
 }
 
 async function postSeedanceApi<T>(
@@ -89,9 +132,33 @@ async function postSeedanceApi<T>(
   })
   if (!response.ok) {
     const err = (await response.json().catch(() => ({}))) as { error?: string }
-    throw new Error(err.error ?? `${errorLabel} (${response.status})`)
+    throw parseApiError(response.status, err, `${errorLabel} (${response.status})`)
   }
   return (await response.json()) as T
+}
+
+export async function getPixelsGenerateTask(
+  auth: SignedRequestParams,
+  taskId: string,
+  signal?: AbortSignal,
+): Promise<SeedanceGenerateResponse> {
+  const token = await auth.getAccessToken()
+  if (!token) {
+    throw new Error('Not authenticated')
+  }
+  const params = new URLSearchParams({
+    id: taskId,
+    wallet: auth.walletAddress,
+  })
+  const response = await fetch(`/api/pixels-generate-task?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    signal,
+  })
+  if (!response.ok) {
+    const err = (await response.json().catch(() => ({}))) as { error?: string }
+    throw parseApiError(response.status, err, `Task poll failed (${response.status})`)
+  }
+  return (await response.json()) as SeedanceGenerateResponse
 }
 
 export async function planSeedanceShot(

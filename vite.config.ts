@@ -28,6 +28,7 @@ import { POST as seedanceQuotePost } from './api/seedance-quote'
 import { POST as seedanceGeneratePost } from './api/seedance-generate'
 import { POST as pixelsRenderQuotePost } from './api/pixels-render-quote'
 import { POST as pixelsRenderVeoPost } from './api/pixels-render-veo'
+import { GET as pixelsGenerateTaskGet } from './api/pixels-generate-task'
 
 // Stamps public/sw.js with the hashed entry-chunk filename at build time so the service
 // worker's CACHE_VERSION — and the sw.js bytes — change on every deploy. Without this the
@@ -145,6 +146,7 @@ void seedanceQuotePost
 void seedanceGeneratePost
 void pixelsRenderQuotePost
 void pixelsRenderVeoPost
+void pixelsGenerateTaskGet
 
 // fallow-ignore-next-line complexity
 async function proxyEarnDevRequest(
@@ -299,6 +301,17 @@ function directorApiDevPlugin(): Plugin {
               res.statusCode = 500
               res.setHeader('Content-Type', 'application/json')
               res.end(JSON.stringify({ error: 'Pixels render veo proxy failed' }))
+            }
+          })
+          return
+        }
+        if (path === '/api/pixels-generate-task' && req.method === 'GET') {
+          void proxyEarnDevRequest(req, res, pixelsGenerateTaskGet).catch((error) => {
+            console.error('Pixels generate task API middleware error', error)
+            if (!res.headersSent) {
+              res.statusCode = 500
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Pixels generate task proxy failed' }))
             }
           })
           return

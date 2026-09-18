@@ -20,8 +20,17 @@ import {
   shortTaskId,
   startVeoVideo,
 } from './_vertex-generative.js'
-import { isFlowBillingEnforced, quoteFlowCreditsUsdc6, verifyFlowPayment } from './flow-billing.js'
+import {
+  isFlowBillingEnforced,
+  quoteFlowCreditsUsdc6,
+  releaseFlowPayment,
+  verifyFlowPayment,
+} from './flow-billing.js'
 import { isSeedanceGenerateEnabled } from './_seedance-pricing.js'
+import {
+  registerPixelsGenerateJob,
+  updatePixelsGenerateJob,
+} from './_pixels-generate-jobs.js'
 
 const PIXELS_VEO_TIER: VeoTier = 'standard'
 const PIXELS_STILL_QUALITY: NanobananaQuality = '2K'
@@ -98,6 +107,8 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'invalid quote' }, { status: 400 })
   }
 
+  let reservedPaymentTxHash: string | undefined
+
   if (isFlowBillingEnforced()) {
     const paymentTxHash = typeof body.paymentTxHash === 'string' ? body.paymentTxHash.trim() : ''
     if (!paymentTxHash) {
@@ -112,6 +123,7 @@ export async function POST(request: Request): Promise<Response> {
     if (!verified.ok) {
       return Response.json({ error: verified.reason }, { status: 402 })
     }
+    reservedPaymentTxHash = paymentTxHash
   } else {
     try {
       const balanceCheck = await checkMetokenSufficient(auth.address, quote.estimatedUsdc6)
@@ -131,6 +143,23 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json({ error: 'failed to verify balance' }, { status: 502 })
     }
   }
+
+  const releaseReservedPayment = async () => {
+    if (reservedPaymentTxHash) {
+      await releaseFlowPayment(reservedPaymentTxHash).catch(() => undefined)
+    }
+  }
+
+  await registerPixelsGenerateJob({
+    id: requestId,
+    wallet: auth.address,
+    provider: 'veo',
+    status: 'processing',
+    progress: 0,
+    model: 'veo-3.1-generate-preview',
+    costUsdc6: quote.estimatedUsdc6,
+    crtvaiRequired: quote.minCrtvaiWei.toString(),
+  })
 
   try {
     const startUrl = await stillToPublicUrl(prompt, request.url)
@@ -152,6 +181,11 @@ export async function POST(request: Request): Promise<Response> {
       modelId: started.modelId,
     })
 
+    await updatePixelsGenerateJob(requestId, {
+      veoTaskId: taskId,
+      model: started.modelId,
+    })
+
     return Response.json({
       id: taskId,
       status: 'processing',
@@ -164,8 +198,29 @@ export async function POST(request: Request): Promise<Response> {
     })
   } catch (e) {
     console.error('pixels-render-veo error', e)
+    await releaseReservedPayment()
+    const message = e instanceof Error ? e.message : 'generation failed'
+    await updatePixelsGenerateJob(requestId, {
+      status: 'failed',
+      progress: 0,
+      error: {
+        code: 'generation_failed',
+        message,
+        type: 'vertex',
+      },
+    })
     return Response.json(
-      { error: e instanceof Error ? e.message : 'generation failed' },
+      {
+        id: requestId,
+        status: 'failed',
+        progress: 0,
+        model: 'veo-3.1-generate-preview',
+        error: {
+          code: 'generation_failed',
+          message,
+          type: 'vertex',
+        },
+      },
       { status: 502 },
     )
   }
