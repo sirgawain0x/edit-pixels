@@ -54,6 +54,7 @@ interface ProjectListProps {
   onEditProject?: (project: Project) => void
   onImportProject?: () => void
   importAvailable?: boolean
+  createAvailable?: boolean
 }
 
 interface MarqueeRect {
@@ -69,6 +70,7 @@ export function ProjectList({
   onEditProject,
   onImportProject,
   importAvailable = true,
+  createAvailable = true,
 }: ProjectListProps) {
   const { t } = useTranslation()
   const [localSearchQuery, setLocalSearchQuery] = useState('')
@@ -483,12 +485,30 @@ export function ProjectList({
             {t('projects.list.welcomeDescription')}
           </p>
           <div className="flex flex-wrap items-center justify-center gap-3">
-            <Button size="lg" className="gap-2" asChild>
-              <Link to="/projects/new">
-                <Plus className="w-4 h-4" />
-                {t('projects.list.createFirstProject')}
-              </Link>
-            </Button>
+            {createAvailable ? (
+              <Button size="lg" className="gap-2" asChild>
+                <Link to="/projects/new">
+                  <Plus className="w-4 h-4" />
+                  {t('projects.list.createFirstProject')}
+                </Link>
+              </Button>
+            ) : (
+              <TooltipProvider delayDuration={300}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex">
+                      <Button size="lg" className="gap-2" disabled aria-disabled>
+                        <Plus className="w-4 h-4" />
+                        {t('projects.list.createFirstProject')}
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-xs text-center">
+                    {t('projects.create.unavailable')}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
             {onImportProject && (
               <TooltipProvider delayDuration={300}>
                 <Tooltip>

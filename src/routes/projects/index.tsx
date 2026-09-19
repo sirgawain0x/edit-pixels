@@ -34,7 +34,7 @@ import { LegacyMigrationBanner } from '@/features/projects/components/legacy-mig
 import { LegacyMigrationErrors } from '@/features/projects/components/legacy-migration-errors'
 import { ProjectsAppHeader } from '@/features/projects/components/projects-app-header'
 import { TrashSection } from '@/features/projects/components/trash-section'
-import { isFileSystemAccessSupported } from '@/infrastructure/storage/handles-db'
+import { isLocalWorkspaceFolderAvailable } from '@/features/projects/deps/storage-contract'
 import { useWalletContext } from '@/context/wallet-context'
 
 export const Route = createFileRoute('/projects/')({
@@ -62,7 +62,8 @@ function ProjectsIndex() {
   // Wait for Privy init only — smart account provisioning runs in the background.
   const requireWalletForNewProject = walletConfigured && walletReady && !walletConnected
   const walletInitializing = walletConfigured && !walletReady
-  const importAvailable = isFileSystemAccessSupported()
+  const importAvailable = isLocalWorkspaceFolderAvailable()
+  const createAvailable = isLocalWorkspaceFolderAvailable()
   const [editingProject, setEditingProject] = useState<Project | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -273,6 +274,7 @@ function ProjectsIndex() {
         <ProjectsAppHeader
           onImportClick={handleImportClick}
           importAvailable={importAvailable}
+          createAvailable={createAvailable}
           walletInitializing={walletInitializing}
           requireWalletForNewProject={requireWalletForNewProject}
           onConnectWallet={() => {
@@ -324,6 +326,7 @@ function ProjectsIndex() {
               onEditProject={handleEditProject}
               onImportProject={handleImportClick}
               importAvailable={importAvailable}
+              createAvailable={createAvailable}
             />
             <TrashSection />
           </div>

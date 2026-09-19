@@ -14,6 +14,8 @@ import { DISCORD_INVITE_URL, GITHUB_REPO_URL } from '@/config/community'
 import type { ProjectFormData } from '@/features/projects/utils/validation'
 import { WalletConnectButton } from '@/components/wallet-connect-button'
 import { useWalletContext } from '@/context/wallet-context'
+import { isLocalWorkspaceFolderAvailable } from '@/features/projects/deps/storage-contract'
+import { runCreatePreflight, getCreateFailureDescription, getCreatedProjectId } from '@/features/projects/utils/create-project-flow'
 
 const logger = createLogger('NewProject')
 
@@ -43,41 +45,28 @@ function useWalletCreateGate() {
   return { requireWallet, promptConnect }
 }
 
-async function createProjectOrToast(
-  createProject: ReturnType<typeof useCreateProject>,
-  data: ProjectFormData,
-  t: (key: string) => string,
-): Promise<string | null> {
-  try {
-    const result = await createProject(data)
-    if (result.success && result.project) return result.project.id
-    toast.error(t('projects.toasts.createFailed'), { description: result.error })
-  } catch (error) {
-    logger.error('Failed to create project:', error)
-    toast.error(t('projects.toasts.createFailed'), { description: t('projects.tryAgain') })
-  }
-  return null
-}
-
 function NewProject() {
   const navigate = useNavigate()
   const { t } = useTranslation()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const createProject = useCreateProject()
   const { requireWallet, promptConnect } = useWalletCreateGate()
+  const createAvailable = isLocalWorkspaceFolderAvailable()
 
   const handleSubmit = async (data: ProjectFormData) => {
-    if (requireWallet) {
-      promptConnect()
-      return
-    }
+    if (!runCreatePreflight({ requireWallet, createAvailable, promptConnect, t })) return
 
     setIsSubmitting(true)
-    const projectId = await createProjectOrToast(createProject, data, t)
+    const result = await createProject(data)
+    const projectId = getCreatedProjectId(result)
     if (projectId) {
       navigate({ to: '/editor/$projectId', params: { projectId } })
       return
     }
+
+    toast.error(t('projects.toasts.createFailed'), {
+      description: getCreateFailureDescription(result.error, t),
+    })
     setIsSubmitting(false)
   }
 
@@ -117,7 +106,19 @@ function NewProject() {
             Connect your wallet to create a project and use AI features.
           </div>
         ) : null}
-        <InlineCreateProjectForm onSubmit={handleSubmit} isSubmitting={isSubmitting} />
+        {!createAvailable ? (
+          <div
+            className="mb-6 rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground"
+            role="status"
+          >
+            {t('projects.create.unavailable')}
+          </div>
+        ) : null}
+        <InlineCreateProjectForm
+          onSubmit={handleSubmit}
+          isSubmitting={isSubmitting}
+          submitDisabled={!createAvailable}
+        />
       </div>
     </div>
   )

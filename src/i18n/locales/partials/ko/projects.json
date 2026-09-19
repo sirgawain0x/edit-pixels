@@ -252,6 +252,11 @@
       "mediaWillBeSavedTo": "미디어 저장 위치:",
       "startImport": "가져오기 시작"
     },
+    "create": {
+      "unavailableTitle": "이 기기에서는 사용할 수 없음",
+      "unavailable": "새 프로젝트를 만들려면 로컬 작업 공간 폴더를 지원하는 Chromium 기반 데스크톱 브라우저(Chrome, Edge, Brave)가 필요합니다. Safari, Firefox 및 대부분의 모바일 브라우저에서는 사용할 수 없습니다.",
+      "reconnectRequired": "작업 공간 폴더에 저장하지 못했습니다. 데스크톱 브라우저에서 Pixels를 열고 작업 공간을 다시 연결한 후 다시 시도하세요."
+    },
     "landing": {
       "beta": "베타",
       "heroTitle": "동영상을 편집하세요. <accent>브라우저에서.</accent>",

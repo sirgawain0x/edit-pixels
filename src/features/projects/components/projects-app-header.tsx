@@ -1,4 +1,5 @@
 import { Link } from '@tanstack/react-router'
+import type { ComponentProps, ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { BookOpen, Github, Menu, Plus, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -23,16 +24,58 @@ import { WorkspaceIndicator } from '@/features/projects/deps/workspace-gate'
 import { LanguageSwitcher } from '@/shared/ui/language-switcher'
 import { WalletConnectButton } from '@/components/wallet-connect-button'
 import { cn } from '@/shared/ui/cn'
+import { getNewProjectButtonMode, type NewProjectButtonMode } from '@/features/projects/utils/create-project-flow'
 
 interface ProjectsAppHeaderProps {
   onImportClick: () => void
   importAvailable: boolean
+  createAvailable: boolean
   walletInitializing: boolean
   requireWalletForNewProject: boolean
   onConnectWallet: () => void
 }
 
+function TooltipDisabledButton({
+  tooltip,
+  children,
+}: {
+  tooltip: string
+  children: ReactNode
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex">{children}</span>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="max-w-xs text-center">
+        {tooltip}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
+function PlusProjectButton({
+  size = 'lg',
+  className,
+  label,
+  srLabel,
+  ...buttonProps
+}: {
+  size?: 'default' | 'sm' | 'lg'
+  className?: string
+  label: ReactNode
+  srLabel: string
+} & ComponentProps<typeof Button>) {
+  return (
+    <Button size={size} className={cn('gap-2', className)} aria-label={srLabel} {...buttonProps}>
+      <Plus className="w-4 h-4 shrink-0" />
+      {label}
+    </Button>
+  )
+}
+
 function NewProjectButton({
+  createAvailable,
   walletInitializing,
   requireWalletForNewProject,
   onConnectWallet,
@@ -40,6 +83,7 @@ function NewProjectButton({
   size = 'lg',
   compact = false,
 }: {
+  createAvailable: boolean
   walletInitializing: boolean
   requireWalletForNewProject: boolean
   onConnectWallet: () => void
@@ -48,43 +92,51 @@ function NewProjectButton({
   compact?: boolean
 }) {
   const { t } = useTranslation()
-  const label = compact ? (
-    <span className="sr-only">{t('projects.newProject')}</span>
-  ) : (
-    t('projects.newProject')
-  )
+  const srLabel = t('projects.newProject')
+  const label = compact ? <span className="sr-only">{srLabel}</span> : srLabel
+  const shared = { size, className, label, srLabel }
+  const mode = getNewProjectButtonMode({
+    walletInitializing,
+    requireWalletForNewProject,
+    createAvailable,
+  })
 
-  if (walletInitializing) {
-    return (
-      <Button size={size} className={cn('gap-2', className)} disabled aria-label={t('projects.newProject')}>
-        <Plus className="w-4 h-4 shrink-0" />
-        {label}
-      </Button>
-    )
-  }
+  return NEW_PROJECT_BUTTON_RENDERERS[mode]({
+    ...shared,
+    onConnectWallet,
+    unavailableTooltip: t('projects.create.unavailable'),
+  })
+}
 
-  if (requireWalletForNewProject) {
-    return (
-      <Button
-        size={size}
-        className={cn('gap-2', className)}
-        onClick={onConnectWallet}
-        aria-label={t('projects.newProject')}
-      >
-        <Plus className="w-4 h-4 shrink-0" />
-        {label}
-      </Button>
-    )
-  }
+type NewProjectButtonRenderProps = {
+  size?: 'default' | 'sm' | 'lg'
+  className?: string
+  label: ReactNode
+  srLabel: string
+  onConnectWallet: () => void
+  unavailableTooltip: string
+}
 
-  return (
+const NEW_PROJECT_BUTTON_RENDERERS: Record<
+  NewProjectButtonMode,
+  (props: NewProjectButtonRenderProps) => ReactNode
+> = {
+  initializing: (props) => (
+    <PlusProjectButton {...props} disabled />
+  ),
+  wallet: (props) => (
+    <PlusProjectButton {...props} onClick={props.onConnectWallet} />
+  ),
+  unavailable: (props) => (
+    <TooltipDisabledButton tooltip={props.unavailableTooltip}>
+      <PlusProjectButton {...props} disabled aria-disabled />
+    </TooltipDisabledButton>
+  ),
+  ready: (props) => (
     <Link to="/projects/new">
-      <Button size={size} className={cn('gap-2', className)} aria-label={t('projects.newProject')}>
-        <Plus className="w-4 h-4 shrink-0" />
-        {label}
-      </Button>
+      <PlusProjectButton {...props} />
     </Link>
-  )
+  ),
 }
 
 function ImportProjectButton({
@@ -118,16 +170,7 @@ function ImportProjectButton({
   )
 
   if (!importAvailable) {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="inline-flex">{button}</span>
-        </TooltipTrigger>
-        <TooltipContent side="bottom" className="max-w-xs text-center">
-          {tooltip}
-        </TooltipContent>
-      </Tooltip>
-    )
+    return <TooltipDisabledButton tooltip={tooltip}>{button}</TooltipDisabledButton>
   }
 
   return button
@@ -136,6 +179,7 @@ function ImportProjectButton({
 function DesktopToolbar({
   onImportClick,
   importAvailable,
+  createAvailable,
   walletInitializing,
   requireWalletForNewProject,
   onConnectWallet,
@@ -178,6 +222,7 @@ function DesktopToolbar({
       <WalletConnectButton size="lg" className="h-10 px-4" />
       <ImportProjectButton onClick={onImportClick} importAvailable={importAvailable} />
       <NewProjectButton
+        createAvailable={createAvailable}
         walletInitializing={walletInitializing}
         requireWalletForNewProject={requireWalletForNewProject}
         onConnectWallet={onConnectWallet}
@@ -189,6 +234,7 @@ function DesktopToolbar({
 function MobileToolbar({
   onImportClick,
   importAvailable,
+  createAvailable,
   walletInitializing,
   requireWalletForNewProject,
   onConnectWallet,
@@ -258,6 +304,7 @@ function MobileToolbar({
 
       <WalletConnectButton size="sm" compact className="h-11 shrink-0" />
       <NewProjectButton
+        createAvailable={createAvailable}
         walletInitializing={walletInitializing}
         requireWalletForNewProject={requireWalletForNewProject}
         onConnectWallet={onConnectWallet}

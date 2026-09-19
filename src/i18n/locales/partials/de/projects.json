@@ -252,6 +252,11 @@
       "mediaWillBeSavedTo": "Medien werden gespeichert in:",
       "startImport": "Import starten"
     },
+    "create": {
+      "unavailableTitle": "Auf diesem Gerät nicht verfügbar",
+      "unavailable": "Neue Projekte erfordern einen Chromium-basierten Desktop-Browser mit lokalem Workspace-Ordner (Chrome, Edge, Brave). Dies ist in Safari, Firefox und den meisten mobilen Browsern nicht verfügbar.",
+      "reconnectRequired": "Speichern im Workspace-Ordner fehlgeschlagen. Öffne Pixels in einem Desktop-Browser, verbinde deinen Workspace erneut und versuche es dann noch einmal."
+    },
     "landing": {
       "beta": "Beta",
       "heroTitle": "Bearbeite Videos. <accent>In deinem Browser.</accent>",

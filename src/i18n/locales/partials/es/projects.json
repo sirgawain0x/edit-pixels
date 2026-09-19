@@ -252,6 +252,11 @@
       "mediaWillBeSavedTo": "Los medios se guardarán en:",
       "startImport": "Iniciar importación"
     },
+    "create": {
+      "unavailableTitle": "No disponible en este dispositivo",
+      "unavailable": "Los proyectos nuevos requieren un navegador de escritorio basado en Chromium con una carpeta de workspace local (Chrome, Edge, Brave). No está disponible en Safari, Firefox ni en la mayoría de navegadores móviles.",
+      "reconnectRequired": "No se pudo guardar en tu carpeta de workspace. Abre Pixels en un navegador de escritorio, reconecta tu workspace e inténtalo de nuevo."
+    },
     "landing": {
       "beta": "Beta",
       "heroTitle": "Edita videos. <accent>En tu navegador.</accent>",
