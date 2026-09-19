@@ -227,8 +227,11 @@ Import completed `video_url` into workspace media — **do not** auto-place on t
 | `HIGGSFIELD_MOCK=1` | Optional mock MP4 |
 | `DIRECTOR_BILLING_SOFT=1` | Optional soft billing |
 
+## Phase 3 — Batch render UI
+
+See [director-batch-render-ui.md](./director-batch-render-ui.md) for the Director tab **Render all shots** flow, progress UI, retry-failed-only, and concurrent provider cap (`DIRECTOR_BATCH_CONCURRENCY_DEFAULT = 20`).
+
 ## Out of scope (Phase 2)
 
-- Batch queue UI / concurrent cap (Phase 3)
 - Auto-timeline placement (Phase 4)
 - HF keys in browser or Director agent process

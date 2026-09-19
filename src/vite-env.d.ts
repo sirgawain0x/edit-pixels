@@ -16,6 +16,8 @@ interface ImportMetaEnv {
   readonly VITE_ONRAMP_SANDBOX?: string
   /** Enable Creative Pixels Seedance generate tab (server must also enable). */
   readonly VITE_ENABLE_SEEDANCE_GENERATE?: string
+  /** Override Director batch render concurrent provider calls (default 20). */
+  readonly VITE_DIRECTOR_BATCH_CONCURRENCY?: string
 }
 
 interface ImportMeta {

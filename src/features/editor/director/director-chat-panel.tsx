@@ -25,6 +25,9 @@ import {
   formatTimelineAudioForPrompt,
   publicAudioUriForDirector,
 } from './timeline-audio'
+import { DirectorBatchPanel } from '../seedance/director-batch-panel'
+import { findStoryboardShotsFromMessages } from '../seedance/parse-storyboard-shots'
+import { isSeedanceGenerateEnabled } from '@/config/seedance'
 
 const SUGGESTIONS: { key: string; text: string; label: string }[] = [
   {
@@ -165,6 +168,11 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
   const runningTools = toolCalls.filter((call) => call.status === 'running')
   const isEmpty = messages.length === 0 && phase === 'idle' && !pendingInvoice
   const status = statusLabel(phase, streamingText, runningTools.length, paying, t)
+  const storyboardShots = useMemo(
+    () => findStoryboardShotsFromMessages(messages),
+    [messages],
+  )
+  const batchRenderEnabled = isSeedanceGenerateEnabled()
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
@@ -468,6 +476,14 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
             onConfirm={() => void confirmInvoice()}
             onCancel={cancelInvoice}
             t={t}
+          />
+        )}
+
+        {batchRenderEnabled && storyboardShots && phase === 'idle' && !pendingInvoice && (
+          <DirectorBatchPanel
+            shots={storyboardShots}
+            storyboardId={sessionId ?? undefined}
+            disabled={paying}
           />
         )}
 

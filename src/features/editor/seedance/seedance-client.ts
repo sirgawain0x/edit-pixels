@@ -108,6 +108,13 @@ function parseApiError(
       status,
     )
   }
+  if (code === 'batch_shot_already_started') {
+    return new PixelsGenerateApiError(
+      code,
+      'This shot is already rendering — polling existing job.',
+      status,
+    )
+  }
   return new PixelsGenerateApiError(code, code, status)
 }
 
@@ -320,6 +327,34 @@ export async function confirmDirectorBatch(
     auth,
     body,
     'Batch confirm failed',
+  )
+}
+
+export interface DirectorBatchEnqueueResponse {
+  id?: string
+  status?: string
+  progress?: number
+  veoTaskId?: string
+  output?: { video_url?: string }
+  error?: { code?: string; message?: string; type?: string }
+}
+
+export async function enqueueDirectorBatchShot(
+  auth: SignedRequestParams,
+  endpoint: '/api/seedance-generate' | '/api/pixels-render-veo',
+  body: {
+    batchConfirmId: string
+    shotId: string
+    requestId: string
+  },
+  signal?: AbortSignal,
+): Promise<DirectorBatchEnqueueResponse> {
+  return postSeedanceApi<DirectorBatchEnqueueResponse>(
+    endpoint,
+    auth,
+    body,
+    'Batch enqueue failed',
+    signal,
   )
 }
 
