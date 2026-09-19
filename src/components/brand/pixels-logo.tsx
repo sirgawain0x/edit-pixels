@@ -24,14 +24,17 @@ const sizeConfig = {
   },
 }
 
+const BRAND_MARK_SRC = '/assets/brand/pixels-mark-icon-256.png'
+
 function PixelsIcon({ className }: { className?: string }) {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" className={className}>
-      <rect x="64" y="64" width="160" height="160" rx="24" fill="currentColor" />
-      <rect x="288" y="64" width="160" height="160" rx="24" fill="currentColor" opacity="0.7" />
-      <rect x="64" y="288" width="160" height="160" rx="24" fill="currentColor" opacity="0.7" />
-      <rect x="288" y="288" width="160" height="160" rx="24" fill="currentColor" />
-    </svg>
+    <img
+      src={BRAND_MARK_SRC}
+      alt=""
+      aria-hidden="true"
+      draggable={false}
+      className={cn('shrink-0 object-contain', className)}
+    />
   )
 }
 
@@ -39,12 +42,12 @@ export function PixelsLogo({ variant = 'full', size = 'md', className }: PixelsL
   const config = sizeConfig[size]
 
   if (variant === 'icon') {
-    return <PixelsIcon className={cn(config.icon, 'text-primary', className)} />
+    return <PixelsIcon className={cn(config.icon, className)} />
   }
 
   return (
     <div className={cn('flex items-center', config.gap, className)}>
-      <PixelsIcon className={cn(config.icon, 'text-primary')} />
+      <PixelsIcon className={config.icon} />
       <span className={cn(config.text, 'font-semibold tracking-tight text-foreground')}>
         Pixels
       </span>

@@ -1,9 +1,21 @@
 {
   "current": {
     "version": "current",
-    "date": "2026-07-26",
+    "date": "2026-09-19",
     "groups": {
       "added": [
+        {
+          "title": "Generate video from text with Seedance or Veo, then drop the clip onto the timeline"
+        },
+        {
+          "title": "Director \"Render all shots\" — one quote and confirm, live progress, retry failed shots, import to the media library"
+        },
+        {
+          "title": "Auto-place finished Director clips on a new video track aligned to your audio (storyboard timing or equal split)"
+        },
+        {
+          "title": "Manual \"Lay on timeline\" after a batch finishes, so you can re-lay without re-rendering"
+        },
         {
           "title": "Solid color and gradient layers in Motion"
         },
@@ -50,6 +62,9 @@
         }
       ],
       "improved": [
+        {
+          "title": "Paid Generate uses a clearer quote → pay → render flow with better errors when a job fails"
+        },
         {
           "title": "Filmstrips and waveforms stay visible and smooth while zooming the timeline"
         },
@@ -503,7 +518,7 @@
             "title": "Supertonic voice engine added to AI text-to-speech"
           },
           {
-            "title": "Install FreeCut as a desktop app, with prompts when new versions ship"
+            "title": "Install Pixels as a desktop app, with prompts when new versions ship"
           }
         ]
       }
