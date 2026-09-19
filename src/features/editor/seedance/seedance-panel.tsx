@@ -1,6 +1,6 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Clapperboard, Loader2, Sparkles, WandSparkles } from 'lucide-react'
+import { Clapperboard, Loader2, Sparkles, WandSparkles, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -15,12 +15,9 @@ import {
 import { useWalletContext } from '@/context/wallet-context'
 import { useCredits } from '@/features/editor/deps/credits-contract'
 import { useMediaLibraryStore } from '@/features/editor/deps/media-library'
-import { pollTask, proxyGetTask, useGenerativeAuth } from '@/features/editor/deps/generative'
+import { useGenerativeAuth } from '@/features/editor/deps/generative'
 import { BuyMetokenModal } from '@/features/editor/deps/metoken'
-import {
-  getDirectorTreasuryAddress,
-  buildDirectorPaymentOp,
-} from '../director/build-director-payment'
+import { getDirectorTreasuryAddress } from '../director/build-director-payment'
 import { useSmartWalletOps } from '@/hooks/use-smart-wallet-ops'
 import {
   useItemsStore,
@@ -31,25 +28,33 @@ import {
   formatTimelineAudioForPrompt,
 } from '../director/timeline-audio'
 import { usePlaybackStore } from '@/shared/state/playback'
-import {
-  isSeedanceGenerateEnabled,
-  type SeedanceAspectRatio,
-  type SeedanceResolution,
-} from '@/config/seedance'
+import { isSeedanceGenerateEnabled, type SeedanceResolution } from '@/config/seedance'
 import {
   quotePixelsRenderOptions,
   type PixelsRenderProvider,
 } from '@/config/pixels-render'
 import { cn } from '@/shared/ui/cn'
-import {
-  generateSeedance,
-  generateVeoPixels,
-  planSeedanceShot,
-  quotePixelsRender,
-} from './seedance-client'
+import { planSeedanceShot, quotePixelsRender } from './seedance-client'
 import type { PixelsRenderQuotesResponse, SeedanceShotBrief } from './seedance-client'
 import { PixelsRenderProviderPicker } from './pixels-render-provider-picker'
 import { importRenderVideoToTimeline } from './import-render-to-timeline'
+import {
+  clearPixelsGenerateJob,
+  loadPixelsGenerateJob,
+  savePixelsGenerateJob,
+  type PixelsGenerateActiveJob,
+} from './pixels-generate-job-store'
+import {
+  mapPixelsGenerateError,
+  startPixelsGenerateEvent,
+} from './pixels-generate-telemetry'
+import {
+  pollSeedanceTaskToVideo,
+  pollVeoTaskToVideo,
+  requestPixelsGenerateCancel,
+  resolveVeoTaskId,
+  runProviderGenerate,
+} from './pixels-generate-helpers'
 
 type Phase = 'idle' | 'planning' | 'ready' | 'generating'
 
@@ -74,6 +79,9 @@ export const SeedancePanel = memo(function SeedancePanel() {
   const [status, setStatus] = useState<string | null>(null)
   const [buyOpen, setBuyOpen] = useState(false)
 
+  const generateAbortRef = useRef<AbortController | null>(null)
+  const resumeAttemptedRef = useRef(false)
+
   const renderOptions = useMemo(() => {
     if (!brief) return []
     return quotePixelsRenderOptions(brief.duration, resolution)
@@ -92,6 +100,156 @@ export const SeedancePanel = memo(function SeedancePanel() {
     return formatTimelineAudioForPrompt(audioContext)
   }, [items, fps])
 
+  const setProgressStatus = useCallback(
+    (pct: number) => {
+      setStatus(
+        t('seedance.status.progress', {
+          defaultValue: 'Rendering… {{pct}}%',
+          pct,
+        }),
+      )
+    },
+    [t],
+  )
+
+  const finishImport = useCallback(
+    async (
+      videoUrl: string,
+      provider: PixelsRenderProvider,
+      projectId: string,
+      playheadFrame: number,
+    ) => {
+      setStatus(t('seedance.status.importing', { defaultValue: 'Importing to timeline…' }))
+      const tags =
+        provider === 'seedance'
+          ? ['ai-generated', 'seedance']
+          : ['ai-generated', 'veo', 'pixels']
+      const { inserted, fileName } = await importRenderVideoToTimeline(
+        videoUrl,
+        projectId,
+        playheadFrame,
+        tags,
+      )
+
+      if (inserted) {
+        toast.success(
+          t('seedance.success.timeline', {
+            defaultValue: 'Clip added at the playhead.',
+          }),
+        )
+      } else {
+        toast.warning(
+          t('seedance.success.library', {
+            defaultValue: 'Video saved to library but could not place on timeline.',
+            fileName,
+          }),
+        )
+      }
+
+      clearPixelsGenerateJob()
+      setBrief(null)
+      setServerQuotes(null)
+      setRenderProvider(null)
+      setPhase('idle')
+      setStatus(null)
+    },
+    [t],
+  )
+
+  const handleGenerateError = useCallback(
+    (
+      error: unknown,
+      requestId: string | null,
+      telemetry?: ReturnType<typeof startPixelsGenerateEvent>,
+    ) => {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        telemetry?.failure(error, { outcome: 'cancelled' })
+        if (auth && requestId) {
+          void requestPixelsGenerateCancel(auth, requestId)
+        }
+        clearPixelsGenerateJob()
+        setPhase('ready')
+        setStatus(null)
+        return
+      }
+
+      const mapped = mapPixelsGenerateError(error)
+      telemetry?.failure(error, { outcome: mapped.code })
+
+      if (mapped.code === 'insufficient_crtvai') {
+        setBuyOpen(true)
+      }
+
+      toast.error(mapped.message)
+      clearPixelsGenerateJob()
+      setPhase('ready')
+      setStatus(null)
+    },
+    [auth],
+  )
+
+  const runGenerate = useCallback(
+    async (
+      input: PixelsGenerateActiveJob,
+      crtvaiRequired: string,
+      costUsdc6: number,
+      seedanceQuoteId?: string,
+    ) => {
+      const telemetry = startPixelsGenerateEvent({
+        provider: input.provider,
+        durationSec: input.brief.duration,
+        costUsdc6,
+        resolution: input.provider === 'seedance' ? input.resolution : '720p',
+      })
+
+      const abortController = new AbortController()
+      generateAbortRef.current = abortController
+      savePixelsGenerateJob(input)
+      setPhase('generating')
+
+      try {
+        if (!auth) throw new Error('Not authenticated')
+        if (input.provider === 'seedance') {
+          setStatus(
+            t('seedance.status.generatingSeedance', {
+              defaultValue: 'Generating with Seedance 2.5…',
+            }),
+          )
+        } else {
+          setStatus(
+            t('seedance.status.generatingVeo', {
+              defaultValue: 'Generating Gemini still + Veo 3.1…',
+            }),
+          )
+        }
+        const videoUrl = await runProviderGenerate(auth, input, crtvaiRequired, {
+          canPayOnChain,
+          sendOps,
+          refreshBalance,
+          onProgress: setProgressStatus,
+          seedanceQuoteId,
+          signal: abortController.signal,
+        })
+        telemetry.success({ outcome: 'completed' })
+        await finishImport(videoUrl, input.provider, input.projectId, input.playheadFrame)
+      } catch (error) {
+        handleGenerateError(error, input.requestId, telemetry)
+      } finally {
+        generateAbortRef.current = null
+      }
+    },
+    [
+      auth,
+      canPayOnChain,
+      finishImport,
+      handleGenerateError,
+      refreshBalance,
+      sendOps,
+      setProgressStatus,
+      t,
+    ],
+  )
+
   useEffect(() => {
     if (!auth || !brief || phase !== 'ready') return
     void quotePixelsRender(auth, { duration: brief.duration, resolution })
@@ -100,6 +258,57 @@ export const SeedancePanel = memo(function SeedancePanel() {
         // Client-side quotes still shown; server re-validates on generate.
       })
   }, [auth, brief, phase, resolution])
+
+  // fallow-ignore-next-line complexity
+  useEffect(() => {
+    if (!auth || !currentProjectId || resumeAttemptedRef.current) return
+    const saved = loadPixelsGenerateJob()
+    if (!saved || saved.projectId !== currentProjectId) return
+
+    resumeAttemptedRef.current = true
+    setBrief(saved.brief)
+    setResolution(saved.resolution)
+    setRenderProvider(saved.provider)
+    setPhase('generating')
+    setStatus(t('seedance.status.resuming', { defaultValue: 'Resuming generation…' }))
+
+    const abortController = new AbortController()
+    generateAbortRef.current = abortController
+
+    void (async () => {
+      const telemetry = startPixelsGenerateEvent({
+        provider: saved.provider,
+        durationSec: saved.brief.duration,
+        costUsdc6: 0,
+        resolution: saved.provider === 'seedance' ? saved.resolution : '720p',
+      })
+      telemetry.set('resumed', true)
+
+      try {
+        const videoUrl =
+          saved.provider === 'seedance'
+            ? await pollSeedanceTaskToVideo(auth, saved.requestId, {
+                signal: abortController.signal,
+                onProgress: setProgressStatus,
+              })
+            : await (async () => {
+                const resolved = await resolveVeoTaskId(auth, saved, abortController.signal)
+                if ('videoUrl' in resolved) return resolved.videoUrl
+                return pollVeoTaskToVideo(auth, resolved.veoTaskId, {
+                  signal: abortController.signal,
+                  onProgress: setProgressStatus,
+                })
+              })()
+
+        telemetry.success({ outcome: 'completed' })
+        await finishImport(videoUrl, saved.provider, saved.projectId, saved.playheadFrame)
+      } catch (error) {
+        handleGenerateError(error, saved.requestId, telemetry)
+      } finally {
+        generateAbortRef.current = null
+      }
+    })()
+  }, [auth, currentProjectId, finishImport, handleGenerateError, setProgressStatus, t])
 
   const planShot = useCallback(async () => {
     if (!walletConfigured) {
@@ -144,13 +353,8 @@ export const SeedancePanel = memo(function SeedancePanel() {
     }
   }, [auth, authenticated, connect, idea, resolution, t, timelineContext, walletConfigured])
 
-  // fallow-ignore-next-line complexity
   const confirmAndGenerate = useCallback(async () => {
-    if (!auth || !brief || !selectedQuote || !renderProvider) return
-    if (!currentProjectId) {
-      toast.error(t('seedance.error.project', { defaultValue: 'Open a project first.' }))
-      return
-    }
+    if (!auth || !brief || !selectedQuote || !renderProvider || !currentProjectId) return
     if (insufficient) {
       setBuyOpen(true)
       toast.error(
@@ -160,123 +364,38 @@ export const SeedancePanel = memo(function SeedancePanel() {
     }
 
     const playheadFrame = usePlaybackStore.getState().currentFrame
-    const crtvaiWei = BigInt(selectedQuote.crtvaiRequired)
-    setPhase('generating')
-    setStatus(t('seedance.status.paying', { defaultValue: 'Confirming payment…' }))
-
-    try {
-      let paymentTxHash: string | undefined
-      if (canPayOnChain) {
-        const { txHash } = await sendOps([buildDirectorPaymentOp(crtvaiWei)])
-        paymentTxHash = txHash
-        refreshBalance()
-      }
-
-      let videoUrl: string | undefined
-
-      if (renderProvider === 'seedance') {
-        const seedanceQuoteId = serverQuotes?.seedance.quoteId
-        if (!seedanceQuoteId) {
-          throw new Error('Seedance quote unavailable')
-        }
-        setStatus(
-          t('seedance.status.generatingSeedance', {
-            defaultValue: 'Generating with Seedance 2.5…',
-          }),
-        )
-        const result = await generateSeedance(auth, {
-          prompt: brief.prompt,
-          duration: brief.duration,
-          resolution,
-          aspect_ratio: (brief.aspect_ratio as SeedanceAspectRatio) || '16:9',
-          quoteId: seedanceQuoteId,
-          requestId: crypto.randomUUID(),
-          ...(paymentTxHash ? { paymentTxHash } : {}),
-        })
-        if (result.status !== 'completed' || !result.output?.video_url) {
-          throw new Error(result.error?.message ?? 'Generation failed')
-        }
-        videoUrl = result.output.video_url
-      } else {
-        setStatus(
-          t('seedance.status.generatingVeo', {
-            defaultValue: 'Generating Gemini still + Veo 3.1…',
-          }),
-        )
-        const task = await generateVeoPixels(auth, {
-          prompt: brief.prompt,
-          duration: brief.duration,
-          aspect_ratio: brief.aspect_ratio,
-          requestId: crypto.randomUUID(),
-          ...(paymentTxHash ? { paymentTxHash } : {}),
-        })
-        const final = await pollTask((signal) => proxyGetTask(task.id, signal, auth), {
-          onProgress: (d) => {
-            setStatus(
-              t('seedance.status.progress', {
-                defaultValue: 'Rendering… {{pct}}%',
-                pct: Math.round(d.progress ?? 0),
-              }),
-            )
-          },
-        })
-        if (final.status !== 'completed' || !final.output?.video_url) {
-          throw new Error(final.error?.message || 'Veo generation failed')
-        }
-        videoUrl = final.output.video_url
-      }
-
-      setStatus(t('seedance.status.importing', { defaultValue: 'Importing to timeline…' }))
-      const tags =
-        renderProvider === 'seedance'
-          ? ['ai-generated', 'seedance']
-          : ['ai-generated', 'veo', 'pixels']
-      const { inserted, fileName } = await importRenderVideoToTimeline(
-        videoUrl,
-        currentProjectId,
+    await runGenerate(
+      {
+        requestId: crypto.randomUUID(),
+        provider: renderProvider,
+        projectId: currentProjectId,
         playheadFrame,
-        tags,
-      )
-
-      if (inserted) {
-        toast.success(
-          t('seedance.success.timeline', {
-            defaultValue: 'Clip added at the playhead.',
-          }),
-        )
-      } else {
-        toast.warning(
-          t('seedance.success.library', {
-            defaultValue: 'Video saved to library but could not place on timeline.',
-            fileName,
-          }),
-        )
-      }
-
-      setBrief(null)
-      setServerQuotes(null)
-      setRenderProvider(null)
-      setPhase('idle')
-      setStatus(null)
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Generation failed')
-      setPhase('ready')
-      setStatus(null)
-    }
+        brief,
+        resolution,
+        seedanceQuoteId:
+          renderProvider === 'seedance' ? serverQuotes?.seedance.quoteId : undefined,
+        startedAtMs: Date.now(),
+      },
+      selectedQuote.crtvaiRequired,
+      selectedQuote.estimatedUsdc6,
+      renderProvider === 'seedance' ? serverQuotes?.seedance.quoteId : undefined,
+    )
   }, [
     auth,
     brief,
-    canPayOnChain,
     currentProjectId,
     insufficient,
-    refreshBalance,
     renderProvider,
     resolution,
+    runGenerate,
     selectedQuote,
-    sendOps,
     serverQuotes?.seedance.quoteId,
     t,
   ])
+
+  const cancelGenerate = useCallback(() => {
+    generateAbortRef.current?.abort()
+  }, [])
 
   if (!isSeedanceGenerateEnabled()) {
     return null
@@ -433,7 +552,17 @@ export const SeedancePanel = memo(function SeedancePanel() {
       </div>
 
       <div className="shrink-0 space-y-2 border-t border-border/60 p-3">
-        {canConfirm ? (
+        {phase === 'generating' ? (
+          <Button
+            type="button"
+            variant="secondary"
+            className="h-9 w-full gap-1.5 text-[12px]"
+            onClick={cancelGenerate}
+          >
+            <X className="h-3.5 w-3.5" />
+            {t('seedance.cancel', { defaultValue: 'Cancel generation' })}
+          </Button>
+        ) : canConfirm ? (
           <Button
             type="button"
             className="h-9 w-full gap-1.5 text-[12px]"

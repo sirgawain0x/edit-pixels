@@ -39,7 +39,7 @@ export async function POST(request: Request): Promise<Response> {
   const duration = typeof body.duration === 'number' ? body.duration : 5
   const resolution: SeedanceResolution = body.resolution === '480p' ? '480p' : '720p'
 
-  const quote = quoteSeedanceSpend({ duration, resolution })
+  const quote = await quoteSeedanceSpend({ duration, resolution })
 
   return Response.json({
     quoteId: quote.quoteId,

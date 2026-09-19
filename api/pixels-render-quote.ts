@@ -63,7 +63,7 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'invalid veo quote' }, { status: 400 })
   }
 
-  const seedanceQuote = quoteSeedanceSpend({ duration: durationRaw, resolution })
+  const seedanceQuote = await quoteSeedanceSpend({ duration: durationRaw, resolution })
 
   return Response.json({
     veo: {
