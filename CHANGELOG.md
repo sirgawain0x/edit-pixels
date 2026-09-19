@@ -9,6 +9,7 @@ All notable changes to Creative Pixels. Weekly CalVer: `YYYY.MM.DD` = the Monday
 Generate AI video from text, batch-render Director storyboards, and drop finished shots onto your timeline. Paid Generate now walks you through quote → pay → render with clearer errors when something fails.
 
 ### Added
+- Phone-friendly Projects hub — menu sheet for Docs, Discord, GitHub, language, workspace, and import; wallet and New stay in the top bar
 - Generate video from text with Seedance or Veo, then drop the clip onto the timeline
 - Director "Render all shots" — one quote and confirm, live progress, retry failed shots, import to the media library
 - Auto-place finished Director clips on a new video track aligned to your audio (storyboard timing or equal split)
@@ -31,6 +32,8 @@ Generate AI video from text, batch-render Director storyboards, and drop finishe
 - Timeline scrubbing cancels cleanly when the window loses focus
 
 ### Improved
+- Legacy migrate banner stacks cleanly on small screens
+- Import is disabled with a clear tip when folder access isn't available (Safari / most mobile browsers)
 - Paid Generate uses a clearer quote → pay → render flow with better errors when a job fails
 - Filmstrips and waveforms stay visible and smooth while zooming the timeline
 - The Motion dopesheet stays responsive with large layer stacks
