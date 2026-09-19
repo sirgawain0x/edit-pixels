@@ -182,32 +182,39 @@ export function LegacyMigrationBanner({ onMigrated }: Props) {
     return (
       <>
         <div className="panel-bg border border-border rounded-lg p-4 text-sm space-y-2">
-          <div className="flex items-start gap-3">
-            <Database className="h-4 w-4 mt-0.5" />
-            <div className="flex-1">
-              <div className="font-medium">{t('projects.legacyMigration.completeTitle')}</div>
-              <div className="text-muted-foreground text-xs mt-1">
-                {t('projects.legacyMigration.completeSummary', {
-                  projects: report.projects,
-                  media: report.media,
-                  thumbnails: report.thumbnails,
-                  transcripts: report.transcripts,
-                })}
-                {report.errors.length > 0 &&
-                  ` · ${t('projects.legacyMigration.errorsLogged', { count: report.errors.length })}`}
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+            <div className="flex items-start gap-3 min-w-0">
+              <Database className="h-4 w-4 mt-0.5 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="font-medium">{t('projects.legacyMigration.completeTitle')}</div>
+                <div className="text-muted-foreground text-xs mt-1">
+                  {t('projects.legacyMigration.completeSummary', {
+                    projects: report.projects,
+                    media: report.media,
+                    thumbnails: report.thumbnails,
+                    transcripts: report.transcripts,
+                  })}
+                  {report.errors.length > 0 &&
+                    ` · ${t('projects.legacyMigration.errorsLogged', { count: report.errors.length })}`}
+                </div>
               </div>
             </div>
-            <Button
-              variant="destructive"
-              size="sm"
-              className="gap-2"
-              onClick={() => setConfirmDelete(true)}
-            >
-              <Trash2 className="h-3 w-3" /> {t('projects.legacyMigration.deleteStorage')}
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => setState({ kind: 'dismissed' })}>
-              {t('projects.dismiss')}
-            </Button>
+            <div className="flex flex-col gap-2 sm:flex-row sm:shrink-0 w-full sm:w-auto">
+              <Button
+                variant="destructive"
+                className="gap-2 w-full sm:w-auto h-11"
+                onClick={() => setConfirmDelete(true)}
+              >
+                <Trash2 className="h-3 w-3" /> {t('projects.legacyMigration.deleteStorage')}
+              </Button>
+              <Button
+                variant="ghost"
+                className="w-full sm:w-auto h-11"
+                onClick={() => setState({ kind: 'dismissed' })}
+              >
+                {t('projects.dismiss')}
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -239,20 +246,28 @@ export function LegacyMigrationBanner({ onMigrated }: Props) {
   // prompt
   return (
     <div className="panel-bg border border-border rounded-lg p-4 text-sm">
-      <div className="flex items-start gap-3">
-        <Database className="h-4 w-4 mt-0.5 text-muted-foreground" />
-        <div className="flex-1">
-          <div className="font-medium">{t('projects.legacyMigration.promptTitle')}</div>
-          <div className="text-muted-foreground text-xs mt-1">
-            {t('projects.legacyMigration.promptDescription')}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+        <div className="flex items-start gap-3 min-w-0">
+          <Database className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="font-medium">{t('projects.legacyMigration.promptTitle')}</div>
+            <div className="text-muted-foreground text-xs mt-1">
+              {t('projects.legacyMigration.promptDescription')}
+            </div>
           </div>
         </div>
-        <Button size="sm" onClick={() => void handleMigrate()}>
-          {t('projects.legacyMigration.migrate')}
-        </Button>
-        <Button variant="ghost" size="sm" onClick={() => setState({ kind: 'dismissed' })}>
-          {t('projects.later')}
-        </Button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:shrink-0 w-full sm:w-auto">
+          <Button className="w-full sm:w-auto h-11" onClick={() => void handleMigrate()}>
+            {t('projects.legacyMigration.migrate')}
+          </Button>
+          <Button
+            variant="ghost"
+            className="w-full sm:w-auto h-11"
+            onClick={() => setState({ kind: 'dismissed' })}
+          >
+            {t('projects.later')}
+          </Button>
+        </div>
       </div>
     </div>
   )

@@ -2,6 +2,12 @@ import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Search, ArrowUpDown, X, Trash2, AlertTriangle, Plus, Upload } from 'lucide-react'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { Link } from '@tanstack/react-router'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -47,6 +53,7 @@ import type { Project } from '@/types/project'
 interface ProjectListProps {
   onEditProject?: (project: Project) => void
   onImportProject?: () => void
+  importAvailable?: boolean
 }
 
 interface MarqueeRect {
@@ -58,7 +65,11 @@ interface MarqueeRect {
 
 const MARQUEE_DRAG_THRESHOLD = 4
 
-export function ProjectList({ onEditProject, onImportProject }: ProjectListProps) {
+export function ProjectList({
+  onEditProject,
+  onImportProject,
+  importAvailable = true,
+}: ProjectListProps) {
   const { t } = useTranslation()
   const [localSearchQuery, setLocalSearchQuery] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -334,9 +345,9 @@ export function ProjectList({ onEditProject, onImportProject }: ProjectListProps
     <div className="space-y-6">
       {/* Search and Filters Bar */}
       {!isEmpty && (
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           {/* Search */}
-          <div className="relative flex-1 max-w-md">
+          <div className="relative w-full md:flex-1 md:max-w-md md:min-w-[12rem]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
               type="text"
@@ -437,7 +448,7 @@ export function ProjectList({ onEditProject, onImportProject }: ProjectListProps
           )}
 
           {/* Spacer */}
-          <div className="flex-1" />
+          <div className="hidden md:block flex-1" />
 
           {/* Selection controls */}
           {selectionCount > 0 && (
@@ -479,10 +490,30 @@ export function ProjectList({ onEditProject, onImportProject }: ProjectListProps
               </Link>
             </Button>
             {onImportProject && (
-              <Button variant="outline" size="lg" className="gap-2" onClick={onImportProject}>
-                <Upload className="w-4 h-4" />
-                {t('projects.list.importExistingProject')}
-              </Button>
+              <TooltipProvider delayDuration={300}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex">
+                      <Button
+                        variant="outline"
+                        size="lg"
+                        className="gap-2"
+                        onClick={importAvailable ? onImportProject : undefined}
+                        disabled={!importAvailable}
+                        aria-disabled={!importAvailable}
+                      >
+                        <Upload className="w-4 h-4" />
+                        {t('projects.list.importExistingProject')}
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  {!importAvailable && (
+                    <TooltipContent side="bottom" className="max-w-xs text-center">
+                      {t('projects.import.unavailable')}
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              </TooltipProvider>
             )}
           </div>
         </div>

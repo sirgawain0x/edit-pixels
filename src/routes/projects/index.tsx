@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState, useRef } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -6,11 +6,7 @@ import { createLogger } from '@/shared/logging/logger'
 
 const logger = createLogger('ProjectsIndex')
 import { Button } from '@/components/ui/button'
-import { Separator } from '@/components/ui/separator'
-import { Plus, Upload, FolderOpen, File, Github, BookOpen } from 'lucide-react'
-import { PixelsLogo } from '@/components/brand/pixels-logo'
-import { DiscordIcon } from '@/components/brand/discord-icon'
-import { DISCORD_INVITE_URL, GITHUB_REPO_URL } from '@/config/community'
+import { FolderOpen, File } from 'lucide-react'
 import { ProjectList } from '@/features/projects/components/project-list'
 import { EditProjectForm } from '@/features/projects/components/project-form'
 import {
@@ -36,10 +32,9 @@ import type { ImportProgress } from '@/features/project-bundle/types/bundle'
 import { BUNDLE_EXTENSION, BUNDLE_FILENAME_RE } from '@/features/project-bundle/types/bundle'
 import { LegacyMigrationBanner } from '@/features/projects/components/legacy-migration-banner'
 import { LegacyMigrationErrors } from '@/features/projects/components/legacy-migration-errors'
+import { ProjectsAppHeader } from '@/features/projects/components/projects-app-header'
 import { TrashSection } from '@/features/projects/components/trash-section'
-import { WorkspaceIndicator } from '@/features/workspace-gate'
-import { LanguageSwitcher } from '@/shared/ui/language-switcher'
-import { WalletConnectButton } from '@/components/wallet-connect-button'
+import { isFileSystemAccessSupported } from '@/infrastructure/storage/handles-db'
 import { useWalletContext } from '@/context/wallet-context'
 
 export const Route = createFileRoute('/projects/')({
@@ -67,6 +62,7 @@ function ProjectsIndex() {
   // Wait for Privy init only — smart account provisioning runs in the background.
   const requireWalletForNewProject = walletConfigured && walletReady && !walletConnected
   const walletInitializing = walletConfigured && !walletReady
+  const importAvailable = isFileSystemAccessSupported()
   const [editingProject, setEditingProject] = useState<Project | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -117,6 +113,7 @@ function ProjectsIndex() {
 
   // Handle import file selection
   const handleImportClick = () => {
+    if (!importAvailable) return
     fileInputRef.current?.click()
   }
 
@@ -273,97 +270,27 @@ function ProjectsIndex() {
   return (
     <>
       <div className="min-h-screen bg-background">
-        {/* Header */}
-        <div className="panel-header border-b border-border" data-no-marquee>
-          <div className="max-w-[1920px] mx-auto px-6 py-5 flex items-center justify-between">
-            <Link to="/">
-              <PixelsLogo
-                variant="full"
-                size="md"
-                className="hover:opacity-80 transition-opacity"
-              />
-            </Link>
-            <div className="flex items-center gap-3">
-              <LanguageSwitcher size="md" align="end" side="bottom" />
+        <ProjectsAppHeader
+          onImportClick={handleImportClick}
+          importAvailable={importAvailable}
+          walletInitializing={walletInitializing}
+          requireWalletForNewProject={requireWalletForNewProject}
+          onConnectWallet={() => {
+            toast.message('Connect your wallet to continue', {
+              description: 'Wallet connection is required before creating a project.',
+            })
+            connect()
+          }}
+        />
 
-              <Separator orientation="vertical" className="h-6" />
-
-              <Button variant="outline" size="lg" className="gap-2 px-4" asChild>
-                <Link to="/docs">
-                  <BookOpen className="w-4 h-4" />
-                  Docs
-                </Link>
-              </Button>
-              <Button variant="outline" size="lg" className="gap-2 px-4" asChild>
-                <a href={DISCORD_INVITE_URL} target="_blank" rel="noopener noreferrer">
-                  <DiscordIcon className="w-4 h-4" />
-                  Discord
-                </a>
-              </Button>
-              <Button variant="outline" size="lg" className="gap-2 px-4" asChild>
-                <a
-                  href={GITHUB_REPO_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label={t('projects.viewOnGitHub')}
-                >
-                  <Github className="w-4 h-4" />
-                  GitHub
-                </a>
-              </Button>
-
-              <Separator orientation="vertical" className="h-6" />
-
-              <WorkspaceIndicator />
-              <WalletConnectButton size="lg" className="h-10 px-4" />
-              <Button
-                variant="outline"
-                size="lg"
-                className="gap-2 px-4"
-                onClick={handleImportClick}
-              >
-                <Upload className="w-4 h-4" />
-                {t('projects.importProject')}
-              </Button>
-              {walletInitializing ? (
-                <Button size="lg" className="gap-2 px-4" disabled>
-                  <Plus className="w-4 h-4" />
-                  {t('projects.newProject')}
-                </Button>
-              ) : requireWalletForNewProject ? (
-                <Button
-                  size="lg"
-                  className="gap-2 px-4"
-                  onClick={() => {
-                    toast.message('Connect your wallet to continue', {
-                      description: 'Wallet connection is required before creating a project.',
-                    })
-                    connect()
-                  }}
-                >
-                  <Plus className="w-4 h-4" />
-                  {t('projects.newProject')}
-                </Button>
-              ) : (
-                <Link to="/projects/new">
-                  <Button size="lg" className="gap-2 px-4">
-                    <Plus className="w-4 h-4" />
-                    {t('projects.newProject')}
-                  </Button>
-                </Link>
-              )}
-            </div>
-
-            {/* Hidden file input for import */}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".zip"
-              onChange={handleFileSelect}
-              className="hidden"
-            />
-          </div>
-        </div>
+        {/* Hidden file input for import */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".zip"
+          onChange={handleFileSelect}
+          className="hidden"
+        />
 
         {/* Error state */}
         {error && (
@@ -393,7 +320,11 @@ function ProjectsIndex() {
         ) : (
           /* Projects List */
           <div className="max-w-[1920px] mx-auto px-6 py-8">
-            <ProjectList onEditProject={handleEditProject} onImportProject={handleImportClick} />
+            <ProjectList
+              onEditProject={handleEditProject}
+              onImportProject={handleImportClick}
+              importAvailable={importAvailable}
+            />
             <TrashSection />
           </div>
         )}
