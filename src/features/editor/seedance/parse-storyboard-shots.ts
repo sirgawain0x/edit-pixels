@@ -121,7 +121,7 @@ export function findStoryboardShotsFromMessages(
 ): DirectorStoryboardShotPayload[] | null {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]
-    if (message.role !== 'assistant') continue
+    if (!message || message.role !== 'assistant') continue
     const shots = parseStoryboardShots(message.content)
     if (shots.length >= 2) return shots
   }

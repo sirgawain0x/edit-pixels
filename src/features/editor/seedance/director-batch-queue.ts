@@ -116,7 +116,9 @@ export async function runWithConcurrency<T>(
     while (nextIndex < items.length) {
       const current = nextIndex
       nextIndex += 1
-      await worker(items[current])
+      const item = items[current]
+      if (item === undefined) continue
+      await worker(item)
     }
   }
 

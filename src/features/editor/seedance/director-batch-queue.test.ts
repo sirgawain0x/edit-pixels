@@ -176,8 +176,8 @@ describe('director batch queue', () => {
       },
     ]
     const prepared = prepareJobsForResume(jobs)
-    expect(prepared[0].status).toBe('queued')
-    expect(prepared[1].status).toBe('succeeded')
+    expect(prepared[0]?.status).toBe('queued')
+    expect(prepared[1]?.status).toBe('succeeded')
   })
 
   it('detects expired batch quotes', () => {
@@ -208,9 +208,9 @@ describe('director batch queue', () => {
       },
     ]
     const reset = resetFailedJobsForRetry(jobs)
-    expect(reset[0].status).toBe('succeeded')
-    expect(reset[1].status).toBe('queued')
-    expect(reset[1].error).toBeUndefined()
+    expect(reset[0]?.status).toBe('succeeded')
+    expect(reset[1]?.status).toBe('queued')
+    expect(reset[1]?.error).toBeUndefined()
   })
 
   it('caps concurrent workers', async () => {

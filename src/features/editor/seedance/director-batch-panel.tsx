@@ -156,6 +156,18 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
     }
   }, [auth, enabled, quote, phase, activeJob, loadQuote])
 
+  const callbacks = useMemo(
+    () => ({
+      onPhase: setPhase,
+      onJobs: setJobs,
+      onError: (message: string) => {
+        setError(message)
+        toast.error(message)
+      },
+    }),
+    [],
+  )
+
   useEffect(() => {
     if (!auth || !currentProjectId || resumeAttemptedRef.current) return
     const saved = loadDirectorBatchJob()
@@ -200,18 +212,6 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
         setPhase('done')
       })
   }, [auth, currentProjectId, shotsKey, callbacks, t])
-
-  const callbacks = useMemo(
-    () => ({
-      onPhase: setPhase,
-      onJobs: setJobs,
-      onError: (message: string) => {
-        setError(message)
-        toast.error(message)
-      },
-    }),
-    [],
-  )
 
   const handleConfirm = useCallback(async () => {
     if (!auth || !quote || !currentProjectId || busy) return
