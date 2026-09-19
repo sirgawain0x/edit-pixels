@@ -11,6 +11,9 @@
     "viewOnGitHub": "View on GitHub",
     "newProject": "New Project",
     "importProject": "Import Project",
+    "header": {
+      "menu": "Menu"
+    },
     "errorLoading": "Error loading projects",
     "loadingProjects": "Loading projects...",
     "copySuffix": "{{name}} (Copy)",
@@ -229,6 +232,7 @@
       "download": "Download"
     },
     "import": {
+      "unavailable": "Import requires a Chromium-based desktop browser with folder access (Chrome, Edge, Brave). It is not available on Safari, Firefox, or most mobile browsers.",
       "invalidFile": "Please select a valid {{extension}} file",
       "cannotSelectSystemFolders": "Cannot select system folders directly. Use \"New Folder\" in the picker to create a folder first, then select it.",
       "selectDestinationFailed": "Failed to select destination folder. Please try a different location.",
