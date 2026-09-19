@@ -8,6 +8,7 @@ import { getBearerToken, verifyPrivyAccessToken } from './_wallet-auth.js'
 import { toGenerativeTaskDetail } from './_generative-task-response.js'
 import { isVertexGenerativeConfigured, pollVeoOperation } from './_vertex-generative.js'
 import { getGenerativeTaskMeta, getGenerativeTaskOwner } from './_task-registry.js'
+import { syncPixelsVeoJobFromPoll } from './_pixels-generate-veo-sync.js'
 
 export async function GET(request: Request): Promise<Response> {
   if (!isVertexGenerativeConfigured()) {
@@ -47,6 +48,7 @@ export async function GET(request: Request): Promise<Response> {
   try {
     const poll = await pollVeoOperation(meta.operationName, meta.modelId)
     const detail = toGenerativeTaskDetail(taskId, meta.modelId, poll)
+    await syncPixelsVeoJobFromPoll(taskId, detail)
     return Response.json(detail)
   } catch (e) {
     console.error('generate-task error', e)
