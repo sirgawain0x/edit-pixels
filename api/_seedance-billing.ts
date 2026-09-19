@@ -40,10 +40,6 @@ const QUOTE_TTL_SECONDS = 15 * 60
 const memoryQuotes = new Map<string, SeedanceBillingQuote>()
 const memoryReservations = new Map<string, SeedanceBillingReservation>()
 
-function allowMemoryFallback(): boolean {
-  return !process.env.VERCEL
-}
-
 interface StoredQuote {
   quoteId: string
   duration: number
@@ -143,10 +139,10 @@ async function loadReservation(reservationId: string): Promise<SeedanceBillingRe
 }
 
 /** Price a Seedance job at undiscounted Higgsfield list rates. */
-export function quoteSeedanceSpend(input: {
+export async function quoteSeedanceSpend(input: {
   duration: number
   resolution: SeedanceResolution
-}): SeedanceBillingQuote {
+}): Promise<SeedanceBillingQuote> {
   const duration = clampSeedanceDuration(input.duration)
   const resolution = input.resolution === '480p' ? '480p' : '720p'
   const estimatedUsdc6 = quoteSeedanceUsdc6({ duration, resolution })
@@ -157,7 +153,7 @@ export function quoteSeedanceSpend(input: {
     estimatedUsdc6,
     minCrtvaiWei: quoteSeedanceMinCrtvaiWei(estimatedUsdc6),
   }
-  void persistQuote(quote)
+  await persistQuote(quote)
   return quote
 }
 

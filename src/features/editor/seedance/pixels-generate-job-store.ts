@@ -19,6 +19,7 @@ export interface PixelsGenerateActiveJob {
   /** @deprecated use server quote at confirm time */
   seedanceQuoteId?: string
   veoTaskId?: string
+  paymentTxHash?: string
   startedAtMs: number
 }
 

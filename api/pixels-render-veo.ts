@@ -23,7 +23,6 @@ import {
 import {
   isFlowBillingEnforced,
   quoteFlowCreditsUsdc6,
-  releaseFlowPayment,
   verifyFlowPayment,
 } from './flow-billing.js'
 import { isSeedanceGenerateEnabled } from './_seedance-pricing.js'
@@ -31,6 +30,7 @@ import {
   registerPixelsGenerateJob,
   updatePixelsGenerateJob,
 } from './_pixels-generate-jobs.js'
+import { failPixelsGenerateJob } from './_pixels-generate-payment.js'
 
 const PIXELS_VEO_TIER: VeoTier = 'standard'
 const PIXELS_STILL_QUALITY: NanobananaQuality = '2K'
@@ -107,11 +107,30 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'invalid quote' }, { status: 400 })
   }
 
-  let reservedPaymentTxHash: string | undefined
+  try {
+    await registerPixelsGenerateJob({
+      id: requestId,
+      wallet: auth.address,
+      provider: 'veo',
+      status: 'processing',
+      progress: 0,
+      model: 'veo-3.1-generate-preview',
+      costUsdc6: quote.estimatedUsdc6,
+      crtvaiRequired: quote.minCrtvaiWei.toString(),
+    })
+  } catch (e) {
+    console.error('pixels-render-veo job registration failed', e)
+    return Response.json({ error: 'job registry unavailable' }, { status: 503 })
+  }
 
   if (isFlowBillingEnforced()) {
     const paymentTxHash = typeof body.paymentTxHash === 'string' ? body.paymentTxHash.trim() : ''
     if (!paymentTxHash) {
+      await failPixelsGenerateJob(requestId, {
+        code: 'payment_required',
+        message: 'Payment required',
+        type: 'billing',
+      }, { releasePayment: false })
       return Response.json({ error: 'payment_required' }, { status: 402 })
     }
     const verified = await verifyFlowPayment({
@@ -121,13 +140,23 @@ export async function POST(request: Request): Promise<Response> {
       purpose: 'pixels-render-veo',
     })
     if (!verified.ok) {
+      await failPixelsGenerateJob(requestId, {
+        code: 'payment_failed',
+        message: verified.reason,
+        type: 'billing',
+      }, { releasePayment: false })
       return Response.json({ error: verified.reason }, { status: 402 })
     }
-    reservedPaymentTxHash = paymentTxHash
+    await updatePixelsGenerateJob(requestId, { paymentTxHash })
   } else {
     try {
       const balanceCheck = await checkMetokenSufficient(auth.address, quote.estimatedUsdc6)
       if (!balanceCheck.sufficient) {
+        await failPixelsGenerateJob(requestId, {
+          code: 'insufficient_crtvai',
+          message: 'Insufficient CRTVAI balance',
+          type: 'billing',
+        }, { releasePayment: false })
         return Response.json(
           {
             error: 'insufficient_crtvai',
@@ -139,27 +168,9 @@ export async function POST(request: Request): Promise<Response> {
         )
       }
     } catch (e) {
-      console.error('pixels-render-veo balance check failed', e)
-      return Response.json({ error: 'failed to verify balance' }, { status: 502 })
+      console.warn('pixels-render-veo balance check skipped', e)
     }
   }
-
-  const releaseReservedPayment = async () => {
-    if (reservedPaymentTxHash) {
-      await releaseFlowPayment(reservedPaymentTxHash).catch(() => undefined)
-    }
-  }
-
-  await registerPixelsGenerateJob({
-    id: requestId,
-    wallet: auth.address,
-    provider: 'veo',
-    status: 'processing',
-    progress: 0,
-    model: 'veo-3.1-generate-preview',
-    costUsdc6: quote.estimatedUsdc6,
-    crtvaiRequired: quote.minCrtvaiWei.toString(),
-  })
 
   try {
     const startUrl = await stillToPublicUrl(prompt, request.url)
@@ -195,19 +206,15 @@ export async function POST(request: Request): Promise<Response> {
       costUsdc6: quote.estimatedUsdc6,
       crtvaiRequired: quote.minCrtvaiWei.toString(),
       stillCredits: quoteNanobananaCredits(PIXELS_STILL_QUALITY),
+      pixelsRequestId: requestId,
     })
   } catch (e) {
     console.error('pixels-render-veo error', e)
-    await releaseReservedPayment()
     const message = e instanceof Error ? e.message : 'generation failed'
-    await updatePixelsGenerateJob(requestId, {
-      status: 'failed',
-      progress: 0,
-      error: {
-        code: 'generation_failed',
-        message,
-        type: 'vertex',
-      },
+    await failPixelsGenerateJob(requestId, {
+      code: 'generation_failed',
+      message,
+      type: 'vertex',
     })
     return Response.json(
       {

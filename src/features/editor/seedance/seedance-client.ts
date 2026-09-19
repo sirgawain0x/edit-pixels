@@ -43,7 +43,7 @@ export interface PixelsRenderQuotesResponse {
   seedance: PixelsRenderQuoteLine & { quoteId: string }
 }
 
-export type SeedanceGenerateStatus = 'processing' | 'completed' | 'failed'
+export type SeedanceGenerateStatus = 'processing' | 'completed' | 'failed' | 'cancelled'
 
 export interface SeedanceGenerateResponse {
   id: string
@@ -210,6 +210,18 @@ export async function generateVeoPixels(
     body,
     'Veo render failed',
     signal,
+  )
+}
+
+export async function cancelPixelsGenerate(
+  auth: SignedRequestParams,
+  requestId: string,
+): Promise<{ id: string; status: string; paymentReleased: boolean }> {
+  return postSeedanceApi<{ id: string; status: string; paymentReleased: boolean }>(
+    '/api/pixels-generate-cancel',
+    auth,
+    { requestId },
+    'Cancel failed',
   )
 }
 

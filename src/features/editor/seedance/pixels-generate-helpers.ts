@@ -1,9 +1,32 @@
 import { pollTask, proxyGetTask, type SignedRequestParams } from '@/features/editor/deps/generative'
 import type { SeedanceAspectRatio } from '@/config/seedance'
 import { buildDirectorPaymentOp } from '../director/build-director-payment'
-import { generateSeedance, generateVeoPixels, getPixelsGenerateTask } from './seedance-client'
+import {
+  cancelPixelsGenerate,
+  generateSeedance,
+  generateVeoPixels,
+  getPixelsGenerateTask,
+} from './seedance-client'
 import type { PixelsGenerateActiveJob } from './pixels-generate-job-store'
 import { savePixelsGenerateJob } from './pixels-generate-job-store'
+
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason ?? new DOMException('Aborted', 'AbortError'))
+      return
+    }
+    const timer = setTimeout(resolve, ms)
+    signal?.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer)
+        reject(signal.reason ?? new DOMException('Aborted', 'AbortError'))
+      },
+      { once: true },
+    )
+  })
+}
 
 async function confirmPixelsPayment(
   canPayOnChain: boolean,
@@ -39,13 +62,16 @@ export async function pollVeoTaskToVideo(
 export async function pollSeedanceTaskToVideo(
   auth: SignedRequestParams,
   requestId: string,
-  onProgress?: (pct: number) => void,
+  options: {
+    signal?: AbortSignal
+    onProgress?: (pct: number) => void
+  } = {},
 ): Promise<string> {
-  let polled = await getPixelsGenerateTask(auth, requestId)
+  let polled = await getPixelsGenerateTask(auth, requestId, options.signal)
   while (polled.status === 'processing') {
-    onProgress?.(Math.round(polled.progress ?? 0))
-    await new Promise((resolve) => setTimeout(resolve, 3_000))
-    polled = await getPixelsGenerateTask(auth, requestId)
+    options.onProgress?.(Math.round(polled.progress ?? 0))
+    await sleep(3_000, options.signal)
+    polled = await getPixelsGenerateTask(auth, requestId, options.signal)
   }
   if (polled.status !== 'completed' || !polled.output?.video_url) {
     throw new Error(polled.error?.message ?? 'Generation failed')
@@ -56,11 +82,12 @@ export async function pollSeedanceTaskToVideo(
 export async function resolveVeoTaskId(
   auth: SignedRequestParams,
   saved: PixelsGenerateActiveJob,
+  signal?: AbortSignal,
 ): Promise<{ veoTaskId: string } | { videoUrl: string }> {
   let veoTaskId = saved.veoTaskId
   for (let attempt = 0; attempt < 90; attempt++) {
-    const meta = await getPixelsGenerateTask(auth, saved.requestId)
-    if (meta.status === 'failed') {
+    const meta = await getPixelsGenerateTask(auth, saved.requestId, signal)
+    if (meta.status === 'failed' || meta.status === 'cancelled') {
       throw new Error(meta.error?.message ?? 'Veo generation failed')
     }
     if (meta.status === 'completed' && meta.output?.video_url) {
@@ -68,9 +95,20 @@ export async function resolveVeoTaskId(
     }
     veoTaskId = meta.veoTaskId ?? veoTaskId
     if (veoTaskId) return { veoTaskId }
-    await new Promise((resolve) => setTimeout(resolve, 2_000))
+    await sleep(2_000, signal)
   }
   throw new Error('Veo task unavailable')
+}
+
+export async function requestPixelsGenerateCancel(
+  auth: SignedRequestParams,
+  requestId: string,
+): Promise<void> {
+  try {
+    await cancelPixelsGenerate(auth, requestId)
+  } catch {
+    // Best-effort — server may still complete or already released.
+  }
 }
 
 async function runSeedanceProviderGenerate(
@@ -89,6 +127,9 @@ async function runSeedanceProviderGenerate(
     sendOps,
     refreshBalance,
   )
+  if (paymentTxHash) {
+    savePixelsGenerateJob({ ...input, paymentTxHash })
+  }
   const result = await generateSeedance(
     auth,
     {
@@ -126,6 +167,9 @@ async function runVeoProviderGenerate(
       sendOps,
       refreshBalance,
     )
+    if (paymentTxHash) {
+      savePixelsGenerateJob({ ...input, paymentTxHash })
+    }
     const started = await generateVeoPixels(
       auth,
       {
@@ -138,7 +182,7 @@ async function runVeoProviderGenerate(
       signal,
     )
     veoTaskId = started.id
-    savePixelsGenerateJob({ ...input, veoTaskId })
+    savePixelsGenerateJob({ ...input, veoTaskId, paymentTxHash })
   }
   return pollVeoTaskToVideo(auth, veoTaskId, { signal, onProgress })
 }

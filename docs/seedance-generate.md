@@ -28,7 +28,7 @@ On Vercel with treasury configured, billing is **enforced** unless `DIRECTOR_BIL
 1. `POST /api/pixels-render-quote` — server quotes stored in Redis (15 min TTL).
 2. Client transfers CRTVAI to treasury via smart wallet.
 3. `POST /api/seedance-generate` or `POST /api/pixels-render-veo` — verifies on-chain transfer + consumes tx hash (anti-replay).
-4. On provider failure **before delivery**, payment hash is released for retry (Director pattern).
+4. On provider failure **before delivery**, payment hash is released for retry (Director pattern). Veo async failures detected via `GET /api/generate-task` also release payment and update the job record.
 5. `settleSeedanceSpend` marks the reservation complete after successful Seedance delivery.
 
 Credentials stay server-side only — never bundled into the browser.
@@ -54,6 +54,10 @@ Soft billing is **not required** for a successful paid path on staging when trea
 5. **Generate** — `POST /api/seedance-generate` (sync Higgsfield) or `POST /api/pixels-render-veo` (async Vertex).
 6. **Drop** — client imports MP4 to a new track at the playhead. **Timeline is never modified on failure or cancel.**
 
+## Cancel after pay
+
+If the client aborts after paying but before delivery, it calls `POST /api/pixels-generate-cancel` with `requestId`. The server releases the treasury tx when the job is still `processing` without output. Timeline stays unchanged.
+
 ## Job persistence (refresh / reconnect)
 
 | Provider | Server | Client |
@@ -67,7 +71,8 @@ Soft billing is **not required** for a successful paid path on staging when trea
 |------|-------------|
 | `insufficient_crtvai` | Buy CRTVAI modal; timeline unchanged |
 | `payment_required` / `payment_failed` | Toast; timeline unchanged |
-| `user_cancelled` | Abort during generate; timeline unchanged |
+| `quote_mismatch` | Expired/missing server quote — re-plan and pick provider again |
+| `user_cancelled` | Cancel endpoint after abort; payment released when possible |
 | `generation_failed` | Provider error; payment released when possible |
 
 ## Telemetry

@@ -40,6 +40,9 @@
     },
     "api/pixels-generate-task.ts": {
       "maxDuration": 30
+    },
+    "api/pixels-generate-cancel.ts": {
+      "maxDuration": 30
     }
   },
   "rewrites": [

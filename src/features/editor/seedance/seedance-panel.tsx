@@ -51,6 +51,7 @@ import {
 import {
   pollSeedanceTaskToVideo,
   pollVeoTaskToVideo,
+  requestPixelsGenerateCancel,
   resolveVeoTaskId,
   runProviderGenerate,
 } from './pixels-generate-helpers'
@@ -156,9 +157,16 @@ export const SeedancePanel = memo(function SeedancePanel() {
   )
 
   const handleGenerateError = useCallback(
-    (error: unknown, telemetry?: ReturnType<typeof startPixelsGenerateEvent>) => {
+    (
+      error: unknown,
+      requestId: string | null,
+      telemetry?: ReturnType<typeof startPixelsGenerateEvent>,
+    ) => {
       if (error instanceof DOMException && error.name === 'AbortError') {
         telemetry?.failure(error, { outcome: 'cancelled' })
+        if (auth && requestId) {
+          void requestPixelsGenerateCancel(auth, requestId)
+        }
         clearPixelsGenerateJob()
         setPhase('ready')
         setStatus(null)
@@ -177,7 +185,7 @@ export const SeedancePanel = memo(function SeedancePanel() {
       setPhase('ready')
       setStatus(null)
     },
-    [],
+    [auth],
   )
 
   const runGenerate = useCallback(
@@ -225,7 +233,7 @@ export const SeedancePanel = memo(function SeedancePanel() {
         telemetry.success({ outcome: 'completed' })
         await finishImport(videoUrl, input.provider, input.projectId, input.playheadFrame)
       } catch (error) {
-        handleGenerateError(error, telemetry)
+        handleGenerateError(error, input.requestId, telemetry)
       } finally {
         generateAbortRef.current = null
       }
@@ -264,6 +272,9 @@ export const SeedancePanel = memo(function SeedancePanel() {
     setPhase('generating')
     setStatus(t('seedance.status.resuming', { defaultValue: 'Resuming generation…' }))
 
+    const abortController = new AbortController()
+    generateAbortRef.current = abortController
+
     void (async () => {
       const telemetry = startPixelsGenerateEvent({
         provider: saved.provider,
@@ -276,11 +287,15 @@ export const SeedancePanel = memo(function SeedancePanel() {
       try {
         const videoUrl =
           saved.provider === 'seedance'
-            ? await pollSeedanceTaskToVideo(auth, saved.requestId, setProgressStatus)
+            ? await pollSeedanceTaskToVideo(auth, saved.requestId, {
+                signal: abortController.signal,
+                onProgress: setProgressStatus,
+              })
             : await (async () => {
-                const resolved = await resolveVeoTaskId(auth, saved)
+                const resolved = await resolveVeoTaskId(auth, saved, abortController.signal)
                 if ('videoUrl' in resolved) return resolved.videoUrl
                 return pollVeoTaskToVideo(auth, resolved.veoTaskId, {
+                  signal: abortController.signal,
                   onProgress: setProgressStatus,
                 })
               })()
@@ -288,7 +303,9 @@ export const SeedancePanel = memo(function SeedancePanel() {
         telemetry.success({ outcome: 'completed' })
         await finishImport(videoUrl, saved.provider, saved.projectId, saved.playheadFrame)
       } catch (error) {
-        handleGenerateError(error, telemetry)
+        handleGenerateError(error, saved.requestId, telemetry)
+      } finally {
+        generateAbortRef.current = null
       }
     })()
   }, [auth, currentProjectId, finishImport, handleGenerateError, setProgressStatus, t])
