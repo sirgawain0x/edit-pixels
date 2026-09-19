@@ -114,7 +114,7 @@ export async function POST(request: Request): Promise<Response> {
       batchConfirmId,
       shotId: batchShotId,
     })
-    if (!batchParams.ok || batchParams.provider !== 'veo') {
+    if (!batchParams.ok || batchParams.params.provider !== 'veo') {
       return Response.json({ error: 'batch_confirm_mismatch' }, { status: 400 })
     }
     const batchPay = await resolveBatchGeneratePayment({
@@ -126,9 +126,10 @@ export async function POST(request: Request): Promise<Response> {
     if (!batchPay.ok) {
       return Response.json({ error: batchPay.error }, { status: 400 })
     }
-    prompt = batchParams.prompt
-    duration = clampFlowDuration(batchParams.veoDuration)
-    aspectRatio = batchParams.aspect_ratio
+    const batchShot = batchParams.params
+    prompt = batchShot.prompt
+    duration = clampFlowDuration(batchShot.veoDuration)
+    aspectRatio = batchShot.aspect_ratio
     batchPaymentTxHash = batchPay.paymentTxHash
     skipBatchPaymentVerify = batchPay.skipPaymentVerify
   }

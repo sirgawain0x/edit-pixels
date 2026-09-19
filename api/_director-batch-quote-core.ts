@@ -1,7 +1,7 @@
 /**
  * Batch quote logic for Director storyboard → Pixels Generate (no spend).
  */
-// fallow-ignore-file complexity,unused-export
+// fallow-ignore-file complexity
 
 import { quoteSeedanceSpend } from './_seedance-billing.js'
 import {

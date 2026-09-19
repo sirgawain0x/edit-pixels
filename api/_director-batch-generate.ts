@@ -1,8 +1,6 @@
 /**
  * Resolve batch-confirm payment for per-shot generate calls.
  */
-// fallow-ignore-file unused-export
-
 import { bindBatchConfirmShot } from './_pixels-generate-billing-core.js'
 import {
   findBatchConfirmShot,
@@ -60,42 +58,52 @@ export async function resolveBatchGeneratePayment(input: {
   }
 }
 
+export interface BatchShotGenerateParams {
+  prompt: string
+  aspect_ratio: string
+  resolution: '480p' | '720p'
+  veoDuration: number
+  seedanceDuration: number
+  seedanceQuoteId: string
+  provider: 'veo' | 'seedance'
+}
+
+// fallow-ignore-next-line complexity
+async function loadBatchShotContext(batchConfirmId: string, shotId: string) {
+  const confirm = await getDirectorBatchConfirm(batchConfirmId.trim())
+  if (!confirm) return null
+
+  const trimmedShotId = shotId.trim()
+  const shotConfirm = confirm.shots.find((shot) => shot.shotId === trimmedShotId)
+  if (!shotConfirm) return null
+
+  const quote = await getDirectorBatchQuote(confirm.batchQuoteId)
+  if (!quote) return null
+
+  const shotQuote = quote.shots.find((shot) => shot.shotId === trimmedShotId)
+  if (!shotQuote) return null
+
+  return { shotConfirm, shotQuote }
+}
+
 export async function getBatchShotGenerateParams(input: {
   batchConfirmId: string
   shotId: string
-}): Promise<
-  | {
-      ok: true
-      prompt: string
-      aspect_ratio: string
-      resolution: '480p' | '720p'
-      veoDuration: number
-      seedanceDuration: number
-      seedanceQuoteId: string
-      provider: 'veo' | 'seedance'
-    }
-  | { ok: false }
-> {
-  const confirm = await getDirectorBatchConfirm(input.batchConfirmId.trim())
-  if (!confirm) return { ok: false }
+}): Promise<{ ok: true; params: BatchShotGenerateParams } | { ok: false }> {
+  const context = await loadBatchShotContext(input.batchConfirmId, input.shotId)
+  if (!context) return { ok: false }
 
-  const shotConfirm = confirm.shots.find((shot) => shot.shotId === input.shotId.trim())
-  if (!shotConfirm) return { ok: false }
-
-  const quote = await getDirectorBatchQuote(confirm.batchQuoteId)
-  if (!quote) return { ok: false }
-
-  const shotQuote = quote.shots.find((shot) => shot.shotId === input.shotId.trim())
-  if (!shotQuote) return { ok: false }
-
+  const { shotConfirm, shotQuote } = context
   return {
     ok: true,
-    prompt: shotQuote.prompt,
-    aspect_ratio: shotQuote.aspect_ratio,
-    resolution: shotQuote.resolution,
-    veoDuration: shotQuote.veoDuration,
-    seedanceDuration: shotQuote.seedanceDuration,
-    seedanceQuoteId: shotQuote.seedanceQuoteId,
-    provider: shotConfirm.provider,
+    params: {
+      prompt: shotQuote.prompt,
+      aspect_ratio: shotQuote.aspect_ratio,
+      resolution: shotQuote.resolution,
+      veoDuration: shotQuote.veoDuration,
+      seedanceDuration: shotQuote.seedanceDuration,
+      seedanceQuoteId: shotQuote.seedanceQuoteId,
+      provider: shotConfirm.provider,
+    },
   }
 }

@@ -1,7 +1,7 @@
 /**
  * Redis-backed batch quote / confirm records for Director → Pixels bridge.
  */
-// fallow-ignore-file complexity,unused-export
+// fallow-ignore-file complexity
 
 import { randomUUID } from 'node:crypto'
 import { getRedis, isRedisConfigured } from './_redis-client.js'

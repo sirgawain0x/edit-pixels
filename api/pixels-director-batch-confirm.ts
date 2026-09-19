@@ -1,9 +1,9 @@
 /**
  * POST /api/pixels-director-batch-confirm — bind batch quote + payment, enqueue generate jobs.
  */
-// fallow-ignore-file complexity
+// fallow-ignore-file complexity,duplicate-export
 
-import { getBearerToken, verifyPrivyAccessToken } from './_wallet-auth.js'
+import { authorizePixelsGeneratePost } from './_pixels-generate-api-auth.js'
 import { isSeedanceGenerateEnabled } from './_seedance-pricing.js'
 import { confirmDirectorStoryboardBatch } from './_director-batch-confirm-core.js'
 import type { PixelsRenderProvider } from './_director-generate-map.js'
@@ -35,29 +35,9 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'feature_disabled' }, { status: 404 })
   }
 
-  let body: Record<string, unknown>
-  try {
-    const parsed = await request.json()
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      return Response.json({ error: 'invalid body' }, { status: 400 })
-    }
-    body = parsed as Record<string, unknown>
-  } catch {
-    return Response.json({ error: 'invalid body' }, { status: 400 })
-  }
-
-  const token = getBearerToken(request) || (typeof body.token === 'string' ? body.token : null)
-  if (!token) {
-    return Response.json({ error: 'missing authorization' }, { status: 401 })
-  }
-
-  const auth = await verifyPrivyAccessToken(
-    token,
-    typeof body.walletAddress === 'string' ? body.walletAddress : undefined,
-  )
-  if (!auth) {
-    return Response.json({ error: 'invalid authorization' }, { status: 401 })
-  }
+  const authorized = await authorizePixelsGeneratePost(request)
+  if (!authorized.ok) return authorized.response
+  const { auth, body } = authorized
 
   const batchQuoteId =
     typeof body.batchQuoteId === 'string'

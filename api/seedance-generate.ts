@@ -100,7 +100,7 @@ export async function POST(request: Request): Promise<Response> {
       batchConfirmId,
       shotId: batchShotId,
     })
-    if (!batchParams.ok || batchParams.provider !== 'seedance') {
+    if (!batchParams.ok || batchParams.params.provider !== 'seedance') {
       return Response.json({ error: 'batch_confirm_mismatch' }, { status: 400 })
     }
     const batchPay = await resolveBatchGeneratePayment({
@@ -112,11 +112,12 @@ export async function POST(request: Request): Promise<Response> {
     if (!batchPay.ok) {
       return Response.json({ error: batchPay.error }, { status: 400 })
     }
-    prompt = batchParams.prompt
-    duration = batchParams.seedanceDuration
-    resolution = batchParams.resolution
-    aspect_ratio = batchParams.aspect_ratio as SeedanceAspectRatio
-    quoteId = batchParams.seedanceQuoteId
+    const batchShot = batchParams.params
+    prompt = batchShot.prompt
+    duration = batchShot.seedanceDuration
+    resolution = batchShot.resolution
+    aspect_ratio = batchShot.aspect_ratio as SeedanceAspectRatio
+    quoteId = batchShot.seedanceQuoteId
     batchPaymentTxHash = batchPay.paymentTxHash
     skipBatchPaymentVerify = batchPay.skipPaymentVerify
   }

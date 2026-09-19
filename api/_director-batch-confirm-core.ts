@@ -2,13 +2,10 @@
  * Batch confirm for Director storyboard → Pixels Generate enqueue.
  * Verifies payment once; per-shot generates reference batchConfirmId.
  */
-// fallow-ignore-file complexity,unused-export
+// fallow-ignore-file complexity
 
 import { checkMetokenSufficient } from './_metoken-server.js'
-import {
-  bindDirectorBatchSelections,
-  type DirectorBatchQuoteResult,
-} from './_director-batch-quote-core.js'
+import { bindDirectorBatchSelections } from './_director-batch-quote-core.js'
 import {
   getDirectorBatchQuote,
   saveDirectorBatchConfirm,
@@ -180,6 +177,3 @@ function buildConfirmJobs(
     }
   })
 }
-
-/** Re-export for tests — batch quote shape helper. */
-export type { DirectorBatchQuoteResult }

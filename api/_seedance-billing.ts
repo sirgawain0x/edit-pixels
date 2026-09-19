@@ -5,7 +5,7 @@
  * Spend gating uses treasury transfer verify (same as Flow/Director). On-chain
  * meToken burn wiring remains a future enhancement.
  */
-// fallow-ignore-file unused-export,complexity
+// fallow-ignore-file complexity
 
 import { randomUUID } from 'node:crypto'
 import { getRedis, isRedisConfigured } from './_redis-client.js'
