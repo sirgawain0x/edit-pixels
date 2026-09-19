@@ -1,6 +1,14 @@
+import type { PixelsRenderProvider } from '@/config/pixels-render'
 import type { DirectorBatchShotJob } from './director-batch-queue'
 
 const STORAGE_KEY = 'pixels:director-batch:active-job'
+const PENDING_CONFIRM_KEY = 'pixels:director-batch:pending-confirm'
+
+export interface DirectorBatchPendingConfirm {
+  batchQuoteId: string
+  paymentTxHash: string | null
+  selections: Array<{ shotId: string; provider: PixelsRenderProvider; requestId: string }>
+}
 
 export interface DirectorBatchActiveJob {
   batchConfirmId: string
@@ -38,4 +46,24 @@ export function updateDirectorBatchJobJobs(
   const next = { ...current, jobs }
   saveDirectorBatchJob(next)
   return next
+}
+
+export function loadDirectorBatchPendingConfirm(): DirectorBatchPendingConfirm | null {
+  try {
+    const raw = sessionStorage.getItem(PENDING_CONFIRM_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as DirectorBatchPendingConfirm
+    if (!parsed.batchQuoteId || !Array.isArray(parsed.selections)) return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+export function saveDirectorBatchPendingConfirm(pending: DirectorBatchPendingConfirm): void {
+  sessionStorage.setItem(PENDING_CONFIRM_KEY, JSON.stringify(pending))
+}
+
+export function clearDirectorBatchPendingConfirm(): void {
+  sessionStorage.removeItem(PENDING_CONFIRM_KEY)
 }

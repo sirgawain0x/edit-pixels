@@ -131,3 +131,17 @@ export function resetFailedJobsForRetry(jobs: DirectorBatchShotJob[]): DirectorB
       : job,
   )
 }
+
+/** After a page reload, in-flight shots should be re-enqueued (browser killed mid-poll). */
+export function prepareJobsForResume(jobs: DirectorBatchShotJob[]): DirectorBatchShotJob[] {
+  return jobs.map((job) =>
+    job.status === 'running'
+      ? { ...job, status: 'queued', progress: 0 }
+      : job,
+  )
+}
+
+export function isBatchQuoteExpired(expiresAt: string, nowMs = Date.now()): boolean {
+  const expiresMs = new Date(expiresAt).getTime()
+  return !Number.isFinite(expiresMs) || expiresMs <= nowMs
+}

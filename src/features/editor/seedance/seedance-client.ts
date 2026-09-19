@@ -115,6 +115,27 @@ function parseApiError(
       status,
     )
   }
+  if (code === 'quote_already_confirmed') {
+    return new PixelsGenerateApiError(
+      code,
+      'This batch quote was already confirmed — refresh to resume rendering.',
+      status,
+    )
+  }
+  if (code === 'selection_mismatch') {
+    return new PixelsGenerateApiError(
+      code,
+      'Shot selection does not match the batch quote — refresh the quote.',
+      status,
+    )
+  }
+  if (code === 'quote_not_found' || code === 'quote_expired') {
+    return new PixelsGenerateApiError(
+      code,
+      'Batch quote expired — refresh the quote before paying.',
+      status,
+    )
+  }
   return new PixelsGenerateApiError(code, code, status)
 }
 

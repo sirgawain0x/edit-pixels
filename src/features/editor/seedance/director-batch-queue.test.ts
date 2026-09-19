@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   buildBatchSelections,
   countBatchProgress,
+  isBatchQuoteExpired,
+  prepareJobsForResume,
   resetFailedJobsForRetry,
   runWithConcurrency,
   selectShotsForRetry,
@@ -152,6 +154,37 @@ describe('director batch queue', () => {
       failed: 1,
       total: 3,
     })
+  })
+
+  it('resets running jobs to queued on resume', () => {
+    const jobs: DirectorBatchShotJob[] = [
+      {
+        shotId: 'a',
+        requestId: 'r1',
+        provider: 'veo',
+        status: 'running',
+        progress: 40,
+        generateEndpoint: '/api/pixels-render-veo',
+      },
+      {
+        shotId: 'b',
+        requestId: 'r2',
+        provider: 'seedance',
+        status: 'succeeded',
+        progress: 100,
+        generateEndpoint: '/api/seedance-generate',
+      },
+    ]
+    const prepared = prepareJobsForResume(jobs)
+    expect(prepared[0].status).toBe('queued')
+    expect(prepared[1].status).toBe('succeeded')
+  })
+
+  it('detects expired batch quotes', () => {
+    const past = new Date(Date.now() - 60_000).toISOString()
+    const future = new Date(Date.now() + 60_000).toISOString()
+    expect(isBatchQuoteExpired(past)).toBe(true)
+    expect(isBatchQuoteExpired(future)).toBe(false)
   })
 
   it('resets only failed jobs to queued for retry', () => {

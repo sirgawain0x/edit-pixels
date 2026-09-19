@@ -11,6 +11,7 @@ import { resolveDirectorBatchConcurrency } from './director-batch-concurrency'
 import {
   buildBatchSelections,
   countBatchProgress,
+  isBatchQuoteExpired,
   resetFailedJobsForRetry,
   runWithConcurrency,
   totalCrtvaiForPath,
@@ -19,7 +20,11 @@ import {
 } from './director-batch-queue'
 import {
   clearDirectorBatchJob,
+  clearDirectorBatchPendingConfirm,
+  loadDirectorBatchJob,
+  loadDirectorBatchPendingConfirm,
   saveDirectorBatchJob,
+  saveDirectorBatchPendingConfirm,
   updateDirectorBatchJobJobs,
   type DirectorBatchActiveJob,
 } from './director-batch-job-store'
@@ -168,35 +173,64 @@ export async function confirmPaidDirectorBatch(input: {
   callbacks: DirectorBatchRunnerCallbacks
 }): Promise<DirectorBatchActiveJob | null> {
   const { auth, quote, path, callbacks } = input
+  if (isBatchQuoteExpired(quote.expiresAt)) {
+    throw new Error('Batch quote expired — refresh the quote before paying.')
+  }
+
   const selections = buildBatchSelections(quote, path, input.perShotOverrides)
   const total = totalCrtvaiForPath(quote, path, input.perShotOverrides)
 
-  callbacks.onPhase('confirming')
-  const paymentTxHash = await confirmBatchPayment(
-    input.canPayOnChain,
-    total.crtvaiRequired,
-    input.sendOps,
-    input.refreshBalance,
-  )
+  const pending = loadDirectorBatchPendingConfirm()
+  let paymentTxHash: string | undefined
 
-  const confirm = await confirmDirectorBatch(auth, {
-    batchQuoteId: quote.batchQuoteId,
-    selections,
-    ...(paymentTxHash ? { paymentTxHash } : {}),
-  })
-
-  const jobs = jobsFromConfirm(confirm)
-  callbacks.onJobs(jobs)
-
-  const active: DirectorBatchActiveJob = {
-    batchConfirmId: confirm.batchConfirmId,
-    batchQuoteId: confirm.batchQuoteId,
-    storyboardId: input.storyboardId,
-    jobs,
-    startedAtMs: Date.now(),
+  if (pending?.batchQuoteId === quote.batchQuoteId && pending.paymentTxHash) {
+    paymentTxHash = pending.paymentTxHash
+  } else {
+    callbacks.onPhase('confirming')
+    paymentTxHash = await confirmBatchPayment(
+      input.canPayOnChain,
+      total.crtvaiRequired,
+      input.sendOps,
+      input.refreshBalance,
+    )
+    saveDirectorBatchPendingConfirm({
+      batchQuoteId: quote.batchQuoteId,
+      paymentTxHash: paymentTxHash ?? null,
+      selections,
+    })
   }
-  saveDirectorBatchJob(active)
-  return active
+
+  try {
+    const confirm = await confirmDirectorBatch(auth, {
+      batchQuoteId: quote.batchQuoteId,
+      selections,
+      ...(paymentTxHash ? { paymentTxHash } : {}),
+    })
+
+    clearDirectorBatchPendingConfirm()
+
+    const jobs = jobsFromConfirm(confirm)
+    callbacks.onJobs(jobs)
+
+    const active: DirectorBatchActiveJob = {
+      batchConfirmId: confirm.batchConfirmId,
+      batchQuoteId: confirm.batchQuoteId,
+      storyboardId: input.storyboardId,
+      jobs,
+      startedAtMs: Date.now(),
+    }
+    saveDirectorBatchJob(active)
+    return active
+  } catch (error) {
+    if (error instanceof PixelsGenerateApiError && error.code === 'quote_already_confirmed') {
+      const existing = loadDirectorBatchJob()
+      if (existing?.batchQuoteId === quote.batchQuoteId) {
+        clearDirectorBatchPendingConfirm()
+        return existing
+      }
+    }
+    throw error
+  }
 }
 
 export async function runDirectorBatchQueue(input: {

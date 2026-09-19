@@ -17,6 +17,8 @@ import type { DirectorStoryboardShotPayload, DirectorBatchQuoteResponse } from '
 import { quoteDirectorBatch } from './seedance-client'
 import {
   countBatchProgress,
+  isBatchQuoteExpired,
+  prepareJobsForResume,
   selectShotsForRetry,
   totalCrtvaiForPath,
   type DirectorBatchPath,
@@ -96,6 +98,7 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
   const [buyOpen, setBuyOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const resumeAttemptedRef = useRef(false)
 
   const enabled = isSeedanceGenerateEnabled()
   const busy = phase === 'quoting' || phase === 'confirming' || phase === 'running'
@@ -109,6 +112,7 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
   const progress = useMemo(() => countBatchProgress(jobs), [jobs])
   const failedJobs = useMemo(() => selectShotsForRetry(jobs), [jobs])
   const insufficient = selectedTotal ? balance < selectedTotal.crtvaiDisplay : false
+  const quoteExpired = quote ? isBatchQuoteExpired(quote.expiresAt) : false
 
   const loadQuote = useCallback(async () => {
     if (!auth || !enabled) return
@@ -152,6 +156,51 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
     }
   }, [auth, enabled, quote, phase, activeJob, loadQuote])
 
+  useEffect(() => {
+    if (!auth || !currentProjectId || resumeAttemptedRef.current) return
+    const saved = loadDirectorBatchJob()
+    const savedShotIds = saved?.jobs.map((job) => job.shotId).join(',') ?? ''
+    if (!saved || savedShotIds !== shotsKey) return
+
+    const hasInFlight = saved.jobs.some(
+      (job) => job.status === 'queued' || job.status === 'running',
+    )
+    if (!hasInFlight) return
+
+    resumeAttemptedRef.current = true
+    abortRef.current?.abort()
+    abortRef.current = new AbortController()
+    const preparedJobs = prepareJobsForResume(saved.jobs)
+    const prepared: DirectorBatchActiveJob = { ...saved, jobs: preparedJobs }
+    setActiveJob(prepared)
+    setJobs(preparedJobs)
+
+    void runDirectorBatchQueue({
+      auth,
+      active: prepared,
+      projectId: currentProjectId,
+      callbacks,
+      signal: abortRef.current.signal,
+    })
+      .then((result) => {
+        setActiveJob(result)
+        const final = countBatchProgress(result.jobs)
+        if (final.failed === 0 && final.completed === final.total) {
+          toast.success(
+            t('director.batch.success', {
+              defaultValue: '{{count}} shots imported to media library.',
+              count: final.succeeded,
+            }),
+          )
+        }
+      })
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : 'Batch resume failed'
+        setError(message)
+        setPhase('done')
+      })
+  }, [auth, currentProjectId, shotsKey, callbacks, t])
+
   const callbacks = useMemo(
     () => ({
       onPhase: setPhase,
@@ -166,6 +215,10 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
 
   const handleConfirm = useCallback(async () => {
     if (!auth || !quote || !currentProjectId || busy) return
+    if (quoteExpired) {
+      void loadQuote()
+      return
+    }
     if (walletConfigured && !authenticated) {
       connect()
       return
@@ -222,7 +275,7 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
       const message = err instanceof Error ? err.message : 'Batch render failed'
       setError(message)
       toast.error(message)
-      setPhase('idle')
+      setPhase(activeJob ? 'done' : 'idle')
     }
   }, [
     auth,
@@ -232,7 +285,9 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
     walletConfigured,
     authenticated,
     insufficient,
-    shots,
+    quoteExpired,
+    loadQuote,
+    activeJob,
     path,
     storyboardId,
     perShotOverrides,
@@ -414,13 +469,26 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
         </div>
       )}
 
+      {quoteExpired && (
+        <p className="mt-2 text-[11px] text-amber-400">
+          {t('director.batch.quoteExpired', {
+            defaultValue: 'Batch quote expired — refresh before confirming.',
+          })}
+        </p>
+      )}
+
       {error && <p className="mt-2 text-[11px] text-destructive">{error}</p>}
 
       <div className="mt-3 flex flex-wrap gap-2">
+        {quoteExpired && !busy && (
+          <Button size="sm" variant="secondary" disabled={disabled} onClick={() => void loadQuote()}>
+            {t('director.batch.refreshQuote', { defaultValue: 'Refresh quote' })}
+          </Button>
+        )}
         {!activeJob && (
           <Button
             size="sm"
-            disabled={busy || disabled || !quote || !auth || !currentProjectId}
+            disabled={busy || disabled || !quote || !auth || !currentProjectId || quoteExpired}
             onClick={() => void handleConfirm()}
           >
             {phase === 'confirming' || phase === 'running' ? (
