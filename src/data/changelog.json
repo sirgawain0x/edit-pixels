@@ -5,6 +5,9 @@
     "groups": {
       "added": [
         {
+          "title": "Phone-friendly Projects hub — menu sheet for Docs, Discord, GitHub, language, workspace, and import; wallet and New stay in the top bar"
+        },
+        {
           "title": "Generate video from text with Seedance or Veo, then drop the clip onto the timeline"
         },
         {
@@ -62,6 +65,12 @@
         }
       ],
       "improved": [
+        {
+          "title": "Legacy migrate banner stacks cleanly on small screens"
+        },
+        {
+          "title": "Import is disabled with a clear tip when folder access isn't available (Safari / most mobile browsers)"
+        },
         {
           "title": "Paid Generate uses a clearer quote → pay → render flow with better errors when a job fails"
         },
