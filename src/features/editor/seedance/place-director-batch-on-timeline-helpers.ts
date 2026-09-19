@@ -1,6 +1,7 @@
 import type { MediaMetadata } from '@/types/storage'
 import type { TimelineTrack, VideoItem } from '@/types/timeline'
-import { computeFitScaleTransform, createClassicTrack } from '@/features/editor/deps/timeline-utils'
+import { createClassicTrack } from '@/features/editor/deps/timeline-utils'
+import { computeFitScaleTransform } from '@/shared/utils/fit-scale-transform'
 import { useProjectStore } from '@/features/editor/deps/projects'
 import { DEFAULT_PROJECT_HEIGHT, DEFAULT_PROJECT_WIDTH } from '@/shared/projects/defaults'
 import { resolveMediaUrl, useMediaLibraryStore } from '@/features/editor/deps/media-library'

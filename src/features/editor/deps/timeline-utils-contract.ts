@@ -28,5 +28,4 @@ export {
   timelineToSourceFrames,
   sourceToTimelineFrames,
 } from '@/features/timeline/utils/source-calculations'
-export { computeFitScaleTransform } from '@/features/timeline/utils/transform-init'
 export { linkItems } from '@/features/timeline/stores/actions/item-actions'
