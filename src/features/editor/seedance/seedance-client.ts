@@ -225,6 +225,104 @@ export async function cancelPixelsGenerate(
   )
 }
 
+export interface DirectorStoryboardShotPayload {
+  shotId: string
+  prompt: string
+  duration?: number
+  aspectRatio?: string
+  consistentCharacter?: boolean
+  resolution?: SeedanceResolution
+}
+
+export interface DirectorBatchQuoteShot {
+  shotId: string
+  recommendedProvider: PixelsRenderProvider
+  generate: {
+    prompt: string
+    duration: number
+    veoDuration: number
+    seedanceDuration: number
+    aspect_ratio: string
+    resolution: SeedanceResolution
+  }
+  veo: PixelsRenderQuoteLine
+  seedance: PixelsRenderQuoteLine & { quoteId: string }
+}
+
+export interface DirectorBatchQuoteResponse {
+  batchQuoteId: string
+  expiresAt: string
+  shotCount: number
+  shots: DirectorBatchQuoteShot[]
+  totals: {
+    allVeo: { crtvaiRequired: string; crtvaiDisplay: number; formattedUsd: string }
+    allSeedance: { crtvaiRequired: string; crtvaiDisplay: number; formattedUsd: string }
+    recommendedMix: {
+      crtvaiRequired: string
+      crtvaiDisplay: number
+      formattedUsd: string
+      providers: { veo: number; seedance: number }
+    }
+  }
+}
+
+export interface DirectorBatchConfirmJob {
+  shotId: string
+  requestId: string
+  provider: PixelsRenderProvider
+  status: 'queued'
+  seedanceQuoteId: string | null
+  crtvaiRequired: string
+  pollUrl: string
+  generateEndpoint: '/api/seedance-generate' | '/api/pixels-render-veo'
+}
+
+export interface DirectorBatchConfirmResponse {
+  batchConfirmId: string
+  batchQuoteId: string
+  paymentTxHash: string | null
+  totalCrtvaiRequired: string
+  totalCrtvaiDisplay: number
+  jobs: DirectorBatchConfirmJob[]
+  enqueue: {
+    note: string
+    batchConfirmId: string
+  }
+}
+
+export async function quoteDirectorBatch(
+  auth: SignedRequestParams,
+  body: {
+    shots: DirectorStoryboardShotPayload[]
+    providerPreference?: PixelsRenderProvider
+    storyboardId?: string
+    resolution?: SeedanceResolution
+  },
+): Promise<DirectorBatchQuoteResponse> {
+  return postSeedanceApi<DirectorBatchQuoteResponse>(
+    '/api/pixels-director-batch-quote',
+    auth,
+    body,
+    'Batch quote failed',
+  )
+}
+
+export async function confirmDirectorBatch(
+  auth: SignedRequestParams,
+  body: {
+    batchQuoteId: string
+    selections: Array<{ shotId: string; provider: PixelsRenderProvider; requestId: string }>
+    paymentTxHash?: string
+  },
+): Promise<DirectorBatchConfirmResponse> {
+  return postSeedanceApi<DirectorBatchConfirmResponse>(
+    '/api/pixels-director-batch-confirm',
+    auth,
+    body,
+    'Batch confirm failed',
+  )
+}
+
 export async function generateSeedance(
   auth: SignedRequestParams,
   body: {
