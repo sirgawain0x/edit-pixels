@@ -29,6 +29,7 @@ import {
   loadDirectorBatchPendingConfirm,
   saveDirectorBatchJob,
   saveDirectorBatchPendingConfirm,
+  saveDirectorBatchPlacementPayload,
   updateDirectorBatchJobJobs,
   type DirectorBatchActiveJob,
 } from './director-batch-job-store'
@@ -294,6 +295,12 @@ export async function runDirectorBatchQueue(input: {
   saveDirectorBatchJob(result)
 
   if (progress.failed === 0) {
+    saveDirectorBatchPlacementPayload({
+      shotsKey: jobs.map((job) => job.shotId).join(','),
+      storyboardId: active.storyboardId,
+      jobs: jobs.filter((job) => job.status === 'succeeded'),
+      autoLaid: false,
+    })
     clearDirectorBatchJob()
   }
 
