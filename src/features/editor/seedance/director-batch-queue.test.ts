@@ -306,4 +306,18 @@ Same hero close-up in rain, consistent character, 9:16`
     expect(shots[1]?.consistentCharacter).toBe(true)
     expect(shots[1]?.aspectRatio).toBe('9:16')
   })
+
+  it('parses timecode ranges into start and end seconds', () => {
+    const markdown = `## Shot 1 — Intro (0:00–0:05)
+Wide city skyline at dusk
+
+## Shot 2 — Verse (0:05–0:15)
+Hero walks through rain`
+    const shots = parseStoryboardShots(markdown)
+    expect(shots[0]?.startSeconds).toBe(0)
+    expect(shots[0]?.endSeconds).toBe(5)
+    expect(shots[0]?.duration).toBe(5)
+    expect(shots[1]?.startSeconds).toBe(5)
+    expect(shots[1]?.endSeconds).toBe(15)
+  })
 })

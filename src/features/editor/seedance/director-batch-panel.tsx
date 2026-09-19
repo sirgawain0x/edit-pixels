@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { CheckCircle2, Clapperboard, Loader2, RefreshCw, XCircle } from 'lucide-react'
+import { CheckCircle2, Clapperboard, Film, Loader2, RefreshCw, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { useWalletContext } from '@/context/wallet-context'
@@ -34,6 +34,12 @@ import {
   runDirectorBatchQueue,
   type DirectorBatchRunnerPhase,
 } from './director-batch-runner'
+import {
+  useItemsStore,
+  useTimelineSettingsStore,
+} from '@/features/editor/deps/timeline-store-contract'
+import { buildDirectorTimelineAudioContext } from '../director/timeline-audio'
+import { placeDirectorBatchOnTimeline } from './place-director-batch-on-timeline'
 
 const PER_SHOT_OVERRIDE_MAX = 8
 
@@ -97,8 +103,14 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
   const [activeJob, setActiveJob] = useState<DirectorBatchActiveJob | null>(null)
   const [buyOpen, setBuyOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [layOnTimeline, setLayOnTimeline] = useState(true)
+  const [useLightCrossfade, setUseLightCrossfade] = useState(false)
+  const [timelinePlaced, setTimelinePlaced] = useState(false)
+  const [placingTimeline, setPlacingTimeline] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const resumeAttemptedRef = useRef(false)
+  const timelineItems = useItemsStore((s) => s.items)
+  const timelineFps = useTimelineSettingsStore((s) => s.fps)
 
   const enabled = isSeedanceGenerateEnabled()
   const busy = phase === 'quoting' || phase === 'confirming' || phase === 'running'
@@ -113,6 +125,13 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
   const failedJobs = useMemo(() => selectShotsForRetry(jobs), [jobs])
   const insufficient = selectedTotal ? balance < selectedTotal.crtvaiDisplay : false
   const quoteExpired = quote ? isBatchQuoteExpired(quote.expiresAt) : false
+  const audioContext = useMemo(
+    () => buildDirectorTimelineAudioContext(timelineItems, timelineFps),
+    [timelineItems, timelineFps],
+  )
+  const allSucceeded =
+    jobs.length > 0 && progress.succeeded === progress.total && progress.failed === 0
+  const canPlaceOnTimeline = allSucceeded && audioContext.hasAudio && !timelinePlaced
 
   const loadQuote = useCallback(async () => {
     if (!auth || !enabled) return
@@ -168,6 +187,78 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
     [],
   )
 
+  const runTimelinePlacement = useCallback(
+    async (jobList: DirectorBatchShotJob[]) => {
+      setPlacingTimeline(true)
+      setError(null)
+      try {
+        const result = await placeDirectorBatchOnTimeline({
+          shots,
+          jobs: jobList,
+          useCrossfade: useLightCrossfade,
+        })
+        if (!result.ok) {
+          setError(result.message)
+          toast.error(result.message)
+          return false
+        }
+        setTimelinePlaced(true)
+        toast.success(
+          t('director.batch.timelinePlaced', {
+            defaultValue: '{{count}} clips laid on the timeline.',
+            count: result.placedCount,
+          }),
+        )
+        return true
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Timeline placement failed'
+        setError(message)
+        toast.error(message)
+        return false
+      } finally {
+        setPlacingTimeline(false)
+      }
+    },
+    [shots, useLightCrossfade, t],
+  )
+
+  const finishBatchSuccess = useCallback(
+    async (resultJobs: DirectorBatchShotJob[]) => {
+      const final = countBatchProgress(resultJobs)
+      if (final.failed > 0) {
+        toast.warning(
+          t('director.batch.partial', {
+            defaultValue: '{{succeeded}} succeeded, {{failed}} failed — retry failed shots.',
+            succeeded: final.succeeded,
+            failed: final.failed,
+          }),
+        )
+        return
+      }
+
+      toast.success(
+        t('director.batch.success', {
+          defaultValue: '{{count}} shots imported to media library.',
+          count: final.succeeded,
+        }),
+      )
+
+      if (layOnTimeline) {
+        if (!audioContext.hasAudio) {
+          toast.warning(
+            t('director.batch.noAudioForTimeline', {
+              defaultValue:
+                'Clips imported — place audio on the timeline, then use Lay on timeline.',
+            }),
+          )
+          return
+        }
+        await runTimelinePlacement(resultJobs)
+      }
+    },
+    [audioContext.hasAudio, layOnTimeline, runTimelinePlacement, t],
+  )
+
   useEffect(() => {
     if (!auth || !currentProjectId || resumeAttemptedRef.current) return
     const saved = loadDirectorBatchJob()
@@ -194,16 +285,11 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
       callbacks,
       signal: abortRef.current.signal,
     })
-      .then((result) => {
+      .then(async (result) => {
         setActiveJob(result)
         const final = countBatchProgress(result.jobs)
         if (final.failed === 0 && final.completed === final.total) {
-          toast.success(
-            t('director.batch.success', {
-              defaultValue: '{{count}} shots imported to media library.',
-              count: final.succeeded,
-            }),
-          )
+          await finishBatchSuccess(result.jobs)
         }
       })
       .catch((err) => {
@@ -255,23 +341,7 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
         signal: abortRef.current.signal,
       })
       setActiveJob(result)
-      const final = countBatchProgress(result.jobs)
-      if (final.failed === 0) {
-        toast.success(
-          t('director.batch.success', {
-            defaultValue: '{{count}} shots imported to media library.',
-            count: final.succeeded,
-          }),
-        )
-      } else {
-        toast.warning(
-          t('director.batch.partial', {
-            defaultValue: '{{succeeded}} succeeded, {{failed}} failed — retry failed shots.',
-            succeeded: final.succeeded,
-            failed: final.failed,
-          }),
-        )
-      }
+      await finishBatchSuccess(result.jobs)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Batch render failed'
       setError(message)
@@ -297,7 +367,7 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
     refreshBalance,
     callbacks,
     connect,
-    t,
+    finishBatchSuccess,
   ])
 
   const handleRetryFailed = useCallback(async () => {
@@ -317,18 +387,19 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
       setActiveJob(result)
       const final = countBatchProgress(result.jobs)
       if (final.failed === 0) {
-        toast.success(
-          t('director.batch.retrySuccess', {
-            defaultValue: 'All failed shots completed.',
-          }),
-        )
+        await finishBatchSuccess(result.jobs)
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Retry failed'
       setError(message)
       toast.error(message)
     }
-  }, [auth, activeJob, currentProjectId, busy, failedJobs.length, callbacks, t])
+  }, [auth, activeJob, currentProjectId, busy, failedJobs.length, callbacks, finishBatchSuccess])
+
+  const handleLayOnTimeline = useCallback(async () => {
+    if (!canPlaceOnTimeline || placingTimeline) return
+    await runTimelinePlacement(jobs)
+  }, [canPlaceOnTimeline, placingTimeline, runTimelinePlacement, jobs])
 
   if (!enabled) return null
 
@@ -348,10 +419,53 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
       <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
         {t('director.batch.blurb', {
           defaultValue:
-            'One CRTVAI payment for the whole storyboard. Clips import to your media library (not the timeline). Seedance capped at {{seedanceConcurrency}} concurrent calls; Veo is pay-as-you-go (uncapped).',
+            'One CRTVAI payment for the whole storyboard. After render, clips can auto-lay on the timeline aligned to your audio track. Seedance capped at {{seedanceConcurrency}} concurrent calls; Veo is pay-as-you-go (uncapped).',
           seedanceConcurrency: DIRECTOR_BATCH_SEEDANCE_CONCURRENCY_DEFAULT,
         })}
       </p>
+
+      <div className="mt-3 space-y-2 rounded-lg border border-border/60 bg-background/30 px-3 py-2">
+        <label className="flex items-center gap-2 text-[11px] text-foreground">
+          <input
+            type="checkbox"
+            className="rounded border-border"
+            checked={layOnTimeline}
+            disabled={busy || disabled}
+            onChange={(event) => setLayOnTimeline(event.target.checked)}
+          />
+          {t('director.batch.layOnTimeline', {
+            defaultValue: 'Lay on timeline after all shots succeed',
+          })}
+        </label>
+        {layOnTimeline && (
+          <label className="flex items-center gap-2 pl-5 text-[10px] text-muted-foreground">
+            <input
+              type="checkbox"
+              className="rounded border-border"
+              checked={useLightCrossfade}
+              disabled={busy || disabled}
+              onChange={(event) => setUseLightCrossfade(event.target.checked)}
+            />
+            {t('director.batch.lightCrossfade', {
+              defaultValue: 'Light crossfade between cuts (optional)',
+            })}
+          </label>
+        )}
+        {layOnTimeline && !audioContext.hasAudio && (
+          <p className="text-[10px] text-amber-400">
+            {t('director.batch.audioRequired', {
+              defaultValue: 'Timeline audio required — place your track before confirming.',
+            })}
+          </p>
+        )}
+        {timelinePlaced && (
+          <p className="text-[10px] text-emerald-400">
+            {t('director.batch.timelinePlacedHint', {
+              defaultValue: 'Rough cut is on the timeline — trim and move clips freely.',
+            })}
+          </p>
+        )}
+      </div>
 
       {quote && (
         <div className="mt-3 space-y-2">
@@ -507,6 +621,21 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
               defaultValue: 'Retry {{count}} failed',
               count: failedJobs.length,
             })}
+          </Button>
+        )}
+        {canPlaceOnTimeline && !busy && (
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={placingTimeline}
+            onClick={() => void handleLayOnTimeline()}
+          >
+            {placingTimeline ? (
+              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Film className="mr-1.5 h-3.5 w-3.5" />
+            )}
+            {t('director.batch.layOnTimelineCta', { defaultValue: 'Lay on timeline' })}
           </Button>
         )}
         {phase === 'quoting' && (

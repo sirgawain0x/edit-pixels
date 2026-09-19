@@ -19,8 +19,9 @@ Same as Phase 1/2:
 4. User picks render path: **Recommended mix**, **All Veo**, or **All Seedance** (optional per-shot override when ≤8 shots).
 5. **Confirm & render all** → CRTVAI treasury transfer (total for selected path) → `POST /api/pixels-director-batch-confirm`.
 6. Worker pool enqueues each shot via `batchConfirmId` + `shotId` + `requestId` on the listed `generateEndpoint`.
-7. Poll until `video_url`; import each clip to the **media library** (not timeline — Phase 4).
-8. **Retry N failed** re-enqueues only failed shots (same `requestId`; succeeded claims stay claimed).
+7. Poll until `video_url`; import each clip to the **media library**.
+8. On full success, optionally **lay clips on the timeline** aligned to audio ([Phase 4](./director-batch-timeline.md)).
+9. **Retry N failed** re-enqueues only failed shots (same `requestId`; succeeded claims stay claimed).
 
 ## Concurrency
 
@@ -58,6 +59,5 @@ Defined in `src/features/editor/seedance/director-batch-concurrency.ts`.
 
 ## Out of scope
 
-- Auto-timeline placement (Phase 4)
 - Re-quoting on retry (payment already bound at confirm)
 - HF keys in browser

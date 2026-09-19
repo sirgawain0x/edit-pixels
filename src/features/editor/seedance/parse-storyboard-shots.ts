@@ -47,19 +47,29 @@ function splitStoryboardSections(markdown: string): string[] {
   return []
 }
 
-function extractDurationSeconds(section: string): number | undefined {
-  const match = section.match(DURATION_RE)
-  if (!match) return undefined
+function parseTimecodeToSeconds(minutes: string, seconds: string): number {
+  return Number.parseInt(minutes, 10) * 60 + Number.parseInt(seconds, 10)
+}
 
-  if (match[1]) return Math.round(Number.parseFloat(match[1]))
-  if (match[2]) return Math.round(Number.parseFloat(match[2]))
-  if (match[3] && match[4] && match[5]) {
-    const start = Number.parseInt(match[3], 10) * 60 + Number.parseInt(match[4], 10)
-    const end = Number.parseInt(match[3], 10) * 60 + Number.parseInt(match[5], 10)
-    const span = Math.max(1, end - start)
-    return span
+function extractTimingHints(
+  section: string,
+): { duration?: number; startSeconds?: number; endSeconds?: number } {
+  const match = section.match(DURATION_RE)
+  if (!match) return {}
+
+  if (match[1]) {
+    return { duration: Math.round(Number.parseFloat(match[1])) }
   }
-  return undefined
+  if (match[2]) {
+    return { duration: Math.round(Number.parseFloat(match[2])) }
+  }
+  if (match[3] && match[4] && match[5] && match[6]) {
+    const startSeconds = parseTimecodeToSeconds(match[3], match[4])
+    const endSeconds = parseTimecodeToSeconds(match[5], match[6])
+    const span = Math.max(1, endSeconds - startSeconds)
+    return { startSeconds, endSeconds, duration: span }
+  }
+  return {}
 }
 
 // fallow-ignore-next-line complexity
@@ -105,12 +115,14 @@ export function parseStoryboardShots(markdown: string): DirectorStoryboardShotPa
       if (!prompt) return null
 
       const aspectMatch = section.match(ASPECT_RE)
-      const duration = extractDurationSeconds(section)
+      const timing = extractTimingHints(section)
 
       return {
         shotId: shotIdFromSection(section, index),
         prompt,
-        ...(duration !== undefined ? { duration } : {}),
+        ...(timing.duration !== undefined ? { duration: timing.duration } : {}),
+        ...(timing.startSeconds !== undefined ? { startSeconds: timing.startSeconds } : {}),
+        ...(timing.endSeconds !== undefined ? { endSeconds: timing.endSeconds } : {}),
         ...(aspectMatch ? { aspectRatio: aspectMatch[1] } : {}),
         ...(CONSISTENT_CHARACTER_RE.test(section) ? { consistentCharacter: true } : {}),
       }

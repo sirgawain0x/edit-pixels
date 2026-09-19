@@ -13,6 +13,7 @@ export interface DirectorBatchShotJob {
   progress: number
   error?: string
   videoUrl?: string
+  mediaId?: string
   generateEndpoint: '/api/seedance-generate' | '/api/pixels-render-veo'
   veoTaskId?: string
 }
