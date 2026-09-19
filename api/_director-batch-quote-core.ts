@@ -131,6 +131,7 @@ export async function quoteDirectorStoryboardBatch(input: {
   const defaultResolution = input.defaultResolution === '480p' ? '480p' : '720p'
   const shotResults: DirectorBatchQuoteShotResult[] = []
   const storeShots: DirectorBatchShotQuoteRecord[] = []
+  const seenShotIds = new Set<string>()
 
   let allVeoWei = 0n
   let allSeedanceWei = 0n
@@ -147,6 +148,10 @@ export async function quoteDirectorStoryboardBatch(input: {
     if (!mapped) {
       return { ok: false, error: `invalid shot: ${rawShot.shotId ?? 'unknown'}` }
     }
+    if (seenShotIds.has(mapped.shotId)) {
+      return { ok: false, error: `duplicate shotId: ${mapped.shotId}` }
+    }
+    seenShotIds.add(mapped.shotId)
 
     const veoQuote = quoteVeoForShot(mapped.veoDuration)
     if (!veoQuote) {
@@ -278,6 +283,22 @@ export function bindDirectorBatchSelections(
 
   if (selections.length !== quote.shots.length) {
     return { ok: false, error: 'selection_mismatch' }
+  }
+
+  const selectedShotIds = selections.map((selection) => selection.shotId.trim())
+  const selectedSet = new Set(selectedShotIds)
+  if (selectedSet.size !== selections.length) {
+    return { ok: false, error: 'selection_mismatch' }
+  }
+
+  const quoteShotIds = new Set(quote.shots.map((shot) => shot.shotId))
+  if (selectedSet.size !== quoteShotIds.size) {
+    return { ok: false, error: 'selection_mismatch' }
+  }
+  for (const shotId of quoteShotIds) {
+    if (!selectedSet.has(shotId)) {
+      return { ok: false, error: 'selection_mismatch' }
+    }
   }
 
   const quoteByShotId = new Map(quote.shots.map((shot) => [shot.shotId, shot]))

@@ -20,8 +20,11 @@ import {
 } from './_pixels-generate-jobs.js'
 import { failPixelsGenerateJob } from './_pixels-generate-payment.js'
 import {
+  claimBatchShotForGenerate,
+  completeBatchShotGenerate,
   getBatchShotGenerateParams,
-  resolveBatchGeneratePayment,
+  releaseDirectorBatchShotClaim,
+  validateBatchGenerateAuthorization,
 } from './_director-batch-generate.js'
 import {
   clampSeedanceDuration,
@@ -94,8 +97,9 @@ export async function POST(request: Request): Promise<Response> {
   let quoteId = typeof body.quoteId === 'string' ? body.quoteId.trim() : ''
   let batchPaymentTxHash: string | null = null
   let skipBatchPaymentVerify = false
+  const usingBatchConfirm = Boolean(batchConfirmId && batchShotId)
 
-  if (batchConfirmId && batchShotId) {
+  if (usingBatchConfirm) {
     const batchParams = await getBatchShotGenerateParams({
       batchConfirmId,
       shotId: batchShotId,
@@ -103,14 +107,14 @@ export async function POST(request: Request): Promise<Response> {
     if (!batchParams.ok || batchParams.params.provider !== 'seedance') {
       return Response.json({ error: 'batch_confirm_mismatch' }, { status: 400 })
     }
-    const batchPay = await resolveBatchGeneratePayment({
+    const batchAuth = await validateBatchGenerateAuthorization({
       batchConfirmId,
       shotId: batchShotId,
       requestId,
       wallet: auth.address,
     })
-    if (!batchPay.ok) {
-      return Response.json({ error: batchPay.error }, { status: 400 })
+    if (!batchAuth.ok) {
+      return Response.json({ error: batchAuth.error }, { status: 400 })
     }
     const batchShot = batchParams.params
     prompt = batchShot.prompt
@@ -118,8 +122,8 @@ export async function POST(request: Request): Promise<Response> {
     resolution = batchShot.resolution
     aspect_ratio = batchShot.aspect_ratio as SeedanceAspectRatio
     quoteId = batchShot.seedanceQuoteId
-    batchPaymentTxHash = batchPay.paymentTxHash
-    skipBatchPaymentVerify = batchPay.skipPaymentVerify
+    batchPaymentTxHash = batchAuth.paymentTxHash
+    skipBatchPaymentVerify = batchAuth.skipPaymentVerify
   }
 
   if (!prompt) {
@@ -200,6 +204,22 @@ export async function POST(request: Request): Promise<Response> {
     }
   }
 
+  if (usingBatchConfirm) {
+    const claimed = await claimBatchShotForGenerate({
+      batchConfirmId,
+      shotId: batchShotId,
+      requestId,
+    })
+    if (!claimed.ok) {
+      await failPixelsGenerateJob(requestId, {
+        code: claimed.error,
+        message: 'Batch shot already started',
+        type: 'billing',
+      }, { releasePayment: false })
+      return Response.json({ error: claimed.error }, { status: 409 })
+    }
+  }
+
   try {
     const result = await generateSeedanceVideo({
       prompt,
@@ -211,6 +231,10 @@ export async function POST(request: Request): Promise<Response> {
 
     if (reservation) {
       await settleSeedanceSpend(reservation.reservationId)
+    }
+
+    if (usingBatchConfirm) {
+      await completeBatchShotGenerate({ batchConfirmId, shotId: batchShotId })
     }
 
     await updatePixelsGenerateJob(requestId, {
@@ -232,6 +256,9 @@ export async function POST(request: Request): Promise<Response> {
       crtvaiRequired: quote.minCrtvaiWei.toString(),
     })
   } catch (e) {
+    if (usingBatchConfirm) {
+      await releaseDirectorBatchShotClaim(batchConfirmId, batchShotId)
+    }
     console.error('seedance-generate error', e)
     const message = e instanceof Error ? e.message : 'Generation failed'
     await failPixelsGenerateJob(requestId, {

@@ -26,8 +26,11 @@ import {
   verifyFlowPayment,
 } from './flow-billing.js'
 import {
+  claimBatchShotForGenerate,
+  completeBatchShotGenerate,
   getBatchShotGenerateParams,
-  resolveBatchGeneratePayment,
+  releaseDirectorBatchShotClaim,
+  validateBatchGenerateAuthorization,
 } from './_director-batch-generate.js'
 import { isSeedanceGenerateEnabled } from './_seedance-pricing.js'
 import {
@@ -108,8 +111,9 @@ export async function POST(request: Request): Promise<Response> {
   let aspectRatio = typeof body.aspect_ratio === 'string' ? body.aspect_ratio : '16:9'
   let batchPaymentTxHash: string | null = null
   let skipBatchPaymentVerify = false
+  const usingBatchConfirm = Boolean(batchConfirmId && batchShotId)
 
-  if (batchConfirmId && batchShotId) {
+  if (usingBatchConfirm) {
     const batchParams = await getBatchShotGenerateParams({
       batchConfirmId,
       shotId: batchShotId,
@@ -117,21 +121,21 @@ export async function POST(request: Request): Promise<Response> {
     if (!batchParams.ok || batchParams.params.provider !== 'veo') {
       return Response.json({ error: 'batch_confirm_mismatch' }, { status: 400 })
     }
-    const batchPay = await resolveBatchGeneratePayment({
+    const batchAuth = await validateBatchGenerateAuthorization({
       batchConfirmId,
       shotId: batchShotId,
       requestId,
       wallet: auth.address,
     })
-    if (!batchPay.ok) {
-      return Response.json({ error: batchPay.error }, { status: 400 })
+    if (!batchAuth.ok) {
+      return Response.json({ error: batchAuth.error }, { status: 400 })
     }
     const batchShot = batchParams.params
     prompt = batchShot.prompt
     duration = clampFlowDuration(batchShot.veoDuration)
     aspectRatio = batchShot.aspect_ratio
-    batchPaymentTxHash = batchPay.paymentTxHash
-    skipBatchPaymentVerify = batchPay.skipPaymentVerify
+    batchPaymentTxHash = batchAuth.paymentTxHash
+    skipBatchPaymentVerify = batchAuth.skipPaymentVerify
   }
 
   if (!prompt) {
@@ -221,6 +225,22 @@ export async function POST(request: Request): Promise<Response> {
     }
   }
 
+  if (usingBatchConfirm) {
+    const claimed = await claimBatchShotForGenerate({
+      batchConfirmId,
+      shotId: batchShotId,
+      requestId,
+    })
+    if (!claimed.ok) {
+      await failPixelsGenerateJob(requestId, {
+        code: claimed.error,
+        message: 'Batch shot already started',
+        type: 'billing',
+      }, { releasePayment: false })
+      return Response.json({ error: claimed.error }, { status: 409 })
+    }
+  }
+
   try {
     const startUrl = await stillToPublicUrl(prompt, request.url)
     const startImage = await fetchImageBytes(startUrl)
@@ -246,6 +266,10 @@ export async function POST(request: Request): Promise<Response> {
       model: started.modelId,
     })
 
+    if (usingBatchConfirm) {
+      await completeBatchShotGenerate({ batchConfirmId, shotId: batchShotId })
+    }
+
     return Response.json({
       id: taskId,
       status: 'processing',
@@ -258,6 +282,9 @@ export async function POST(request: Request): Promise<Response> {
       pixelsRequestId: requestId,
     })
   } catch (e) {
+    if (usingBatchConfirm) {
+      await releaseDirectorBatchShotClaim(batchConfirmId, batchShotId)
+    }
     console.error('pixels-render-veo error', e)
     const message = e instanceof Error ? e.message : 'generation failed'
     await failPixelsGenerateJob(requestId, {

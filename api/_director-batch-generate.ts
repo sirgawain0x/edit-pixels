@@ -1,5 +1,8 @@
 /**
  * Resolve batch-confirm payment for per-shot generate calls.
+ *
+ * Claim timing: validate binding first; atomic SETNX claim only after quote/billing
+ * pre-flight succeeds; release claim if provider enqueue fails (retry allowed).
  */
 import { bindBatchConfirmShot } from './_pixels-generate-billing-core.js'
 import {
@@ -7,6 +10,9 @@ import {
   getDirectorBatchConfirm,
   getDirectorBatchQuote,
   markDirectorBatchShotStarted,
+  refreshDirectorBatchConfirmTtl,
+  releaseDirectorBatchShotClaim,
+  tryClaimDirectorBatchShot,
 } from './_director-batch-store.js'
 
 export type BatchGenerateAuthResult =
@@ -17,7 +23,7 @@ export type BatchGenerateAuthResult =
     }
   | { ok: false; error: string }
 
-export async function resolveBatchGeneratePayment(input: {
+export async function validateBatchGenerateAuthorization(input: {
   batchConfirmId: string
   shotId: string
   requestId: string
@@ -49,14 +55,32 @@ export async function resolveBatchGeneratePayment(input: {
     return { ok: false, error: 'batch_confirm_mismatch' }
   }
 
-  await markDirectorBatchShotStarted(batchConfirmId, shot.shotId)
-
   return {
     ok: true,
     paymentTxHash: binding.paymentTxHash,
     skipPaymentVerify: true,
   }
 }
+
+export async function claimBatchShotForGenerate(input: {
+  batchConfirmId: string
+  shotId: string
+  requestId: string
+}): Promise<{ ok: true } | { ok: false; error: 'batch_shot_already_started' }> {
+  const claimed = await tryClaimDirectorBatchShot(input)
+  if (!claimed.ok) return claimed
+  await refreshDirectorBatchConfirmTtl(input.batchConfirmId)
+  return { ok: true }
+}
+
+export async function completeBatchShotGenerate(input: {
+  batchConfirmId: string
+  shotId: string
+}): Promise<void> {
+  await markDirectorBatchShotStarted(input.batchConfirmId, input.shotId)
+}
+
+export { releaseDirectorBatchShotClaim }
 
 export interface BatchShotGenerateParams {
   prompt: string
@@ -79,6 +103,7 @@ async function loadBatchShotContext(batchConfirmId: string, shotId: string) {
 
   const quote = await getDirectorBatchQuote(confirm.batchQuoteId)
   if (!quote) return null
+  if (quote.wallet !== confirm.wallet) return null
 
   const shotQuote = quote.shots.find((shot) => shot.shotId === trimmedShotId)
   if (!shotQuote) return null

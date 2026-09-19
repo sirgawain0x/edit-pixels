@@ -34,7 +34,7 @@ export function bindSeedanceQuote(
 
 export type BatchConfirmBindingResult =
   | { ok: true; paymentTxHash: string | null }
-  | { ok: false; error: 'batch_confirm_mismatch' | 'batch_shot_already_started' }
+  | { ok: false; error: 'batch_confirm_mismatch' }
 
 export interface BatchConfirmShotBindingInput {
   shotId: string
@@ -66,9 +66,6 @@ export function bindBatchConfirmShot(
   const shot = confirm.shots.find((entry) => entry.shotId === sid && entry.requestId === rid)
   if (!shot) {
     return { ok: false, error: 'batch_confirm_mismatch' }
-  }
-  if (shot.started) {
-    return { ok: false, error: 'batch_shot_already_started' }
   }
 
   return { ok: true, paymentTxHash: confirm.paymentTxHash }

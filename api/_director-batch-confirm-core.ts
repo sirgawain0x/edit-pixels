@@ -7,7 +7,9 @@
 import { checkMetokenSufficient } from './_metoken-server.js'
 import { bindDirectorBatchSelections } from './_director-batch-quote-core.js'
 import {
+  consumeDirectorBatchQuote,
   getDirectorBatchQuote,
+  isDirectorBatchQuoteConsumed,
   saveDirectorBatchConfirm,
   type DirectorBatchConfirmRecord,
 } from './_director-batch-store.js'
@@ -51,6 +53,10 @@ export async function confirmDirectorStoryboardBatch(input: {
   | { ok: false; error: string; status?: number }
 > {
   const batchQuoteId = input.batchQuoteId.trim()
+  if (await isDirectorBatchQuoteConsumed(batchQuoteId)) {
+    return { ok: false, error: 'quote_already_confirmed', status: 400 }
+  }
+
   const quote = await getDirectorBatchQuote(batchQuoteId)
   if (!quote) {
     return { ok: false, error: 'quote_not_found', status: 400 }
@@ -116,6 +122,11 @@ export async function confirmDirectorStoryboardBatch(input: {
     } catch (e) {
       console.warn('director batch confirm balance check skipped', e)
     }
+  }
+
+  const consumed = await consumeDirectorBatchQuote(batchQuoteId)
+  if (!consumed.ok) {
+    return { ok: false, error: consumed.error, status: 400 }
   }
 
   const confirmRecord = await saveDirectorBatchConfirm({

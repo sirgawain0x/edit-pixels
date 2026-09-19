@@ -138,6 +138,8 @@ Binds quote + payment. Returns job descriptors for enqueue. **Still requires wal
 - `paymentTxHash` required when treasury billing enforced (sum ≥ selected path total).
 - `DIRECTOR_BILLING_SOFT=1`: balance gate only (same as Phase 1).
 - One `requestId` per shot (client-generated UUID).
+- Each quoted `shotId` must appear exactly once in `selections` (bijection).
+- `batchQuoteId` is consumed on first successful confirm; reuse returns `quote_already_confirmed`.
 
 ### Response
 
@@ -168,6 +170,8 @@ Binds quote + payment. Returns job descriptors for enqueue. **Still requires wal
 ```
 
 ## Per-shot generate (enqueue)
+
+**Claim timing:** Each generate validates wallet + batch binding first, runs quote/billing pre-flight, then takes an atomic per-shot claim (`SETNX` on `batchConfirmId` + `shotId`). If provider enqueue fails, the claim is released so the shot can be retried. A second concurrent POST for the same shot receives `batch_shot_already_started` (409).
 
 After confirm, call the listed `generateEndpoint` for each job:
 
