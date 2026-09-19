@@ -19,7 +19,7 @@ import {
 import { PixelsLogo } from '@/components/brand/pixels-logo'
 import { DiscordIcon } from '@/components/brand/discord-icon'
 import { DISCORD_INVITE_URL, GITHUB_REPO_URL } from '@/config/community'
-import { WorkspaceIndicator } from '@/features/workspace-gate'
+import { WorkspaceIndicator } from '@/features/projects/deps/workspace-gate'
 import { LanguageSwitcher } from '@/shared/ui/language-switcher'
 import { WalletConnectButton } from '@/components/wallet-connect-button'
 import { cn } from '@/shared/ui/cn'
