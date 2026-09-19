@@ -1,6 +1,5 @@
 /**
- * Adapter exports for workspace-gate dependencies.
- * Projects modules should import workspace UI from here.
+ * Compatibility adapter that re-exports through workspace-gate-contract.
  */
 
-export { WorkspaceIndicator } from '@/features/workspace-gate'
+export * from './workspace-gate-contract'
