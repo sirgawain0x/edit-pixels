@@ -5,8 +5,7 @@ from __future__ import annotations
 
 import base64
 import io
-import os
-import struct
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -127,7 +126,7 @@ def main() -> None:
     master_rgba = white_background_to_alpha(master_rgb)
 
     BRAND_DIR.mkdir(parents=True, exist_ok=True)
-    save_png(master_rgb, BRAND_DIR / "pixels-mark.png")
+    shutil.copy2(source, BRAND_DIR / "pixels-mark.png")
     save_png(master_rgba, BRAND_DIR / "pixels-mark-transparent.png")
     save_png(fit_on_canvas(master_rgba, 256, 0.88, None), BRAND_DIR / "pixels-mark-icon-256.png")
 
