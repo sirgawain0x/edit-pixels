@@ -15,6 +15,7 @@ import type { ProjectFormData } from '@/features/projects/utils/validation'
 import { WalletConnectButton } from '@/components/wallet-connect-button'
 import { useWalletContext } from '@/context/wallet-context'
 import { isLocalWorkspaceFolderAvailable } from '@/features/projects/deps/storage-contract'
+import { runCreatePreflight, getCreateFailureDescription, getCreatedProjectId } from '@/features/projects/utils/create-project-flow'
 
 const logger = createLogger('NewProject')
 
@@ -44,24 +45,6 @@ function useWalletCreateGate() {
   return { requireWallet, promptConnect }
 }
 
-async function createProjectOrToast(
-  createProject: ReturnType<typeof useCreateProject>,
-  data: ProjectFormData,
-  t: (key: string) => string,
-): Promise<string | null> {
-  try {
-    const result = await createProject(data)
-    if (result.success && result.project) return result.project.id
-    toast.error(t('projects.toasts.createFailed'), {
-      description: result.error ?? t('projects.tryAgain'),
-    })
-  } catch (error) {
-    logger.error('Failed to create project:', error)
-    toast.error(t('projects.toasts.createFailed'), { description: t('projects.tryAgain') })
-  }
-  return null
-}
-
 function NewProject() {
   const navigate = useNavigate()
   const { t } = useTranslation()
@@ -71,23 +54,19 @@ function NewProject() {
   const createAvailable = isLocalWorkspaceFolderAvailable()
 
   const handleSubmit = async (data: ProjectFormData) => {
-    if (requireWallet) {
-      promptConnect()
-      return
-    }
-    if (!createAvailable) {
-      toast.error(t('projects.toasts.createFailed'), {
-        description: t('projects.create.unavailable'),
-      })
-      return
-    }
+    if (!runCreatePreflight({ requireWallet, createAvailable, promptConnect, t })) return
 
     setIsSubmitting(true)
-    const projectId = await createProjectOrToast(createProject, data, t)
+    const result = await createProject(data)
+    const projectId = getCreatedProjectId(result)
     if (projectId) {
       navigate({ to: '/editor/$projectId', params: { projectId } })
       return
     }
+
+    toast.error(t('projects.toasts.createFailed'), {
+      description: getCreateFailureDescription(result.error, t),
+    })
     setIsSubmitting(false)
   }
 

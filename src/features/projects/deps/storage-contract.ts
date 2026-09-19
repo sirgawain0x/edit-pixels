@@ -3,8 +3,4 @@
  * Import from here instead of reaching into infrastructure directly.
  */
 
-export {
-  isFileSystemAccessSupported,
-  isLikelyMobileBrowser,
-  isLocalWorkspaceFolderAvailable,
-} from '@/infrastructure/storage/handles-db'
+export { isLocalWorkspaceFolderAvailable } from '@/infrastructure/storage/handles-db'
