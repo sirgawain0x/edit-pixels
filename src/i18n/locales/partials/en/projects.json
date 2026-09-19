@@ -256,6 +256,11 @@
       "mediaWillBeSavedTo": "Media will be saved to:",
       "startImport": "Start Import"
     },
+    "create": {
+      "unavailableTitle": "Not available on this device",
+      "unavailable": "New projects require a Chromium-based desktop browser with a local workspace folder (Chrome, Edge, Brave). This is not available on Safari, Firefox, or most mobile browsers.",
+      "reconnectRequired": "Could not save to your workspace folder. Open Pixels on a desktop browser, reconnect your workspace, then try again."
+    },
     "landing": {
       "beta": "Beta",
       "heroTitle": "Edit videos. <accent>In your browser.</accent>",

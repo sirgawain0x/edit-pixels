@@ -27,12 +27,14 @@ import { cn } from '@/shared/ui/cn'
 interface ProjectsAppHeaderProps {
   onImportClick: () => void
   importAvailable: boolean
+  createAvailable: boolean
   walletInitializing: boolean
   requireWalletForNewProject: boolean
   onConnectWallet: () => void
 }
 
 function NewProjectButton({
+  createAvailable,
   walletInitializing,
   requireWalletForNewProject,
   onConnectWallet,
@@ -40,6 +42,7 @@ function NewProjectButton({
   size = 'lg',
   compact = false,
 }: {
+  createAvailable: boolean
   walletInitializing: boolean
   requireWalletForNewProject: boolean
   onConnectWallet: () => void
@@ -53,6 +56,7 @@ function NewProjectButton({
   ) : (
     t('projects.newProject')
   )
+  const unavailableTooltip = t('projects.create.unavailable')
 
   if (walletInitializing) {
     return (
@@ -74,6 +78,31 @@ function NewProjectButton({
         <Plus className="w-4 h-4 shrink-0" />
         {label}
       </Button>
+    )
+  }
+
+  if (!createAvailable) {
+    const button = (
+      <Button
+        size={size}
+        className={cn('gap-2', className)}
+        disabled
+        aria-disabled
+        aria-label={t('projects.newProject')}
+      >
+        <Plus className="w-4 h-4 shrink-0" />
+        {label}
+      </Button>
+    )
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex">{button}</span>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" className="max-w-xs text-center">
+          {unavailableTooltip}
+        </TooltipContent>
+      </Tooltip>
     )
   }
 
@@ -136,6 +165,7 @@ function ImportProjectButton({
 function DesktopToolbar({
   onImportClick,
   importAvailable,
+  createAvailable,
   walletInitializing,
   requireWalletForNewProject,
   onConnectWallet,
@@ -178,6 +208,7 @@ function DesktopToolbar({
       <WalletConnectButton size="lg" className="h-10 px-4" />
       <ImportProjectButton onClick={onImportClick} importAvailable={importAvailable} />
       <NewProjectButton
+        createAvailable={createAvailable}
         walletInitializing={walletInitializing}
         requireWalletForNewProject={requireWalletForNewProject}
         onConnectWallet={onConnectWallet}
@@ -189,6 +220,7 @@ function DesktopToolbar({
 function MobileToolbar({
   onImportClick,
   importAvailable,
+  createAvailable,
   walletInitializing,
   requireWalletForNewProject,
   onConnectWallet,
@@ -258,6 +290,7 @@ function MobileToolbar({
 
       <WalletConnectButton size="sm" compact className="h-11 shrink-0" />
       <NewProjectButton
+        createAvailable={createAvailable}
         walletInitializing={walletInitializing}
         requireWalletForNewProject={requireWalletForNewProject}
         onConnectWallet={onConnectWallet}

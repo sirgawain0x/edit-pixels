@@ -252,6 +252,11 @@
       "mediaWillBeSavedTo": "Les médias seront enregistrés dans :",
       "startImport": "Démarrer l'importation"
     },
+    "create": {
+      "unavailableTitle": "Indisponible sur cet appareil",
+      "unavailable": "La création de projets nécessite un navigateur de bureau basé sur Chromium avec un dossier d'espace de travail local (Chrome, Edge, Brave). Ce n'est pas disponible sur Safari, Firefox ou la plupart des navigateurs mobiles.",
+      "reconnectRequired": "Impossible d'enregistrer dans votre dossier d'espace de travail. Ouvrez Pixels dans un navigateur de bureau, reconnectez votre espace de travail, puis réessayez."
+    },
     "landing": {
       "beta": "Bêta",
       "heroTitle": "Montez des vidéos. <accent>Dans votre navigateur.</accent>",

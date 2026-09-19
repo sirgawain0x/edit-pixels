@@ -1,6 +1,8 @@
 import { useProjectStore } from '../stores/project-store'
 import { useCallback } from 'react'
 import type { ProjectFormData } from '../utils/validation'
+import { mapCreateProjectError } from '../utils/create-project-errors'
+import i18n from '@/i18n'
 
 /**
  * Hook for project CRUD actions
@@ -63,7 +65,7 @@ export const useCreateProject = () => {
         return {
           success: false,
           project: null,
-          error: error instanceof Error ? error.message : 'Failed to create project',
+          error: mapCreateProjectError(error, (key) => i18n.t(key)),
         }
       }
     },

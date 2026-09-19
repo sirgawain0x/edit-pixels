@@ -14,6 +14,7 @@ import { DISCORD_INVITE_URL, GITHUB_REPO_URL } from '@/config/community'
 import type { ProjectFormData } from '@/features/projects/utils/validation'
 import { WalletConnectButton } from '@/components/wallet-connect-button'
 import { useWalletContext } from '@/context/wallet-context'
+import { isLocalWorkspaceFolderAvailable } from '@/features/projects/deps/storage-contract'
 
 const logger = createLogger('NewProject')
 
@@ -51,7 +52,9 @@ async function createProjectOrToast(
   try {
     const result = await createProject(data)
     if (result.success && result.project) return result.project.id
-    toast.error(t('projects.toasts.createFailed'), { description: result.error })
+    toast.error(t('projects.toasts.createFailed'), {
+      description: result.error ?? t('projects.tryAgain'),
+    })
   } catch (error) {
     logger.error('Failed to create project:', error)
     toast.error(t('projects.toasts.createFailed'), { description: t('projects.tryAgain') })
@@ -65,10 +68,17 @@ function NewProject() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const createProject = useCreateProject()
   const { requireWallet, promptConnect } = useWalletCreateGate()
+  const createAvailable = isLocalWorkspaceFolderAvailable()
 
   const handleSubmit = async (data: ProjectFormData) => {
     if (requireWallet) {
       promptConnect()
+      return
+    }
+    if (!createAvailable) {
+      toast.error(t('projects.toasts.createFailed'), {
+        description: t('projects.create.unavailable'),
+      })
       return
     }
 
@@ -117,7 +127,19 @@ function NewProject() {
             Connect your wallet to create a project and use AI features.
           </div>
         ) : null}
-        <InlineCreateProjectForm onSubmit={handleSubmit} isSubmitting={isSubmitting} />
+        {!createAvailable ? (
+          <div
+            className="mb-6 rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground"
+            role="status"
+          >
+            {t('projects.create.unavailable')}
+          </div>
+        ) : null}
+        <InlineCreateProjectForm
+          onSubmit={handleSubmit}
+          isSubmitting={isSubmitting}
+          submitDisabled={!createAvailable}
+        />
       </div>
     </div>
   )

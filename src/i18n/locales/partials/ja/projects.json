@@ -252,6 +252,11 @@
       "mediaWillBeSavedTo": "メディアの保存先:",
       "startImport": "インポートを開始"
     },
+    "create": {
+      "unavailableTitle": "このデバイスでは利用できません",
+      "unavailable": "新規プロジェクトの作成には、ローカルのワークスペースフォルダーに対応した Chromium 系デスクトップブラウザー（Chrome、Edge、Brave）が必要です。Safari、Firefox、ほとんどのモバイルブラウザーでは利用できません。",
+      "reconnectRequired": "ワークスペースフォルダーに保存できませんでした。デスクトップブラウザーで Pixels を開き、ワークスペースを再接続してからもう一度お試しください。"
+    },
     "landing": {
       "beta": "ベータ",
       "heroTitle": "動画を編集しよう。<accent>ブラウザの中で。</accent>",
