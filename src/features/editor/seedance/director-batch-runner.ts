@@ -29,6 +29,7 @@ import {
   loadDirectorBatchPendingConfirm,
   saveDirectorBatchJob,
   saveDirectorBatchPendingConfirm,
+  saveDirectorBatchPlacementPayload,
   updateDirectorBatchJobJobs,
   type DirectorBatchActiveJob,
 } from './director-batch-job-store'
@@ -142,13 +143,19 @@ async function runSingleBatchShot(
     }
 
     if (enqueue?.status === 'completed' && enqueue.output?.video_url) {
-      await importRenderVideoToLibrary(
+      const imported = await importRenderVideoToLibrary(
         enqueue.output.video_url,
         projectId,
         job.provider,
         job.shotId,
       )
-      onJobUpdate({ ...running, status: 'succeeded', progress: 100, videoUrl: enqueue.output.video_url })
+      onJobUpdate({
+        ...running,
+        status: 'succeeded',
+        progress: 100,
+        videoUrl: enqueue.output.video_url,
+        mediaId: imported.mediaId,
+      })
       return
     }
 
@@ -158,8 +165,14 @@ async function runSingleBatchShot(
       onJobUpdate({ ...withTask, progress: pct })
     }, signal)
 
-    await importRenderVideoToLibrary(videoUrl, projectId, job.provider, job.shotId)
-    onJobUpdate({ ...withTask, status: 'succeeded', progress: 100, videoUrl })
+    const imported = await importRenderVideoToLibrary(videoUrl, projectId, job.provider, job.shotId)
+    onJobUpdate({
+      ...withTask,
+      status: 'succeeded',
+      progress: 100,
+      videoUrl,
+      mediaId: imported.mediaId,
+    })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Generation failed'
     onJobUpdate({ ...job, status: 'failed', progress: 0, error: message })
@@ -282,6 +295,12 @@ export async function runDirectorBatchQueue(input: {
   saveDirectorBatchJob(result)
 
   if (progress.failed === 0) {
+    saveDirectorBatchPlacementPayload({
+      shotsKey: jobs.map((job) => job.shotId).join(','),
+      storyboardId: active.storyboardId,
+      jobs: jobs.filter((job) => job.status === 'succeeded'),
+      autoLaid: false,
+    })
     clearDirectorBatchJob()
   }
 

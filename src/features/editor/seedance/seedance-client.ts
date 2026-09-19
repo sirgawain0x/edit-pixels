@@ -258,6 +258,10 @@ export interface DirectorStoryboardShotPayload {
   shotId: string
   prompt: string
   duration?: number
+  /** Storyboard timecode start offset from audio (seconds). */
+  startSeconds?: number
+  /** Storyboard timecode end offset from audio (seconds). */
+  endSeconds?: number
   aspectRatio?: string
   consistentCharacter?: boolean
   resolution?: SeedanceResolution

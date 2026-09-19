@@ -7,7 +7,7 @@ export async function importRenderVideoToLibrary(
   projectId: string,
   provider: PixelsRenderProvider,
   shotId?: string,
-): Promise<{ fileName: string }> {
+): Promise<{ fileName: string; mediaId: string }> {
   const response = await fetch(videoUrl)
   if (!response.ok) {
     throw new Error('Failed to download generated video')
@@ -22,7 +22,7 @@ export async function importRenderVideoToLibrary(
       ? ['ai-generated', 'director', 'seedance']
       : ['ai-generated', 'director', 'veo', 'pixels']
   const { mediaLibraryService } = await importMediaLibraryService()
-  await mediaLibraryService.importGeneratedVideo(file, projectId, { tags })
+  const media = await mediaLibraryService.importGeneratedVideo(file, projectId, { tags })
   await useMediaLibraryStore.getState().loadMediaItems()
-  return { fileName: file.name }
+  return { fileName: file.name, mediaId: media.id }
 }
