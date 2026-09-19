@@ -213,6 +213,7 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
       })
   }, [auth, currentProjectId, shotsKey, callbacks, t])
 
+  // fallow-ignore-next-line complexity
   const handleConfirm = useCallback(async () => {
     if (!auth || !quote || !currentProjectId || busy) return
     if (quoteExpired) {

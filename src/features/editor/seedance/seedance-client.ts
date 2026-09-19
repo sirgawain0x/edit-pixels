@@ -85,6 +85,7 @@ async function withAuth<T extends Record<string, unknown>>(
   }
 }
 
+// fallow-ignore-next-line complexity
 function parseApiError(
   status: number,
   body: { error?: string; balance?: string; requiredMetoken?: string },

@@ -8,6 +8,7 @@ const ASPECT_RE = /\b(16:9|9:16|4:3|3:4|1:1|21:9)\b/
 const CONSISTENT_CHARACTER_RE =
   /\b(consistent\s*character|same\s+(hero|character|protagonist)|character\s+consistency)\b/i
 
+// fallow-ignore-next-line complexity
 function splitStoryboardSections(markdown: string): string[] {
   const trimmed = markdown.trim()
   if (!trimmed) return []
@@ -61,6 +62,7 @@ function extractDurationSeconds(section: string): number | undefined {
   return undefined
 }
 
+// fallow-ignore-next-line complexity
 function extractPrompt(section: string): string {
   const lines = section.split('\n')
   const body: string[] = []

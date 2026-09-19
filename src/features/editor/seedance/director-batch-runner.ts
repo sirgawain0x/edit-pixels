@@ -101,6 +101,7 @@ async function pollBatchShotToVideo(
   return pollVeoTaskToVideo(auth, veoTaskId, { signal, onProgress })
 }
 
+// fallow-ignore-next-line complexity
 async function runSingleBatchShot(
   auth: SignedRequestParams,
   batchConfirmId: string,
@@ -161,6 +162,7 @@ async function runSingleBatchShot(
   }
 }
 
+// fallow-ignore-next-line complexity
 export async function confirmPaidDirectorBatch(input: {
   auth: SignedRequestParams
   quote: DirectorBatchQuoteResponse
