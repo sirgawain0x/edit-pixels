@@ -85,7 +85,11 @@ Client emits structured `pixels_generate` wide events (provider, duration, cost 
 - Resolution: 720p (Seedance; Veo always 720p standard)
 - Aspect ratio: from Gemini plan (default 16:9)
 
-## Remaining gaps (Phase 2+)
+## Phase 2 — Director batch bridge
+
+See [director-pixels-bridge.md](./director-pixels-bridge.md) for batch quote/confirm HTTP contract (`/api/pixels-director-batch-quote`, `/api/pixels-director-batch-confirm`).
+
+## Remaining gaps (Phase 3+)
 
 - On-chain meToken burn (treasury transfer verify is the settlement mechanism today)
-- Director-style streaming payment for long-running batch renders
+- Batch queue UI and concurrent provider cap (Phase 3)

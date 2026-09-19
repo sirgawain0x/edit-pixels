@@ -43,6 +43,12 @@
     },
     "api/pixels-generate-cancel.ts": {
       "maxDuration": 30
+    },
+    "api/pixels-director-batch-quote.ts": {
+      "maxDuration": 60
+    },
+    "api/pixels-director-batch-confirm.ts": {
+      "maxDuration": 60
     }
   },
   "rewrites": [

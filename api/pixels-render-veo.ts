@@ -25,6 +25,10 @@ import {
   quoteFlowCreditsUsdc6,
   verifyFlowPayment,
 } from './flow-billing.js'
+import {
+  getBatchShotGenerateParams,
+  resolveBatchGeneratePayment,
+} from './_director-batch-generate.js'
 import { isSeedanceGenerateEnabled } from './_seedance-pricing.js'
 import {
   registerPixelsGenerateJob,
@@ -78,11 +82,6 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'invalid authorization' }, { status: 401 })
   }
 
-  const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
-  if (!prompt) {
-    return Response.json({ error: 'prompt required' }, { status: 400 })
-  }
-
   const requestId =
     typeof body.requestId === 'string' && body.requestId.trim().length > 0
       ? body.requestId.trim()
@@ -91,9 +90,54 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'requestId required' }, { status: 400 })
   }
 
-  const duration = clampFlowDuration(typeof body.duration === 'number' ? body.duration : 8)
+  const batchConfirmId =
+    typeof body.batchConfirmId === 'string'
+      ? body.batchConfirmId.trim()
+      : typeof body.batch_confirm_id === 'string'
+        ? body.batch_confirm_id.trim()
+        : ''
+  const batchShotId =
+    typeof body.shotId === 'string'
+      ? body.shotId.trim()
+      : typeof body.shot_id === 'string'
+        ? body.shot_id.trim()
+        : ''
+
+  let prompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
+  let duration = clampFlowDuration(typeof body.duration === 'number' ? body.duration : 8)
+  let aspectRatio = typeof body.aspect_ratio === 'string' ? body.aspect_ratio : '16:9'
+  let batchPaymentTxHash: string | null = null
+  let skipBatchPaymentVerify = false
+
+  if (batchConfirmId && batchShotId) {
+    const batchParams = await getBatchShotGenerateParams({
+      batchConfirmId,
+      shotId: batchShotId,
+    })
+    if (!batchParams.ok || batchParams.provider !== 'veo') {
+      return Response.json({ error: 'batch_confirm_mismatch' }, { status: 400 })
+    }
+    const batchPay = await resolveBatchGeneratePayment({
+      batchConfirmId,
+      shotId: batchShotId,
+      requestId,
+      wallet: auth.address,
+    })
+    if (!batchPay.ok) {
+      return Response.json({ error: batchPay.error }, { status: 400 })
+    }
+    prompt = batchParams.prompt
+    duration = clampFlowDuration(batchParams.veoDuration)
+    aspectRatio = batchParams.aspect_ratio
+    batchPaymentTxHash = batchPay.paymentTxHash
+    skipBatchPaymentVerify = batchPay.skipPaymentVerify
+  }
+
+  if (!prompt) {
+    return Response.json({ error: 'prompt required' }, { status: 400 })
+  }
+
   const quality = normalizeVeoQuality('720p', PIXELS_VEO_TIER)
-  const aspectRatio = typeof body.aspect_ratio === 'string' ? body.aspect_ratio : '16:9'
 
   const totalCredits = quoteFlowTotalCredits({
     duration,
@@ -124,30 +168,34 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   if (isFlowBillingEnforced()) {
-    const paymentTxHash = typeof body.paymentTxHash === 'string' ? body.paymentTxHash.trim() : ''
-    if (!paymentTxHash) {
-      await failPixelsGenerateJob(requestId, {
-        code: 'payment_required',
-        message: 'Payment required',
-        type: 'billing',
-      }, { releasePayment: false })
-      return Response.json({ error: 'payment_required' }, { status: 402 })
+    if (skipBatchPaymentVerify && batchPaymentTxHash) {
+      await updatePixelsGenerateJob(requestId, { paymentTxHash: batchPaymentTxHash })
+    } else {
+      const paymentTxHash = typeof body.paymentTxHash === 'string' ? body.paymentTxHash.trim() : ''
+      if (!paymentTxHash) {
+        await failPixelsGenerateJob(requestId, {
+          code: 'payment_required',
+          message: 'Payment required',
+          type: 'billing',
+        }, { releasePayment: false })
+        return Response.json({ error: 'payment_required' }, { status: 402 })
+      }
+      const verified = await verifyFlowPayment({
+        txHash: paymentTxHash,
+        from: auth.address,
+        minAmountWei: quote.minCrtvaiWei,
+        purpose: 'pixels-render-veo',
+      })
+      if (!verified.ok) {
+        await failPixelsGenerateJob(requestId, {
+          code: 'payment_failed',
+          message: verified.reason,
+          type: 'billing',
+        }, { releasePayment: false })
+        return Response.json({ error: verified.reason }, { status: 402 })
+      }
+      await updatePixelsGenerateJob(requestId, { paymentTxHash })
     }
-    const verified = await verifyFlowPayment({
-      txHash: paymentTxHash,
-      from: auth.address,
-      minAmountWei: quote.minCrtvaiWei,
-      purpose: 'pixels-render-veo',
-    })
-    if (!verified.ok) {
-      await failPixelsGenerateJob(requestId, {
-        code: 'payment_failed',
-        message: verified.reason,
-        type: 'billing',
-      }, { releasePayment: false })
-      return Response.json({ error: verified.reason }, { status: 402 })
-    }
-    await updatePixelsGenerateJob(requestId, { paymentTxHash })
   } else {
     try {
       const balanceCheck = await checkMetokenSufficient(auth.address, quote.estimatedUsdc6)

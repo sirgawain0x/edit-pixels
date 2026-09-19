@@ -20,6 +20,10 @@ import {
 } from './_pixels-generate-jobs.js'
 import { failPixelsGenerateJob } from './_pixels-generate-payment.js'
 import {
+  getBatchShotGenerateParams,
+  resolveBatchGeneratePayment,
+} from './_director-batch-generate.js'
+import {
   clampSeedanceDuration,
   isSeedanceGenerateEnabled,
   type SeedanceAspectRatio,
@@ -60,11 +64,6 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'invalid authorization' }, { status: 401 })
   }
 
-  const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
-  if (!prompt) {
-    return Response.json({ error: 'prompt required' }, { status: 400 })
-  }
-
   const requestId =
     typeof body.requestId === 'string' && body.requestId.trim().length > 0
       ? body.requestId.trim()
@@ -73,14 +72,61 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'requestId required' }, { status: 400 })
   }
 
-  const duration = clampSeedanceDuration(typeof body.duration === 'number' ? body.duration : 5)
-  const resolution: SeedanceResolution = body.resolution === '480p' ? '480p' : '720p'
-  const aspect_ratio = (typeof body.aspect_ratio === 'string'
+  const batchConfirmId =
+    typeof body.batchConfirmId === 'string'
+      ? body.batchConfirmId.trim()
+      : typeof body.batch_confirm_id === 'string'
+        ? body.batch_confirm_id.trim()
+        : ''
+  const batchShotId =
+    typeof body.shotId === 'string'
+      ? body.shotId.trim()
+      : typeof body.shot_id === 'string'
+        ? body.shot_id.trim()
+        : ''
+
+  let prompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
+  let duration = clampSeedanceDuration(typeof body.duration === 'number' ? body.duration : 5)
+  let resolution: SeedanceResolution = body.resolution === '480p' ? '480p' : '720p'
+  let aspect_ratio = (typeof body.aspect_ratio === 'string'
     ? body.aspect_ratio
     : '16:9') as SeedanceAspectRatio
+  let quoteId = typeof body.quoteId === 'string' ? body.quoteId.trim() : ''
+  let batchPaymentTxHash: string | null = null
+  let skipBatchPaymentVerify = false
+
+  if (batchConfirmId && batchShotId) {
+    const batchParams = await getBatchShotGenerateParams({
+      batchConfirmId,
+      shotId: batchShotId,
+    })
+    if (!batchParams.ok || batchParams.provider !== 'seedance') {
+      return Response.json({ error: 'batch_confirm_mismatch' }, { status: 400 })
+    }
+    const batchPay = await resolveBatchGeneratePayment({
+      batchConfirmId,
+      shotId: batchShotId,
+      requestId,
+      wallet: auth.address,
+    })
+    if (!batchPay.ok) {
+      return Response.json({ error: batchPay.error }, { status: 400 })
+    }
+    prompt = batchParams.prompt
+    duration = batchParams.seedanceDuration
+    resolution = batchParams.resolution
+    aspect_ratio = batchParams.aspect_ratio as SeedanceAspectRatio
+    quoteId = batchParams.seedanceQuoteId
+    batchPaymentTxHash = batchPay.paymentTxHash
+    skipBatchPaymentVerify = batchPay.skipPaymentVerify
+  }
+
+  if (!prompt) {
+    return Response.json({ error: 'prompt required' }, { status: 400 })
+  }
+
   const generate_audio = body.generate_audio !== false
 
-  const quoteId = typeof body.quoteId === 'string' ? body.quoteId.trim() : ''
   const storedQuote = quoteId ? await getSeedanceQuote(quoteId) : null
   const bound = bindSeedanceQuote(quoteId, storedQuote, duration, resolution)
   if (!bound.ok || !storedQuote) {
@@ -102,29 +148,33 @@ export async function POST(request: Request): Promise<Response> {
   const reservation = await reserveSeedanceSpend(quote.quoteId, auth.address)
 
   if (isSeedanceBillingEnforced()) {
-    const paymentTxHash = typeof body.paymentTxHash === 'string' ? body.paymentTxHash.trim() : ''
-    if (!paymentTxHash) {
-      await failPixelsGenerateJob(requestId, {
-        code: 'payment_required',
-        message: 'Payment required',
-        type: 'billing',
-      }, { releasePayment: false })
-      return Response.json({ error: 'payment_required' }, { status: 402 })
+    if (skipBatchPaymentVerify && batchPaymentTxHash) {
+      await updatePixelsGenerateJob(requestId, { paymentTxHash: batchPaymentTxHash })
+    } else {
+      const paymentTxHash = typeof body.paymentTxHash === 'string' ? body.paymentTxHash.trim() : ''
+      if (!paymentTxHash) {
+        await failPixelsGenerateJob(requestId, {
+          code: 'payment_required',
+          message: 'Payment required',
+          type: 'billing',
+        }, { releasePayment: false })
+        return Response.json({ error: 'payment_required' }, { status: 402 })
+      }
+      const verified = await verifySeedancePayment({
+        txHash: paymentTxHash,
+        from: auth.address,
+        minAmountWei: quote.minCrtvaiWei,
+      })
+      if (!verified.ok) {
+        await failPixelsGenerateJob(requestId, {
+          code: 'payment_failed',
+          message: verified.reason,
+          type: 'billing',
+        }, { releasePayment: false })
+        return Response.json({ error: verified.reason }, { status: 402 })
+      }
+      await updatePixelsGenerateJob(requestId, { paymentTxHash })
     }
-    const verified = await verifySeedancePayment({
-      txHash: paymentTxHash,
-      from: auth.address,
-      minAmountWei: quote.minCrtvaiWei,
-    })
-    if (!verified.ok) {
-      await failPixelsGenerateJob(requestId, {
-        code: 'payment_failed',
-        message: verified.reason,
-        type: 'billing',
-      }, { releasePayment: false })
-      return Response.json({ error: verified.reason }, { status: 402 })
-    }
-    await updatePixelsGenerateJob(requestId, { paymentTxHash })
   } else {
     try {
       const balanceCheck = await checkMetokenSufficient(auth.address, quote.estimatedUsdc6)

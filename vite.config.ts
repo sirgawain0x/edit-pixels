@@ -30,6 +30,8 @@ import { POST as pixelsRenderQuotePost } from './api/pixels-render-quote'
 import { POST as pixelsRenderVeoPost } from './api/pixels-render-veo'
 import { GET as pixelsGenerateTaskGet } from './api/pixels-generate-task'
 import { POST as pixelsGenerateCancelPost } from './api/pixels-generate-cancel'
+import { POST as pixelsDirectorBatchQuotePost } from './api/pixels-director-batch-quote'
+import { POST as pixelsDirectorBatchConfirmPost } from './api/pixels-director-batch-confirm'
 
 // Stamps public/sw.js with the hashed entry-chunk filename at build time so the service
 // worker's CACHE_VERSION — and the sw.js bytes — change on every deploy. Without this the
@@ -325,6 +327,28 @@ function directorApiDevPlugin(): Plugin {
               res.statusCode = 500
               res.setHeader('Content-Type', 'application/json')
               res.end(JSON.stringify({ error: 'Pixels generate cancel proxy failed' }))
+            }
+          })
+          return
+        }
+        if (path === '/api/pixels-director-batch-quote' && req.method === 'POST') {
+          void proxyEarnDevRequest(req, res, pixelsDirectorBatchQuotePost).catch((error) => {
+            console.error('Pixels director batch quote API middleware error', error)
+            if (!res.headersSent) {
+              res.statusCode = 500
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Pixels director batch quote proxy failed' }))
+            }
+          })
+          return
+        }
+        if (path === '/api/pixels-director-batch-confirm' && req.method === 'POST') {
+          void proxyEarnDevRequest(req, res, pixelsDirectorBatchConfirmPost).catch((error) => {
+            console.error('Pixels director batch confirm API middleware error', error)
+            if (!res.headersSent) {
+              res.statusCode = 500
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Pixels director batch confirm proxy failed' }))
             }
           })
           return
