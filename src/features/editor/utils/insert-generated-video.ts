@@ -1,30 +1,10 @@
-import type { TransformProperties } from '@/types/transform'
 import type { VideoItem } from '@/types/timeline'
 import type { MediaMetadata } from '@/types/storage'
 import { useTimelineStore } from '@/features/editor/deps/timeline-store'
-import { createClassicTrack } from '@/features/editor/deps/timeline-utils'
+import { computeFitScaleTransform, createClassicTrack } from '@/features/editor/deps/timeline-utils'
 import { useProjectStore } from '@/features/editor/deps/projects'
 import { useSelectionStore } from '@/shared/state/selection'
 import { DEFAULT_PROJECT_HEIGHT, DEFAULT_PROJECT_WIDTH } from '@/shared/projects/defaults'
-
-function computeFitTransform(
-  sourceWidth: number,
-  sourceHeight: number,
-  canvasWidth: number,
-  canvasHeight: number,
-): TransformProperties {
-  const scaleX = canvasWidth / sourceWidth
-  const scaleY = canvasHeight / sourceHeight
-  const fitScale = Math.min(scaleX, scaleY)
-
-  return {
-    x: 0,
-    y: 0,
-    width: Math.round(sourceWidth * fitScale),
-    height: Math.round(sourceHeight * fitScale),
-    rotation: 0,
-  }
-}
 
 /**
  * Add generated video to a fresh video track at the requested playhead frame.
@@ -70,7 +50,7 @@ export function insertGeneratedVideoOnNewTrack(
     trimEnd: 0,
     sourceWidth: media.width || undefined,
     sourceHeight: media.height || undefined,
-    transform: computeFitTransform(sourceWidth, sourceHeight, canvasWidth, canvasHeight),
+    transform: computeFitScaleTransform(sourceWidth, sourceHeight, canvasWidth, canvasHeight),
   }
 
   if (media.audioCodec) {

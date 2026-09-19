@@ -25,13 +25,13 @@ import {
   type DirectorBatchShotJob,
 } from './director-batch-queue'
 import { DIRECTOR_BATCH_SEEDANCE_CONCURRENCY_DEFAULT } from './director-batch-concurrency'
+import { loadDirectorBatchJob, type DirectorBatchActiveJob } from './director-batch-job-store'
 import {
-  clearDirectorBatchPlacementPayload,
-  loadDirectorBatchJob,
-  loadDirectorBatchPlacementPayload,
-  markDirectorBatchAutoLaid,
-  type DirectorBatchActiveJob,
-} from './director-batch-job-store'
+  maybeAutoLayDirectorBatch,
+  resetDirectorBatchPlacementSession,
+  resolveDirectorBatchPanelSession,
+  runGuardedDirectorBatchPlacement,
+} from './director-batch-timeline-orchestration'
 import {
   confirmPaidDirectorBatch,
   runDirectorBatchQueue,
@@ -42,7 +42,6 @@ import {
   useTimelineSettingsStore,
 } from '@/features/editor/deps/timeline-store-contract'
 import { buildDirectorTimelineAudioContext } from '../director/timeline-audio'
-import { placeDirectorBatchOnTimeline } from './place-director-batch-on-timeline'
 
 const PER_SHOT_OVERRIDE_MAX = 8
 
@@ -155,38 +154,17 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
   const shotsKey = shots.map((shot) => shot.shotId).join(',')
 
   useEffect(() => {
-    const saved = loadDirectorBatchJob()
-    const savedShotIds = saved?.jobs.map((job) => job.shotId).join(',') ?? ''
-    if (saved && savedShotIds === shotsKey) {
-      setActiveJob(saved)
-      setJobs(saved.jobs)
-      setTimelinePlaced(false)
-      if (saved.jobs.some((job) => job.status === 'queued' || job.status === 'running')) {
-        setPhase('running')
-      } else if (saved.jobs.some((job) => job.status === 'failed')) {
-        setPhase('done')
-      }
-      return
+    const session = resolveDirectorBatchPanelSession(shotsKey)
+    if (session.clearStalePlacementPayload) {
+      resetDirectorBatchPlacementSession()
     }
-
-    const placementPayload = loadDirectorBatchPlacementPayload()
-    if (placementPayload && placementPayload.shotsKey === shotsKey) {
-      setActiveJob(null)
-      setJobs(placementPayload.jobs)
-      setPhase('done')
-      setTimelinePlaced(placementPayload.autoLaid)
-      return
+    setActiveJob(session.activeJob)
+    setJobs(session.jobs)
+    setPhase(session.phase)
+    setTimelinePlaced(session.timelinePlaced)
+    if (session.clearQuote) {
+      setQuote(null)
     }
-
-    if (placementPayload && placementPayload.shotsKey !== shotsKey) {
-      clearDirectorBatchPlacementPayload()
-    }
-
-    setActiveJob(null)
-    setJobs([])
-    setQuote(null)
-    setPhase('idle')
-    setTimelinePlaced(false)
   }, [shotsKey])
 
   useEffect(() => {
@@ -209,36 +187,21 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
 
   const runTimelinePlacement = useCallback(
     async (jobList: DirectorBatchShotJob[]) => {
-      if (placingRef.current) return false
-      placingRef.current = true
       setPlacingTimeline(true)
       setError(null)
       try {
-        const result = await placeDirectorBatchOnTimeline({
+        const placed = await runGuardedDirectorBatchPlacement({
           shots,
-          jobs: jobList,
+          jobList,
           useCrossfade: useLightCrossfade,
+          placingRef,
+          t,
         })
-        if (!result.ok) {
-          setError(result.message)
-          toast.error(result.message)
-          return false
+        if (placed) {
+          setTimelinePlaced(true)
         }
-        setTimelinePlaced(true)
-        toast.success(
-          t('director.batch.timelinePlaced', {
-            defaultValue: '{{count}} clips laid on the timeline.',
-            count: result.placedCount,
-          }),
-        )
-        return true
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Timeline placement failed'
-        setError(message)
-        toast.error(message)
-        return false
+        return placed
       } finally {
-        placingRef.current = false
         setPlacingTimeline(false)
       }
     },
@@ -247,43 +210,13 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
 
   const finishBatchSuccess = useCallback(
     async (resultJobs: DirectorBatchShotJob[]) => {
-      const final = countBatchProgress(resultJobs)
-      if (final.failed > 0) {
-        toast.warning(
-          t('director.batch.partial', {
-            defaultValue: '{{succeeded}} succeeded, {{failed}} failed — retry failed shots.',
-            succeeded: final.succeeded,
-            failed: final.failed,
-          }),
-        )
-        return
-      }
-
-      toast.success(
-        t('director.batch.success', {
-          defaultValue: '{{count}} shots imported to media library.',
-          count: final.succeeded,
-        }),
-      )
-
-      if (layOnTimeline) {
-        const placementPayload = loadDirectorBatchPlacementPayload()
-        if (placementPayload?.autoLaid) return
-
-        if (!audioContext.hasAudio) {
-          toast.warning(
-            t('director.batch.noAudioForTimeline', {
-              defaultValue:
-                'Clips imported — place audio on the timeline, then use Lay on timeline.',
-            }),
-          )
-          return
-        }
-        const placed = await runTimelinePlacement(resultJobs)
-        if (placed) {
-          markDirectorBatchAutoLaid()
-        }
-      }
+      await maybeAutoLayDirectorBatch({
+        layOnTimeline,
+        hasAudio: audioContext.hasAudio,
+        resultJobs,
+        runPlacement: runTimelinePlacement,
+        t,
+      })
     },
     [audioContext.hasAudio, layOnTimeline, runTimelinePlacement, t],
   )
@@ -347,7 +280,7 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
     abortRef.current?.abort()
     abortRef.current = new AbortController()
     setError(null)
-    clearDirectorBatchPlacementPayload()
+    resetDirectorBatchPlacementSession()
     setTimelinePlaced(false)
 
     try {
