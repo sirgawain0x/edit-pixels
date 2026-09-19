@@ -24,7 +24,7 @@ import {
   type DirectorBatchPath,
   type DirectorBatchShotJob,
 } from './director-batch-queue'
-import { DIRECTOR_BATCH_CONCURRENCY_DEFAULT } from './director-batch-concurrency'
+import { DIRECTOR_BATCH_SEEDANCE_CONCURRENCY_DEFAULT } from './director-batch-concurrency'
 import {
   loadDirectorBatchJob,
   type DirectorBatchActiveJob,
@@ -348,8 +348,8 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
       <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
         {t('director.batch.blurb', {
           defaultValue:
-            'One CRTVAI payment for the whole storyboard. Clips import to your media library (not the timeline). Up to {{concurrency}} concurrent provider calls.',
-          concurrency: DIRECTOR_BATCH_CONCURRENCY_DEFAULT,
+            'One CRTVAI payment for the whole storyboard. Clips import to your media library (not the timeline). Seedance capped at {{seedanceConcurrency}} concurrent calls; Veo is pay-as-you-go (uncapped).',
+          seedanceConcurrency: DIRECTOR_BATCH_SEEDANCE_CONCURRENCY_DEFAULT,
         })}
       </p>
 

@@ -7,13 +7,17 @@ import {
   type DirectorBatchConfirmResponse,
   type DirectorBatchQuoteResponse,
 } from './seedance-client'
-import { resolveDirectorBatchConcurrency } from './director-batch-concurrency'
+import {
+  resolveDirectorBatchSeedanceConcurrency,
+  resolveDirectorBatchVeoConcurrency,
+} from './director-batch-concurrency'
 import {
   buildBatchSelections,
   countBatchProgress,
   isBatchQuoteExpired,
   resetFailedJobsForRetry,
-  runWithConcurrency,
+  runBatchJobsByProvider,
+  splitQueuedJobsByProvider,
   totalCrtvaiForPath,
   type DirectorBatchPath,
   type DirectorBatchShotJob,
@@ -253,8 +257,7 @@ export async function runDirectorBatchQueue(input: {
   callbacks.onJobs(jobs)
   callbacks.onPhase('running')
 
-  const concurrency = resolveDirectorBatchConcurrency()
-  const toRun = jobs.filter((job) => job.status === 'queued')
+  const { veo: veoQueued } = splitQueuedJobsByProvider(jobs)
 
   const updateJob = (updated: DirectorBatchShotJob) => {
     jobs = jobs.map((job) => (job.shotId === updated.shotId ? updated : job))
@@ -262,9 +265,16 @@ export async function runDirectorBatchQueue(input: {
     callbacks.onJobs(jobs)
   }
 
-  await runWithConcurrency(toRun, concurrency, async (job) => {
-    await runSingleBatchShot(auth, active.batchConfirmId, job, projectId, signal, updateJob)
-  })
+  await runBatchJobsByProvider(
+    jobs,
+    {
+      seedance: resolveDirectorBatchSeedanceConcurrency(),
+      veo: resolveDirectorBatchVeoConcurrency(veoQueued.length),
+    },
+    async (job) => {
+      await runSingleBatchShot(auth, active.batchConfirmId, job, projectId, signal, updateJob)
+    },
+  )
 
   const progress = countBatchProgress(jobs)
   callbacks.onPhase(progress.failed > 0 && progress.succeeded < progress.total ? 'done' : 'done')

@@ -5,14 +5,17 @@ import {
   isBatchQuoteExpired,
   prepareJobsForResume,
   resetFailedJobsForRetry,
+  runBatchJobsByProvider,
   runWithConcurrency,
   selectShotsForRetry,
+  splitQueuedJobsByProvider,
   type DirectorBatchShotJob,
 } from './director-batch-queue'
 import type { DirectorBatchQuoteResponse } from './seedance-client'
 import {
-  DIRECTOR_BATCH_CONCURRENCY_DEFAULT,
-  resolveDirectorBatchConcurrency,
+  DIRECTOR_BATCH_SEEDANCE_CONCURRENCY_DEFAULT,
+  resolveDirectorBatchSeedanceConcurrency,
+  resolveDirectorBatchVeoConcurrency,
 } from './director-batch-concurrency'
 import { parseStoryboardShots } from './parse-storyboard-shots'
 
@@ -100,10 +103,28 @@ const mockQuote = (): DirectorBatchQuoteResponse => ({
   },
 })
 
+function makeJob(
+  shotId: string,
+  provider: DirectorBatchShotJob['provider'],
+  status: DirectorBatchShotJob['status'] = 'queued',
+): DirectorBatchShotJob {
+  return {
+    shotId,
+    requestId: `req-${shotId}`,
+    provider,
+    status,
+    progress: 0,
+    generateEndpoint:
+      provider === 'seedance' ? '/api/seedance-generate' : '/api/pixels-render-veo',
+  }
+}
+
 describe('director batch queue', () => {
-  it('defaults concurrency to 20', () => {
-    expect(DIRECTOR_BATCH_CONCURRENCY_DEFAULT).toBe(20)
-    expect(resolveDirectorBatchConcurrency()).toBe(20)
+  it('defaults Seedance concurrency to 20; Veo is uncapped by batch size', () => {
+    expect(DIRECTOR_BATCH_SEEDANCE_CONCURRENCY_DEFAULT).toBe(20)
+    expect(resolveDirectorBatchSeedanceConcurrency()).toBe(20)
+    expect(resolveDirectorBatchVeoConcurrency(30)).toBe(30)
+    expect(resolveDirectorBatchVeoConcurrency(0)).toBe(0)
   })
 
   it('builds selections for each path', () => {
@@ -213,7 +234,46 @@ describe('director batch queue', () => {
     expect(reset[1]?.error).toBeUndefined()
   })
 
-  it('caps concurrent workers', async () => {
+  it('caps Seedance workers at 20 but not Veo in dual-pool enqueue', async () => {
+    const seedanceJobs = Array.from({ length: 30 }, (_, index) =>
+      makeJob(`s${index}`, 'seedance'),
+    )
+    const veoJobs = Array.from({ length: 30 }, (_, index) => makeJob(`v${index}`, 'veo'))
+    const jobs = [...seedanceJobs, ...veoJobs]
+
+    const { seedance, veo } = splitQueuedJobsByProvider(jobs)
+    expect(seedance).toHaveLength(30)
+    expect(veo).toHaveLength(30)
+
+    let seedanceInFlight = 0
+    let veoInFlight = 0
+    let maxSeedanceInFlight = 0
+    let maxVeoInFlight = 0
+
+    await runBatchJobsByProvider(
+      jobs,
+      { seedance: 20, veo: 30 },
+      async (job) => {
+        if (job.provider === 'seedance') {
+          seedanceInFlight += 1
+          maxSeedanceInFlight = Math.max(maxSeedanceInFlight, seedanceInFlight)
+          await new Promise((resolve) => setTimeout(resolve, 5))
+          seedanceInFlight -= 1
+        } else {
+          veoInFlight += 1
+          maxVeoInFlight = Math.max(maxVeoInFlight, veoInFlight)
+          await new Promise((resolve) => setTimeout(resolve, 5))
+          veoInFlight -= 1
+        }
+      },
+    )
+
+    expect(maxSeedanceInFlight).toBeLessThanOrEqual(20)
+    expect(maxSeedanceInFlight).toBeGreaterThan(1)
+    expect(maxVeoInFlight).toBe(30)
+  })
+
+  it('caps generic worker pool when limit is set', async () => {
     let inFlight = 0
     let maxInFlight = 0
     const items = Array.from({ length: 30 }, (_, index) => index)

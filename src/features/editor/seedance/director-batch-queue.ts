@@ -147,3 +147,27 @@ export function isBatchQuoteExpired(expiresAt: string, nowMs = Date.now()): bool
   const expiresMs = new Date(expiresAt).getTime()
   return !Number.isFinite(expiresMs) || expiresMs <= nowMs
 }
+
+export function splitQueuedJobsByProvider(jobs: readonly DirectorBatchShotJob[]): {
+  seedance: DirectorBatchShotJob[]
+  veo: DirectorBatchShotJob[]
+} {
+  const queued = jobs.filter((job) => job.status === 'queued')
+  return {
+    seedance: queued.filter((job) => job.provider === 'seedance'),
+    veo: queued.filter((job) => job.provider === 'veo'),
+  }
+}
+
+/** Run Seedance and Veo worker pools in parallel under provider-specific limits. */
+export async function runBatchJobsByProvider(
+  jobs: readonly DirectorBatchShotJob[],
+  limits: { seedance: number; veo: number },
+  worker: (job: DirectorBatchShotJob) => Promise<void>,
+): Promise<void> {
+  const { seedance, veo } = splitQueuedJobsByProvider(jobs)
+  await Promise.all([
+    runWithConcurrency(seedance, limits.seedance, worker),
+    runWithConcurrency(veo, limits.veo, worker),
+  ])
+}

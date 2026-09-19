@@ -229,7 +229,7 @@ Import completed `video_url` into workspace media — **do not** auto-place on t
 
 ## Phase 3 — Batch render UI
 
-See [director-batch-render-ui.md](./director-batch-render-ui.md) for the Director tab **Render all shots** flow, progress UI, retry-failed-only, and concurrent provider cap (`DIRECTOR_BATCH_CONCURRENCY_DEFAULT = 20`).
+See [director-batch-render-ui.md](./director-batch-render-ui.md) for the Director tab **Render all shots** flow, progress UI, retry-failed-only, and provider-specific enqueue caps (Seedance/Higgsfield default **20**; Veo uncapped).
 
 ## Out of scope (Phase 2)
 

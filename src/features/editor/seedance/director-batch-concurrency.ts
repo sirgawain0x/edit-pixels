@@ -1,9 +1,12 @@
 /**
- * Concurrent provider call cap for Director batch render queue.
- * Default 20 (G2); override via VITE_DIRECTOR_BATCH_CONCURRENCY when set.
+ * Director batch enqueue concurrency by provider.
+ *
+ * G2 (locked): cap of 20 applies to Higgsfield / Seedance only (API-key concurrency).
+ * Google Veo is pay-as-you-go and is not limited by the Higgsfield cap.
  */
 
-export const DIRECTOR_BATCH_CONCURRENCY_DEFAULT = 20
+/** Higgsfield / Seedance API-key concurrency default. */
+export const DIRECTOR_BATCH_SEEDANCE_CONCURRENCY_DEFAULT = 20
 
 function parseConcurrencyEnv(raw: string | undefined): number | null {
   if (!raw?.trim()) return null
@@ -12,8 +15,22 @@ function parseConcurrencyEnv(raw: string | undefined): number | null {
   return parsed
 }
 
-/** Resolved concurrency for the batch render worker pool. */
-export function resolveDirectorBatchConcurrency(): number {
-  const fromEnv = parseConcurrencyEnv(import.meta.env.VITE_DIRECTOR_BATCH_CONCURRENCY)
-  return fromEnv ?? DIRECTOR_BATCH_CONCURRENCY_DEFAULT
+function readSeedanceConcurrencyEnv(): number | null {
+  return (
+    parseConcurrencyEnv(import.meta.env.VITE_DIRECTOR_BATCH_SEEDANCE_CONCURRENCY) ??
+    parseConcurrencyEnv(import.meta.env.VITE_DIRECTOR_BATCH_CONCURRENCY)
+  )
+}
+
+/** Resolved concurrency for Seedance (Higgsfield) batch enqueue worker pool. */
+export function resolveDirectorBatchSeedanceConcurrency(): number {
+  return readSeedanceConcurrencyEnv() ?? DIRECTOR_BATCH_SEEDANCE_CONCURRENCY_DEFAULT
+}
+
+/**
+ * Veo batch enqueue concurrency — uncapped relative to batch size (pay-as-you-go).
+ * All queued Veo jobs in a batch may run in parallel.
+ */
+export function resolveDirectorBatchVeoConcurrency(queuedVeoCount: number): number {
+  return Math.max(0, queuedVeoCount)
 }

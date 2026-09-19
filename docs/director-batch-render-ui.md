@@ -24,10 +24,15 @@ Same as Phase 1/2:
 
 ## Concurrency
 
-| Constant / env | Default | Purpose |
-|----------------|---------|---------|
-| `DIRECTOR_BATCH_CONCURRENCY_DEFAULT` | **20** | Max concurrent provider generate calls |
-| `VITE_DIRECTOR_BATCH_CONCURRENCY` | (optional) | Client override for the worker pool |
+Mixed batches use **two independent worker pools** (Seedance and Veo run in parallel).
+
+| Constant / env | Default | Applies to |
+|----------------|---------|------------|
+| `DIRECTOR_BATCH_SEEDANCE_CONCURRENCY_DEFAULT` | **20** | Higgsfield / Seedance only (API-key concurrency) |
+| `VITE_DIRECTOR_BATCH_SEEDANCE_CONCURRENCY` | (optional) | Seedance pool override |
+| `VITE_DIRECTOR_BATCH_CONCURRENCY` | (optional) | **Alias** for Seedance pool override (backward compat) |
+
+**Veo** (Google, pay-as-you-go): **not** limited by the Higgsfield cap. All queued Veo jobs in a batch may enqueue in parallel (`resolveDirectorBatchVeoConcurrency` = batch size).
 
 Defined in `src/features/editor/seedance/director-batch-concurrency.ts`.
 
