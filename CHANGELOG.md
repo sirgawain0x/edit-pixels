@@ -32,6 +32,10 @@ Generate AI video from text, batch-render Director storyboards, and drop finishe
 - Timeline scrubbing cancels cleanly when the window loses focus
 
 ### Improved
+- Invalid or inverted storyboard timecodes fall back to equal-split placement with a clear warning
+- Re-lay on timeline shows a toast confirming crossfade or hard cuts
+- Director batch quotes survive Agent Engine restarts
+- Generate and Director batch quote errors show clearer, actionable messages
 - Phone New Project is soft-gated when local workspace folder access isn't reliable; create errors show clear reconnect/desktop copy instead of raw browser storage messages
 - Legacy migrate banner stacks cleanly on small screens
 - Import is disabled with a clear tip when folder access isn't available (Safari / most mobile browsers)

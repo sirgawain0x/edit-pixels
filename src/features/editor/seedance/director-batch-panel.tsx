@@ -26,6 +26,12 @@ import {
 } from './director-batch-queue'
 import { DIRECTOR_BATCH_SEEDANCE_CONCURRENCY_DEFAULT } from './director-batch-concurrency'
 import { loadDirectorBatchJob, type DirectorBatchActiveJob } from './director-batch-job-store'
+import { formatDirectorBatchQuoteError } from './director-batch-quote-errors'
+import {
+  clearDirectorBatchRemoteQuote,
+  loadDirectorBatchRemoteQuote,
+  saveDirectorBatchRemoteQuote,
+} from './director-batch-remote-quote-store'
 import {
   maybeAutoLayDirectorBatch,
   resetDirectorBatchPlacementSession,
@@ -135,6 +141,7 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
   const allSucceeded =
     jobs.length > 0 && progress.succeeded === progress.total && progress.failed === 0
   const canPlaceOnTimeline = allSucceeded && audioContext.hasAudio
+  const shotsKey = shots.map((shot) => shot.shotId).join(',')
 
   const loadQuote = useCallback(async () => {
     if (!auth || !enabled) return
@@ -143,15 +150,19 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
     try {
       const result = await quoteDirectorBatch(auth, { shots, storyboardId })
       setQuote(result)
+      saveDirectorBatchRemoteQuote({
+        shotsKey,
+        storyboardId,
+        quote: result,
+        savedAtMs: Date.now(),
+      })
       setPhase('idle')
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Batch quote failed'
+      const message = formatDirectorBatchQuoteError(err)
       setError(message)
       setPhase('idle')
     }
-  }, [auth, enabled, shots, storyboardId])
-
-  const shotsKey = shots.map((shot) => shot.shotId).join(',')
+  }, [auth, enabled, shots, storyboardId, shotsKey])
 
   useEffect(() => {
     const session = resolveDirectorBatchPanelSession(shotsKey)
@@ -164,8 +175,14 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
     setTimelinePlaced(session.timelinePlaced)
     if (session.clearQuote) {
       setQuote(null)
+      clearDirectorBatchRemoteQuote()
+    } else if (!session.activeJob) {
+      const storedQuote = loadDirectorBatchRemoteQuote(shotsKey, storyboardId)
+      if (storedQuote) {
+        setQuote(storedQuote.quote)
+      }
     }
-  }, [shotsKey])
+  }, [shotsKey, storyboardId])
 
   useEffect(() => {
     if (auth && enabled && !quote && phase === 'idle' && !activeJob) {
@@ -195,6 +212,7 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
           jobList,
           useCrossfade: useLightCrossfade,
           placingRef,
+          isReLay: timelinePlaced,
           t,
         })
         if (placed) {
@@ -205,7 +223,7 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
         setPlacingTimeline(false)
       }
     },
-    [shots, useLightCrossfade, t],
+    [shots, useLightCrossfade, timelinePlaced, t],
   )
 
   const finishBatchSuccess = useCallback(
@@ -264,6 +282,16 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
   // fallow-ignore-next-line complexity
   const handleConfirm = useCallback(async () => {
     if (!auth || !quote || !currentProjectId || busy) return
+    const storedQuote = loadDirectorBatchRemoteQuote(shotsKey, storyboardId)
+    if (
+      storedQuote &&
+      storedQuote.quote.batchQuoteId !== quote.batchQuoteId &&
+      !quoteExpired
+    ) {
+      setError('Batch quote is out of date — refresh the quote before confirming.')
+      void loadQuote()
+      return
+    }
     if (quoteExpired) {
       void loadQuote()
       return
@@ -296,6 +324,7 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
         callbacks,
       })
       if (!active) return
+      clearDirectorBatchRemoteQuote()
       setActiveJob(active)
       const result = await runDirectorBatchQueue({
         auth,
@@ -324,6 +353,7 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
     loadQuote,
     activeJob,
     path,
+    shotsKey,
     storyboardId,
     perShotOverrides,
     canPayOnChain,
@@ -415,7 +445,19 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
               className="rounded border-border"
               checked={useLightCrossfade}
               disabled={busy || disabled}
-              onChange={(event) => setUseLightCrossfade(event.target.checked)}
+              onChange={(event) => {
+                const next = event.target.checked
+                setUseLightCrossfade(next)
+                if (timelinePlaced) {
+                  toast.info(
+                    t('director.batch.crossfadeToggled', {
+                      defaultValue: next
+                        ? 'Light crossfade will be applied on the next lay.'
+                        : 'Hard cuts will be used on the next lay (crossfade off).',
+                    }),
+                  )
+                }
+              }}
             />
             {t('director.batch.lightCrossfade', {
               defaultValue: 'Light crossfade between cuts (optional)',
