@@ -10,6 +10,7 @@ import type { DirectorStoryboardShotPayload } from './seedance-client'
 import type { DirectorBatchShotJob } from './director-batch-queue'
 import {
   computeDirectorBatchPlacements,
+  resolveDirectorBatchTimingMode,
   type DirectorShotPlacement,
   type DirectorShotTimingInput,
 } from './director-batch-timeline-timing'
@@ -130,6 +131,31 @@ export function computeBatchShotPlacements(
     audioStartFrame: primary.fromFrame,
     fps: audioContext.fps,
   })
+}
+
+/** User-facing warning when storyboard timecodes cannot be used (equal-split fallback). */
+export function getDirectorBatchTimingPlacementWarning(
+  shots: readonly DirectorStoryboardShotPayload[],
+): string | null {
+  const inputs = shotTimingInputs(shots)
+  const mode = resolveDirectorBatchTimingMode(inputs)
+  if (mode.mode === 'storyboard') return null
+
+  if (mode.fallbackReason === 'inverted') {
+    return 'Storyboard timecodes were invalid (end before start) — clips were equal-split across audio instead.'
+  }
+
+  const hasPartialFields = inputs.some(
+    (shot) =>
+      shot.startSeconds !== undefined ||
+      shot.endSeconds !== undefined ||
+      shot.durationSeconds !== undefined,
+  )
+  if (hasPartialFields) {
+    return 'Storyboard timecodes were incomplete — clips were equal-split across audio instead.'
+  }
+
+  return null
 }
 
 export type ResolvedDirectorBatchVideoItems =

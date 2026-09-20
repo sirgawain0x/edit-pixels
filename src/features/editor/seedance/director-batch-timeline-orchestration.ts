@@ -11,6 +11,7 @@ import type { DirectorBatchShotJob } from './director-batch-queue'
 import { countBatchProgress } from './director-batch-queue'
 import type { DirectorBatchRunnerPhase } from './director-batch-runner'
 import type { DirectorStoryboardShotPayload } from './seedance-client'
+import { getDirectorBatchTimingPlacementWarning } from './place-director-batch-on-timeline-helpers'
 import { placeDirectorBatchOnTimeline } from './place-director-batch-on-timeline'
 
 export interface DirectorBatchPanelSessionState {
@@ -67,13 +68,29 @@ export async function runGuardedDirectorBatchPlacement(input: {
   jobList: DirectorBatchShotJob[]
   useCrossfade: boolean
   placingRef: { current: boolean }
+  isReLay?: boolean
   t: TFunction
 }): Promise<boolean> {
-  const { shots, jobList, useCrossfade, placingRef, t } = input
+  const { shots, jobList, useCrossfade, placingRef, isReLay, t } = input
   if (placingRef.current) return false
   placingRef.current = true
 
   try {
+    const timingWarning = getDirectorBatchTimingPlacementWarning(shots)
+    if (timingWarning) {
+      toast.warning(timingWarning)
+    }
+
+    if (isReLay) {
+      toast.info(
+        t('director.batch.reLayCrossfade', {
+          defaultValue: useCrossfade
+            ? 'Re-laying with light crossfade between cuts.'
+            : 'Re-laying with hard cuts (crossfade off).',
+        }),
+      )
+    }
+
     const result = await placeDirectorBatchOnTimeline({
       shots,
       jobs: jobList,

@@ -37,15 +37,59 @@ function shotDurationSeconds(shot: DirectorShotTimingInput): number | undefined 
   return undefined
 }
 
-function hasStoryboardTimings(shots: readonly DirectorShotTimingInput[]): boolean {
+/** Shot has storyboard timecode fields (may still be invalid). */
+function shotHasStoryboardFields(shot: DirectorShotTimingInput): boolean {
   return (
-    shots.length > 0 &&
-    shots.every(
-      (shot) =>
-        shot.startSeconds !== undefined &&
-        (shot.endSeconds !== undefined || shot.durationSeconds !== undefined),
-    )
+    shot.startSeconds !== undefined ||
+    shot.endSeconds !== undefined ||
+    shot.durationSeconds !== undefined
   )
+}
+
+function isValidStoryboardShot(shot: DirectorShotTimingInput): boolean {
+  if (shot.startSeconds === undefined) return false
+  if (shot.endSeconds !== undefined) {
+    return shot.endSeconds > shot.startSeconds
+  }
+  if (shot.durationSeconds !== undefined) {
+    return shot.durationSeconds > 0
+  }
+  return false
+}
+
+function hasStoryboardTimings(shots: readonly DirectorShotTimingInput[]): boolean {
+  return shots.length > 0 && shots.every(isValidStoryboardShot)
+}
+
+export type DirectorBatchTimingFallbackReason = 'incomplete' | 'inverted'
+
+export type DirectorBatchTimingMode =
+  | { mode: 'storyboard' }
+  | { mode: 'sequential'; fallbackReason: DirectorBatchTimingFallbackReason }
+
+/**
+ * Choose storyboard-aligned placement or sequential equal-split.
+ * Invalid or inverted spans never reach storyboard math — we fall back to equal-split.
+ */
+export function resolveDirectorBatchTimingMode(
+  shots: readonly DirectorShotTimingInput[],
+): DirectorBatchTimingMode {
+  if (hasStoryboardTimings(shots)) {
+    return { mode: 'storyboard' }
+  }
+
+  const hasPartialFields = shots.some(shotHasStoryboardFields)
+  if (!hasPartialFields) {
+    return { mode: 'sequential', fallbackReason: 'incomplete' }
+  }
+
+  const hasInverted = shots.some(
+    (shot) =>
+      shot.startSeconds !== undefined &&
+      shot.endSeconds !== undefined &&
+      shot.endSeconds <= shot.startSeconds,
+  )
+  return { mode: 'sequential', fallbackReason: hasInverted ? 'inverted' : 'incomplete' }
 }
 
 function secondsToDurationFrames(seconds: number, fps: number): number {
@@ -147,9 +191,11 @@ export function computeDirectorBatchPlacements(
 
   if (shots.length === 0) return []
 
-  const base = hasStoryboardTimings(shots)
-    ? computeStoryboardPlacements(shots, audioStartFrame, safeFps)
-    : computeSequentialPlacements(shots, audioStartFrame, safeAudioDuration, safeFps)
+  const timingMode = resolveDirectorBatchTimingMode(shots)
+  const base =
+    timingMode.mode === 'storyboard'
+      ? computeStoryboardPlacements(shots, audioStartFrame, safeFps)
+      : computeSequentialPlacements(shots, audioStartFrame, safeAudioDuration, safeFps)
 
   return clampPlacementsToAudio(base, audioStartFrame, safeAudioDuration, safeFps)
 }
