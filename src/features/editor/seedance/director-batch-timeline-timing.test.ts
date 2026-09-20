@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { computeDirectorBatchPlacements } from './director-batch-timeline-timing'
+import {
+  computeDirectorBatchPlacements,
+  resolveDirectorBatchTimingMode,
+} from './director-batch-timeline-timing'
 
 describe('computeDirectorBatchPlacements', () => {
   const fps = 30
@@ -82,6 +85,38 @@ describe('computeDirectorBatchPlacements', () => {
 
     expect(placements[0]?.startFrame).toBe(750)
     expect(placements[0]?.durationInFrames).toBe(150)
+  })
+
+  it('falls back to equal-split when storyboard end is before start (inverted)', () => {
+    const mode = resolveDirectorBatchTimingMode([
+      { shotId: 'shot-1', startSeconds: 10, endSeconds: 5 },
+      { shotId: 'shot-2', startSeconds: 0, endSeconds: 10 },
+    ])
+    expect(mode).toEqual({ mode: 'sequential', fallbackReason: 'inverted' })
+
+    const placements = computeDirectorBatchPlacements({
+      shots: [
+        { shotId: 'shot-1', startSeconds: 10, endSeconds: 5 },
+        { shotId: 'shot-2', startSeconds: 0, endSeconds: 10 },
+      ],
+      audioDurationSeconds: 20,
+      audioStartFrame: 0,
+      fps: 30,
+    })
+
+    expect(placements).toHaveLength(2)
+    expect(placements[0]?.startFrame).toBe(0)
+    expect(placements[0]?.durationInFrames).toBe(300)
+    expect(placements[1]?.startFrame).toBe(300)
+    expect(placements[1]?.durationInFrames).toBe(300)
+  })
+
+  it('falls back to equal-split when only some shots have storyboard timings', () => {
+    const mode = resolveDirectorBatchTimingMode([
+      { shotId: 'shot-1', startSeconds: 0, endSeconds: 10 },
+      { shotId: 'shot-2' },
+    ])
+    expect(mode).toEqual({ mode: 'sequential', fallbackReason: 'incomplete' })
   })
 
   it('offsets placements by audio start frame on the timeline', () => {

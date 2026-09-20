@@ -7,6 +7,10 @@ import type { GenerativeTaskDetail, SignedRequestParams } from '@/features/edito
 
 const log = createLogger('SeedanceClient')
 
+const VEO_QUOTE_FAILED = /^veo quote failed for shot /i
+const INVALID_SHOT = /^invalid shot:/i
+const DUPLICATE_SHOT = /^duplicate shotId:/i
+
 export interface SeedanceShotBrief {
   prompt: string
   duration: number
@@ -134,6 +138,48 @@ function parseApiError(
     return new PixelsGenerateApiError(
       code,
       'Batch quote expired — refresh the quote before paying.',
+      status,
+    )
+  }
+  if (code === 'wallet_mismatch') {
+    return new PixelsGenerateApiError(
+      code,
+      'This batch quote belongs to a different wallet — refresh the quote.',
+      status,
+    )
+  }
+  if (code === 'feature_disabled') {
+    return new PixelsGenerateApiError(
+      code,
+      'Batch render is not enabled in this environment.',
+      status,
+    )
+  }
+  if (code === 'invalid shots' || code === 'shots required') {
+    return new PixelsGenerateApiError(
+      code,
+      'Storyboard shots could not be quoted — regenerate the storyboard and try again.',
+      status,
+    )
+  }
+  if (code.startsWith('too many shots')) {
+    return new PixelsGenerateApiError(
+      code,
+      'Storyboard has too many shots for one batch (max 50) — split into smaller storyboards.',
+      status,
+    )
+  }
+  if (VEO_QUOTE_FAILED.test(code)) {
+    return new PixelsGenerateApiError(
+      code,
+      'Could not price one or more shots with Veo — try Seedance or adjust shot durations.',
+      status,
+    )
+  }
+  if (INVALID_SHOT.test(code) || DUPLICATE_SHOT.test(code)) {
+    return new PixelsGenerateApiError(
+      code,
+      'Storyboard shot data is invalid — regenerate the storyboard and refresh the quote.',
       status,
     )
   }
