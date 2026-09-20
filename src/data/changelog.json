@@ -1,7 +1,7 @@
 {
   "current": {
     "version": "current",
-    "date": "2026-09-19",
+    "date": "2026-09-20",
     "groups": {
       "added": [
         {
@@ -65,6 +65,9 @@
         }
       ],
       "improved": [
+        {
+          "title": "Phone New Project is soft-gated when local workspace folder access isn't reliable; create errors show clear reconnect/desktop copy instead of raw browser storage messages"
+        },
         {
           "title": "Legacy migrate banner stacks cleanly on small screens"
         },

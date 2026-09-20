@@ -32,6 +32,7 @@ Generate AI video from text, batch-render Director storyboards, and drop finishe
 - Timeline scrubbing cancels cleanly when the window loses focus
 
 ### Improved
+- Phone New Project is soft-gated when local workspace folder access isn't reliable; create errors show clear reconnect/desktop copy instead of raw browser storage messages
 - Legacy migrate banner stacks cleanly on small screens
 - Import is disabled with a clear tip when folder access isn't available (Safari / most mobile browsers)
 - Paid Generate uses a clearer quote → pay → render flow with better errors when a job fails
