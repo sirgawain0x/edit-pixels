@@ -66,6 +66,18 @@
       ],
       "improved": [
         {
+          "title": "Invalid or inverted storyboard timecodes fall back to equal-split placement with a clear warning"
+        },
+        {
+          "title": "Re-lay on timeline shows a toast confirming crossfade or hard cuts"
+        },
+        {
+          "title": "Director batch quotes survive Agent Engine restarts"
+        },
+        {
+          "title": "Generate and Director batch quote errors show clearer, actionable messages"
+        },
+        {
           "title": "Phone New Project is soft-gated when local workspace folder access isn't reliable; create errors show clear reconnect/desktop copy instead of raw browser storage messages"
         },
         {
