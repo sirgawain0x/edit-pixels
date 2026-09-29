@@ -7,10 +7,7 @@
 import { getBearerToken, verifyPrivyAccessToken } from './_wallet-auth.js'
 import { isSeedanceGenerateEnabled } from './_seedance-pricing.js'
 import { getPixelsGenerateJob } from './_pixels-generate-jobs.js'
-import {
-  canCancelPixelsGenerateJob,
-  cancelPixelsGenerateJob,
-} from './_pixels-generate-payment.js'
+import { canCancelPixelsGenerateJob, cancelPixelsGenerateJob } from './_pixels-generate-payment.js'
 
 export async function POST(request: Request): Promise<Response> {
   if (!isSeedanceGenerateEnabled()) {

@@ -4,19 +4,8 @@ import { useTranslation } from 'react-i18next'
 import { BookOpen, Github, Menu, Plus, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from '@/components/ui/sheet'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { PixelsLogo } from '@/components/brand/pixels-logo'
 import { DiscordIcon } from '@/components/brand/discord-icon'
 import { DISCORD_INVITE_URL, GITHUB_REPO_URL } from '@/config/community'
@@ -24,7 +13,10 @@ import { WorkspaceIndicator } from '@/features/projects/deps/workspace-gate'
 import { LanguageSwitcher } from '@/shared/ui/language-switcher'
 import { WalletConnectButton } from '@/components/wallet-connect-button'
 import { cn } from '@/shared/ui/cn'
-import { getNewProjectButtonMode, type NewProjectButtonMode } from '@/features/projects/utils/create-project-flow'
+import {
+  getNewProjectButtonMode,
+  type NewProjectButtonMode,
+} from '@/features/projects/utils/create-project-flow'
 
 interface ProjectsAppHeaderProps {
   onImportClick: () => void
@@ -35,13 +27,7 @@ interface ProjectsAppHeaderProps {
   onConnectWallet: () => void
 }
 
-function TooltipDisabledButton({
-  tooltip,
-  children,
-}: {
-  tooltip: string
-  children: ReactNode
-}) {
+function TooltipDisabledButton({ tooltip, children }: { tooltip: string; children: ReactNode }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -121,12 +107,8 @@ const NEW_PROJECT_BUTTON_RENDERERS: Record<
   NewProjectButtonMode,
   (props: NewProjectButtonRenderProps) => ReactNode
 > = {
-  initializing: (props) => (
-    <PlusProjectButton {...props} disabled />
-  ),
-  wallet: (props) => (
-    <PlusProjectButton {...props} onClick={props.onConnectWallet} />
-  ),
+  initializing: (props) => <PlusProjectButton {...props} disabled />,
+  wallet: (props) => <PlusProjectButton {...props} onClick={props.onConnectWallet} />,
   unavailable: (props) => (
     <TooltipDisabledButton tooltip={props.unavailableTooltip}>
       <PlusProjectButton {...props} disabled aria-disabled />

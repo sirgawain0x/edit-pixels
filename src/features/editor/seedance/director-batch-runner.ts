@@ -34,15 +34,14 @@ import {
   type DirectorBatchActiveJob,
 } from './director-batch-job-store'
 import { importRenderVideoToLibrary } from './import-render-to-library'
-import { pollSeedanceTaskToVideo, pollVeoTaskToVideo, resolveVeoTaskId } from './pixels-generate-helpers'
+import {
+  pollSeedanceTaskToVideo,
+  pollVeoTaskToVideo,
+  resolveVeoTaskId,
+} from './pixels-generate-helpers'
 import type { PixelsRenderProvider } from '@/config/pixels-render'
 
-export type DirectorBatchRunnerPhase =
-  | 'idle'
-  | 'quoting'
-  | 'confirming'
-  | 'running'
-  | 'done'
+export type DirectorBatchRunnerPhase = 'idle' | 'quoting' | 'confirming' | 'running' | 'done'
 
 export interface DirectorBatchRunnerCallbacks {
   onPhase: (phase: DirectorBatchRunnerPhase) => void
@@ -132,10 +131,7 @@ async function runSingleBatchShot(
         signal,
       )
     } catch (error) {
-      if (
-        error instanceof PixelsGenerateApiError &&
-        error.code === 'batch_shot_already_started'
-      ) {
+      if (error instanceof PixelsGenerateApiError && error.code === 'batch_shot_already_started') {
         enqueue = null
       } else {
         throw error
@@ -161,9 +157,14 @@ async function runSingleBatchShot(
 
     const veoTaskId = enqueue?.id
     const withTask = veoTaskId ? { ...running, veoTaskId } : running
-    const videoUrl = await pollBatchShotToVideo(auth, withTask, (pct) => {
-      onJobUpdate({ ...withTask, progress: pct })
-    }, signal)
+    const videoUrl = await pollBatchShotToVideo(
+      auth,
+      withTask,
+      (pct) => {
+        onJobUpdate({ ...withTask, progress: pct })
+      },
+      signal,
+    )
 
     const imported = await importRenderVideoToLibrary(videoUrl, projectId, job.provider, job.shotId)
     onJobUpdate({
@@ -261,9 +262,7 @@ export async function runDirectorBatchQueue(input: {
   signal?: AbortSignal
 }): Promise<DirectorBatchActiveJob> {
   const { auth, projectId, callbacks, signal } = input
-  let jobs = input.retryFailedOnly
-    ? resetFailedJobsForRetry(input.active.jobs)
-    : input.active.jobs
+  let jobs = input.retryFailedOnly ? resetFailedJobsForRetry(input.active.jobs) : input.active.jobs
 
   const active: DirectorBatchActiveJob = { ...input.active, jobs }
   saveDirectorBatchJob(active)

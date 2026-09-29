@@ -49,8 +49,7 @@ export async function confirmDirectorStoryboardBatch(input: {
   selections: DirectorBatchConfirmSelection[]
   paymentTxHash?: string | null
 }): Promise<
-  | { ok: true; confirm: DirectorBatchConfirmResult }
-  | { ok: false; error: string; status?: number }
+  { ok: true; confirm: DirectorBatchConfirmResult } | { ok: false; error: string; status?: number }
 > {
   const batchQuoteId = input.batchQuoteId.trim()
   if (await isDirectorBatchQuoteConsumed(batchQuoteId)) {
@@ -105,10 +104,7 @@ export async function confirmDirectorStoryboardBatch(input: {
     const totalUsdc6 = input.selections.reduce((sum, selection) => {
       const shot = quote.shots.find((entry) => entry.shotId === selection.shotId.trim())
       if (!shot) return sum
-      return (
-        sum +
-        (selection.provider === 'veo' ? shot.veoUsdc6 : shot.seedanceUsdc6)
-      )
+      return sum + (selection.provider === 'veo' ? shot.veoUsdc6 : shot.seedanceUsdc6)
     }, 0)
     try {
       const balanceCheck = await checkMetokenSufficient(input.wallet, totalUsdc6)
@@ -157,12 +153,14 @@ export async function confirmDirectorStoryboardBatch(input: {
 }
 
 function buildConfirmJobs(
-  quote: { shots: Array<{
-    shotId: string
-    seedanceQuoteId: string
-    veoCrtvaiWei: string
-    seedanceCrtvaiWei: string
-  }> },
+  quote: {
+    shots: Array<{
+      shotId: string
+      seedanceQuoteId: string
+      veoCrtvaiWei: string
+      seedanceCrtvaiWei: string
+    }>
+  },
   confirm: DirectorBatchConfirmRecord,
   selections: DirectorBatchConfirmSelection[],
 ): DirectorBatchConfirmJob[] {
@@ -172,7 +170,7 @@ function buildConfirmJobs(
     const shot = shotById.get(selection.shotId.trim())
     const provider = selection.provider
     const crtvaiRequired =
-      provider === 'veo' ? shot?.veoCrtvaiWei ?? '0' : shot?.seedanceCrtvaiWei ?? '0'
+      provider === 'veo' ? (shot?.veoCrtvaiWei ?? '0') : (shot?.seedanceCrtvaiWei ?? '0')
     const requestId = selection.requestId.trim()
 
     return {
@@ -180,7 +178,7 @@ function buildConfirmJobs(
       requestId,
       provider,
       status: 'queued',
-      seedanceQuoteId: provider === 'seedance' ? shot?.seedanceQuoteId ?? null : null,
+      seedanceQuoteId: provider === 'seedance' ? (shot?.seedanceQuoteId ?? null) : null,
       crtvaiRequired,
       pollUrl: `/api/pixels-generate-task?id=${encodeURIComponent(requestId)}`,
       generateEndpoint:

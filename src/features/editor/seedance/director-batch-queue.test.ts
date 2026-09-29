@@ -114,8 +114,7 @@ function makeJob(
     provider,
     status,
     progress: 0,
-    generateEndpoint:
-      provider === 'seedance' ? '/api/seedance-generate' : '/api/pixels-render-veo',
+    generateEndpoint: provider === 'seedance' ? '/api/seedance-generate' : '/api/pixels-render-veo',
   }
 }
 
@@ -235,9 +234,7 @@ describe('director batch queue', () => {
   })
 
   it('caps Seedance workers at 20 but not Veo in dual-pool enqueue', async () => {
-    const seedanceJobs = Array.from({ length: 30 }, (_, index) =>
-      makeJob(`s${index}`, 'seedance'),
-    )
+    const seedanceJobs = Array.from({ length: 30 }, (_, index) => makeJob(`s${index}`, 'seedance'))
     const veoJobs = Array.from({ length: 30 }, (_, index) => makeJob(`v${index}`, 'veo'))
     const jobs = [...seedanceJobs, ...veoJobs]
 
@@ -250,23 +247,19 @@ describe('director batch queue', () => {
     let maxSeedanceInFlight = 0
     let maxVeoInFlight = 0
 
-    await runBatchJobsByProvider(
-      jobs,
-      { seedance: 20, veo: 30 },
-      async (job) => {
-        if (job.provider === 'seedance') {
-          seedanceInFlight += 1
-          maxSeedanceInFlight = Math.max(maxSeedanceInFlight, seedanceInFlight)
-          await new Promise((resolve) => setTimeout(resolve, 5))
-          seedanceInFlight -= 1
-        } else {
-          veoInFlight += 1
-          maxVeoInFlight = Math.max(maxVeoInFlight, veoInFlight)
-          await new Promise((resolve) => setTimeout(resolve, 5))
-          veoInFlight -= 1
-        }
-      },
-    )
+    await runBatchJobsByProvider(jobs, { seedance: 20, veo: 30 }, async (job) => {
+      if (job.provider === 'seedance') {
+        seedanceInFlight += 1
+        maxSeedanceInFlight = Math.max(maxSeedanceInFlight, seedanceInFlight)
+        await new Promise((resolve) => setTimeout(resolve, 5))
+        seedanceInFlight -= 1
+      } else {
+        veoInFlight += 1
+        maxVeoInFlight = Math.max(maxVeoInFlight, veoInFlight)
+        await new Promise((resolve) => setTimeout(resolve, 5))
+        veoInFlight -= 1
+      }
+    })
 
     expect(maxSeedanceInFlight).toBeLessThanOrEqual(20)
     expect(maxSeedanceInFlight).toBeGreaterThan(1)

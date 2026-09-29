@@ -97,11 +97,7 @@ function parseApiError(
 ): PixelsGenerateApiError {
   const code = body.error ?? fallback
   if (code === 'insufficient_crtvai') {
-    return new PixelsGenerateApiError(
-      code,
-      'Insufficient CRTVAI for this generation.',
-      status,
-    )
+    return new PixelsGenerateApiError(code, 'Insufficient CRTVAI for this generation.', status)
   }
   if (code === 'payment_required') {
     return new PixelsGenerateApiError(code, 'Payment is required before generating.', status)

@@ -15,7 +15,11 @@ import type { ProjectFormData } from '@/features/projects/utils/validation'
 import { WalletConnectButton } from '@/components/wallet-connect-button'
 import { useWalletContext } from '@/context/wallet-context'
 import { isLocalWorkspaceFolderAvailable } from '@/features/projects/deps/storage-contract'
-import { runCreatePreflight, getCreateFailureDescription, getCreatedProjectId } from '@/features/projects/utils/create-project-flow'
+import {
+  runCreatePreflight,
+  getCreateFailureDescription,
+  getCreatedProjectId,
+} from '@/features/projects/utils/create-project-flow'
 
 const logger = createLogger('NewProject')
 

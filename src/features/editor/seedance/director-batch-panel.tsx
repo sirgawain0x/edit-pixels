@@ -57,7 +57,10 @@ interface DirectorBatchPanelProps {
   disabled?: boolean
 }
 
-function pathLabel(path: DirectorBatchPath, t: (key: string, opts?: { defaultValue: string }) => string): string {
+function pathLabel(
+  path: DirectorBatchPath,
+  t: (key: string, opts?: { defaultValue: string }) => string,
+): string {
   switch (path) {
     case 'allVeo':
       return t('director.batch.pathAllVeo', { defaultValue: 'All Veo' })
@@ -283,11 +286,7 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
   const handleConfirm = useCallback(async () => {
     if (!auth || !quote || !currentProjectId || busy) return
     const storedQuote = loadDirectorBatchRemoteQuote(shotsKey, storyboardId)
-    if (
-      storedQuote &&
-      storedQuote.quote.batchQuoteId !== quote.batchQuoteId &&
-      !quoteExpired
-    ) {
+    if (storedQuote && storedQuote.quote.batchQuoteId !== quote.batchQuoteId && !quoteExpired) {
       setError('Batch quote is out of date — refresh the quote before confirming.')
       void loadQuote()
       return
@@ -573,9 +572,7 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
                 total: progress.total,
               })}
             </span>
-            {phase === 'running' && (
-              <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-            )}
+            {phase === 'running' && <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />}
           </div>
           <ul className="max-h-36 space-y-1 overflow-y-auto">
             {jobs.map((job) => (
@@ -589,7 +586,9 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
                 </span>
                 <span className="text-[10px] text-muted-foreground capitalize">{job.provider}</span>
                 {job.status === 'running' && (
-                  <span className="font-mono text-[10px] text-muted-foreground">{job.progress}%</span>
+                  <span className="font-mono text-[10px] text-muted-foreground">
+                    {job.progress}%
+                  </span>
                 )}
               </li>
             ))}
@@ -609,7 +608,12 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
 
       <div className="mt-3 flex flex-wrap gap-2">
         {quoteExpired && !busy && (
-          <Button size="sm" variant="secondary" disabled={disabled} onClick={() => void loadQuote()}>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={disabled}
+            onClick={() => void loadQuote()}
+          >
             {t('director.batch.refreshQuote', { defaultValue: 'Refresh quote' })}
           </Button>
         )}

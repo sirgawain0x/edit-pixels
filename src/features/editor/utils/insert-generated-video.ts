@@ -20,10 +20,7 @@ export function insertGeneratedVideoOnNewTrack(
   const sourceFps = media.fps || fps
   const durationInFrames = Math.max(1, Math.round(media.duration * fps))
   const sourceDuration = Math.max(1, Math.round(media.duration * sourceFps))
-  const sourceEnd = Math.min(
-    sourceDuration,
-    Math.round((durationInFrames * sourceFps) / fps),
-  )
+  const sourceEnd = Math.min(sourceDuration, Math.round((durationInFrames * sourceFps) / fps))
   const maxOrder = tracks.reduce((max, track) => Math.max(max, track.order), 0)
   const newTrack = createClassicTrack({ tracks, kind: 'video', order: maxOrder + 1 })
 
@@ -60,7 +57,9 @@ export function insertGeneratedVideoOnNewTrack(
     addItemOnNewTrack(item, [...tracks, newTrack])
   }
 
-  const added = useTimelineStore.getState().items.some((timelineItem) => timelineItem.id === item.id)
+  const added = useTimelineStore
+    .getState()
+    .items.some((timelineItem) => timelineItem.id === item.id)
   if (added) {
     useSelectionStore.getState().selectItems([item.id])
   }

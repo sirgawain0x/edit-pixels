@@ -25,9 +25,9 @@ function parseShots(raw: unknown): DirectorStoryboardShotInput[] | null {
           : typeof shot.aspect_ratio === 'string'
             ? shot.aspect_ratio
             : undefined,
-      consistentCharacter:
-        shot.consistentCharacter === true || shot.consistent_character === true,
-      resolution: shot.resolution === '480p' ? '480p' : shot.resolution === '720p' ? '720p' : undefined,
+      consistentCharacter: shot.consistentCharacter === true || shot.consistent_character === true,
+      resolution:
+        shot.resolution === '480p' ? '480p' : shot.resolution === '720p' ? '720p' : undefined,
     })
   }
   return shots

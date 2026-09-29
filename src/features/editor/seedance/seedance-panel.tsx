@@ -29,10 +29,7 @@ import {
 } from '../director/timeline-audio'
 import { usePlaybackStore } from '@/shared/state/playback'
 import { isSeedanceGenerateEnabled, type SeedanceResolution } from '@/config/seedance'
-import {
-  quotePixelsRenderOptions,
-  type PixelsRenderProvider,
-} from '@/config/pixels-render'
+import { quotePixelsRenderOptions, type PixelsRenderProvider } from '@/config/pixels-render'
 import { cn } from '@/shared/ui/cn'
 import { planSeedanceShot, quotePixelsRender } from './seedance-client'
 import type { PixelsRenderQuotesResponse, SeedanceShotBrief } from './seedance-client'
@@ -44,10 +41,7 @@ import {
   savePixelsGenerateJob,
   type PixelsGenerateActiveJob,
 } from './pixels-generate-job-store'
-import {
-  mapPixelsGenerateError,
-  startPixelsGenerateEvent,
-} from './pixels-generate-telemetry'
+import { mapPixelsGenerateError, startPixelsGenerateEvent } from './pixels-generate-telemetry'
 import {
   pollSeedanceTaskToVideo,
   pollVeoTaskToVideo,
@@ -121,9 +115,7 @@ export const SeedancePanel = memo(function SeedancePanel() {
     ) => {
       setStatus(t('seedance.status.importing', { defaultValue: 'Importing to timeline…' }))
       const tags =
-        provider === 'seedance'
-          ? ['ai-generated', 'seedance']
-          : ['ai-generated', 'veo', 'pixels']
+        provider === 'seedance' ? ['ai-generated', 'seedance'] : ['ai-generated', 'veo', 'pixels']
       const { inserted, fileName } = await importRenderVideoToTimeline(
         videoUrl,
         projectId,
@@ -358,7 +350,9 @@ export const SeedancePanel = memo(function SeedancePanel() {
     if (insufficient) {
       setBuyOpen(true)
       toast.error(
-        t('seedance.error.insufficient', { defaultValue: 'Insufficient CRTVAI for this generation.' }),
+        t('seedance.error.insufficient', {
+          defaultValue: 'Insufficient CRTVAI for this generation.',
+        }),
       )
       return
     }
@@ -372,8 +366,7 @@ export const SeedancePanel = memo(function SeedancePanel() {
         playheadFrame,
         brief,
         resolution,
-        seedanceQuoteId:
-          renderProvider === 'seedance' ? serverQuotes?.seedance.quoteId : undefined,
+        seedanceQuoteId: renderProvider === 'seedance' ? serverQuotes?.seedance.quoteId : undefined,
         startedAtMs: Date.now(),
       },
       selectedQuote.crtvaiRequired,
@@ -506,9 +499,7 @@ export const SeedancePanel = memo(function SeedancePanel() {
               <div className="flex justify-between">
                 <dt className="text-muted-foreground">Due</dt>
                 <dd className="font-semibold">
-                  {selectedQuote.crtvaiDisplay.toFixed(
-                    selectedQuote.crtvaiDisplay < 1 ? 3 : 2,
-                  )}{' '}
+                  {selectedQuote.crtvaiDisplay.toFixed(selectedQuote.crtvaiDisplay < 1 ? 3 : 2)}{' '}
                   CRTVAI
                   <span className="ml-1.5 font-normal text-muted-foreground">
                     ({selectedQuote.formattedUsd})

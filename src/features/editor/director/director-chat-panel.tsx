@@ -168,10 +168,7 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
   const runningTools = toolCalls.filter((call) => call.status === 'running')
   const isEmpty = messages.length === 0 && phase === 'idle' && !pendingInvoice
   const status = statusLabel(phase, streamingText, runningTools.length, paying, t)
-  const storyboardShots = useMemo(
-    () => findStoryboardShotsFromMessages(messages),
-    [messages],
-  )
+  const storyboardShots = useMemo(() => findStoryboardShotsFromMessages(messages), [messages])
   const batchRenderEnabled = isSeedanceGenerateEnabled()
 
   useEffect(() => {

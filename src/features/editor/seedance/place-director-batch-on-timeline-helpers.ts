@@ -16,10 +16,7 @@ import {
 } from './director-batch-timeline-timing'
 const LIGHT_CROSSFADE_FRAMES = 6
 
-export type PlaceDirectorBatchFailureReason =
-  | 'no_audio'
-  | 'no_succeeded_shots'
-  | 'missing_media'
+export type PlaceDirectorBatchFailureReason = 'no_audio' | 'no_succeeded_shots' | 'missing_media'
 
 export type PlaceDirectorBatchResult =
   | { ok: true; placedCount: number; clipIds: string[] }
@@ -47,8 +44,7 @@ function findMediaForJob(
   const suffix = `-${job.shotId}-`
   return mediaItems.find(
     (item) =>
-      item.fileName.includes(suffix) ||
-      item.fileName.includes(`director-batch-${job.shotId}`),
+      item.fileName.includes(suffix) || item.fileName.includes(`director-batch-${job.shotId}`),
   )
 }
 
@@ -62,10 +58,7 @@ function buildDirectorBatchVideoItem(
 ): VideoItem {
   const sourceFps = media.fps || fps
   const sourceDuration = Math.max(1, Math.round(media.duration * sourceFps))
-  const sourceEnd = Math.min(
-    sourceDuration,
-    Math.round((durationInFrames * sourceFps) / fps),
-  )
+  const sourceEnd = Math.min(sourceDuration, Math.round((durationInFrames * sourceFps) / fps))
   const currentProject = useProjectStore.getState().currentProject
   const canvasWidth = currentProject?.metadata.width ?? DEFAULT_PROJECT_WIDTH
   const canvasHeight = currentProject?.metadata.height ?? DEFAULT_PROJECT_HEIGHT

@@ -403,6 +403,14 @@ function directorApiDevPlugin(): Plugin {
   }
 }
 
+function vercelSiteHeaders(): Record<string, string> {
+  const vercel = JSON.parse(readFileSync(new URL('./vercel.json', import.meta.url), 'utf8')) as {
+    headers?: Array<{ source: string; headers: Array<{ key: string; value: string }> }>
+  }
+  const site = vercel.headers?.find((entry) => entry.source === '/(.*)')
+  return Object.fromEntries((site?.headers ?? []).map((header) => [header.key, header.value]))
+}
+
 const oxlintConfig = JSON.parse(readFileSync(new URL('./.oxlintrc.json', import.meta.url), 'utf8'))
 const oxfmtConfig = JSON.parse(readFileSync(new URL('./.oxfmtrc.json', import.meta.url), 'utf8'))
 const toolIgnorePatterns = [
@@ -474,6 +482,7 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     headers: {
+      ...vercelSiteHeaders(),
       'Cross-Origin-Embedder-Policy': 'require-corp',
       'Cross-Origin-Opener-Policy': 'same-origin',
       // Enables the JS self-profiling API (new Profiler(...)) for dev-time
@@ -483,6 +492,7 @@ export default defineConfig({
   },
   preview: {
     headers: {
+      ...vercelSiteHeaders(),
       'Cross-Origin-Embedder-Policy': 'require-corp',
       'Cross-Origin-Opener-Policy': 'same-origin',
     },

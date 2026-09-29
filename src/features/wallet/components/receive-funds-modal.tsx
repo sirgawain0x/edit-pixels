@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Copy, ExternalLink, Loader2, QrCode } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { base } from 'viem/chains'
@@ -17,30 +17,55 @@ interface ReceiveFundsModalProps {
   onOpenChange: (open: boolean) => void
 }
 
-const BASE_EXPLORER_ADDRESS_URL = 'https://basescan.org/address'
+/** USDC and CRTVAI for this app are received on Base. */
+const RECEIVE_CHAIN_ID = base.id
+
+function baseExplorerAddressUrl(address: string): string {
+  return `https://basescan.org/address/${address}`
+}
 
 export function ReceiveFundsModal({ open, onOpenChange }: ReceiveFundsModalProps) {
-  const { account, chain, switchChain } = useWalletContext()
+  const { account, chain, switchChain, smartAccountStatus } = useWalletContext()
   const [copied, setCopied] = useState(false)
-  const [switching, setSwitching] = useState(false)
+  const [switchingToBase, setSwitchingToBase] = useState(false)
+  const [switchError, setSwitchError] = useState<string | null>(null)
+  const sawProvisioning = useRef(false)
 
-  const onBase = chain.id === base.id
+  const onBase = chain.id === RECEIVE_CHAIN_ID
+  const showReceiveDetails = Boolean(
+    account && onBase && smartAccountStatus === 'ready' && !switchingToBase,
+  )
+
+  useEffect(() => {
+    if (!switchingToBase) return
+    if (smartAccountStatus === 'pending') sawProvisioning.current = true
+    if (smartAccountStatus === 'error') {
+      sawProvisioning.current = false
+      setSwitchingToBase(false)
+      return
+    }
+    if (sawProvisioning.current && onBase && smartAccountStatus === 'ready' && account) {
+      sawProvisioning.current = false
+      setSwitchingToBase(false)
+    }
+  }, [account, onBase, smartAccountStatus, switchingToBase])
 
   const handleCopy = useCallback(() => {
-    if (!account) return
+    if (!account || !showReceiveDetails) return
     void navigator.clipboard.writeText(account).then(() => {
       setCopied(true)
       window.setTimeout(() => setCopied(false), 1500)
     })
-  }, [account])
+  }, [account, showReceiveDetails])
 
-  const handleSwitchToBase = useCallback(async () => {
-    setSwitching(true)
-    try {
-      await switchChain(base.id)
-    } finally {
-      setSwitching(false)
-    }
+  const handleSwitchToBase = useCallback(() => {
+    setSwitchError(null)
+    setSwitchingToBase(true)
+    void switchChain(RECEIVE_CHAIN_ID).catch(() => {
+      sawProvisioning.current = false
+      setSwitchingToBase(false)
+      setSwitchError('Could not switch to Base.')
+    })
   }, [switchChain])
 
   return (
@@ -52,36 +77,11 @@ export function ReceiveFundsModal({ open, onOpenChange }: ReceiveFundsModalProps
             Receive funds
           </DialogTitle>
           <DialogDescription>
-            Copy your smart wallet address or scan the QR code to receive USDC on Base.
+            Copy your Base smart wallet address to receive USDC or CRTVAI.
           </DialogDescription>
         </DialogHeader>
 
-        {!account ? (
-          <p className="py-4 text-sm text-muted-foreground">
-            Connect your wallet to receive funds.
-          </p>
-        ) : !onBase ? (
-          <div className="space-y-3 py-2">
-            <p className="text-sm text-amber-200/90">
-              Receive is available on Base. Switch networks to show your deposit address.
-            </p>
-            <Button
-              type="button"
-              className="w-full"
-              disabled={switching}
-              onClick={() => void handleSwitchToBase()}
-            >
-              {switching ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
-                  Switching…
-                </>
-              ) : (
-                'Switch to Base'
-              )}
-            </Button>
-          </div>
-        ) : (
+        {showReceiveDetails && account ? (
           <div className="space-y-4 py-2">
             <div className="flex justify-center rounded-lg border bg-white p-4">
               <QRCodeSVG value={account} size={192} level="M" includeMargin />
@@ -107,18 +107,14 @@ export function ReceiveFundsModal({ open, onOpenChange }: ReceiveFundsModalProps
               {copied && <p className="text-xs text-emerald-400">Copied</p>}
             </div>
 
-            <div className="space-y-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200/90">
-              <p className="font-medium text-amber-100">Send from Coinbase (or any wallet)</p>
-              <ol className="list-decimal space-y-1 pl-4">
-                <li>Choose asset: USDC</li>
-                <li>Choose network: Base (not Solana or Ethereum)</li>
-                <li>Paste this address or scan the QR above</li>
-              </ol>
-              <p>Funds sent on the wrong network may be lost.</p>
-            </div>
+            <ol className="list-decimal space-y-1 pl-4 text-xs text-amber-200/90">
+              <li>In Coinbase, choose USDC.</li>
+              <li>Set the network to Base.</li>
+              <li>Paste this address or scan the code.</li>
+            </ol>
 
             <a
-              href={`${BASE_EXPLORER_ADDRESS_URL}/${account}`}
+              href={baseExplorerAddressUrl(account)}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
@@ -127,6 +123,34 @@ export function ReceiveFundsModal({ open, onOpenChange }: ReceiveFundsModalProps
               <ExternalLink className="h-3 w-3" aria-hidden />
             </a>
           </div>
+        ) : !onBase || switchingToBase ? (
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-muted-foreground">
+              USDC arrives on Base. Switch this wallet to Base to copy your receive address.
+            </p>
+            {switchError && <p className="text-xs text-destructive">{switchError}</p>}
+            <Button
+              type="button"
+              className="w-full"
+              onClick={handleSwitchToBase}
+              disabled={switchingToBase}
+            >
+              {switchingToBase ? (
+                <>
+                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                  Switching to Base…
+                </>
+              ) : (
+                'Switch to Base'
+              )}
+            </Button>
+          </div>
+        ) : (
+          <p className="py-4 text-sm text-muted-foreground">
+            {smartAccountStatus === 'pending'
+              ? 'Preparing your Base smart wallet…'
+              : 'Connect your wallet to receive funds.'}
+          </p>
         )}
       </DialogContent>
     </Dialog>

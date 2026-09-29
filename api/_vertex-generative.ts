@@ -166,8 +166,7 @@ export async function planSeedanceShotBrief(
 
   const prompt = typeof parsed.prompt === 'string' ? parsed.prompt.trim() : ''
   const durationRaw = typeof parsed.duration === 'number' ? parsed.duration : 5
-  const aspect_ratio =
-    typeof parsed.aspect_ratio === 'string' ? parsed.aspect_ratio.trim() : '16:9'
+  const aspect_ratio = typeof parsed.aspect_ratio === 'string' ? parsed.aspect_ratio.trim() : '16:9'
   const framing = typeof parsed.framing === 'string' ? parsed.framing.trim() : 'Medium shot'
 
   if (!prompt) {

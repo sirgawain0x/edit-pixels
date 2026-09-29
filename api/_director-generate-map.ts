@@ -38,14 +38,7 @@ export interface DirectorGenerateRequest {
   seedanceDuration: number
 }
 
-const VALID_ASPECTS: readonly SeedanceAspectRatio[] = [
-  '16:9',
-  '4:3',
-  '1:1',
-  '3:4',
-  '9:16',
-  '21:9',
-]
+const VALID_ASPECTS: readonly SeedanceAspectRatio[] = ['16:9', '4:3', '1:1', '3:4', '9:16', '21:9']
 
 export function normalizeDirectorAspectRatio(raw: string | undefined): SeedanceAspectRatio {
   const trimmed = raw?.trim()

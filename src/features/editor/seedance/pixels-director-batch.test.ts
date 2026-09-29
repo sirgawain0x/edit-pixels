@@ -8,9 +8,8 @@ describe('director batch bridge', () => {
   })
 
   afterEach(async () => {
-    const { __resetDirectorBatchStoreForTest } = await import(
-      '../../../../api/_director-batch-store'
-    )
+    const { __resetDirectorBatchStoreForTest } =
+      await import('../../../../api/_director-batch-store')
     __resetDirectorBatchStoreForTest()
     if (originalVercel === undefined) {
       delete process.env.VERCEL
@@ -21,9 +20,8 @@ describe('director batch bridge', () => {
 
   describe('mapDirectorShotToGenerate', () => {
     it('maps storyboard fields and clamps durations', async () => {
-      const { mapDirectorShotToGenerate, pickDirectorShotProvider } = await import(
-        '../../../../api/_director-generate-map'
-      )
+      const { mapDirectorShotToGenerate, pickDirectorShotProvider } =
+        await import('../../../../api/_director-generate-map')
       const mapped = mapDirectorShotToGenerate({
         shotId: 'shot-1',
         prompt: 'Neon alley chase',
@@ -40,9 +38,8 @@ describe('director batch bridge', () => {
 
   describe('quoteDirectorStoryboardBatch', () => {
     it('returns per-shot and total CRTVAI estimates without charging', async () => {
-      const { quoteDirectorStoryboardBatch } = await import(
-        '../../../../api/_director-batch-quote-core'
-      )
+      const { quoteDirectorStoryboardBatch } =
+        await import('../../../../api/_director-batch-quote-core')
       const result = await quoteDirectorStoryboardBatch({
         wallet: '0xabc',
         shots: [
@@ -57,9 +54,8 @@ describe('director batch bridge', () => {
     })
 
     it('rejects duplicate shotId in quote request', async () => {
-      const { quoteDirectorStoryboardBatch } = await import(
-        '../../../../api/_director-batch-quote-core'
-      )
+      const { quoteDirectorStoryboardBatch } =
+        await import('../../../../api/_director-batch-quote-core')
       const result = await quoteDirectorStoryboardBatch({
         wallet: '0xabc',
         shots: [
@@ -75,9 +71,8 @@ describe('director batch bridge', () => {
 
   describe('bindDirectorBatchSelections', () => {
     it('requires bijection between quote shots and selections', async () => {
-      const { quoteDirectorStoryboardBatch, bindDirectorBatchSelections } = await import(
-        '../../../../api/_director-batch-quote-core'
-      )
+      const { quoteDirectorStoryboardBatch, bindDirectorBatchSelections } =
+        await import('../../../../api/_director-batch-quote-core')
       const { getDirectorBatchQuote } = await import('../../../../api/_director-batch-store')
 
       const quoted = await quoteDirectorStoryboardBatch({
@@ -115,12 +110,10 @@ describe('director batch bridge', () => {
 
   describe('confirmDirectorStoryboardBatch', () => {
     it('rejects quote reuse after first confirm', async () => {
-      const { quoteDirectorStoryboardBatch } = await import(
-        '../../../../api/_director-batch-quote-core'
-      )
-      const { confirmDirectorStoryboardBatch } = await import(
-        '../../../../api/_director-batch-confirm-core'
-      )
+      const { quoteDirectorStoryboardBatch } =
+        await import('../../../../api/_director-batch-quote-core')
+      const { confirmDirectorStoryboardBatch } =
+        await import('../../../../api/_director-batch-confirm-core')
 
       const quoted = await quoteDirectorStoryboardBatch({
         wallet: '0xabc',
@@ -149,11 +142,8 @@ describe('director batch bridge', () => {
 
   describe('batch shot claim', () => {
     it('allows only one claim per batchConfirmId + shotId', async () => {
-      const {
-        saveDirectorBatchConfirm,
-        tryClaimDirectorBatchShot,
-        releaseDirectorBatchShotClaim,
-      } = await import('../../../../api/_director-batch-store')
+      const { saveDirectorBatchConfirm, tryClaimDirectorBatchShot, releaseDirectorBatchShotClaim } =
+        await import('../../../../api/_director-batch-store')
 
       const confirm = await saveDirectorBatchConfirm({
         batchQuoteId: 'quote-1',

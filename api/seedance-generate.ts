@@ -14,10 +14,7 @@ import {
   verifySeedancePayment,
 } from './_seedance-billing.js'
 import { generateSeedanceVideo, isHiggsfieldConfigured } from './_higgsfield-seedance.js'
-import {
-  registerPixelsGenerateJob,
-  updatePixelsGenerateJob,
-} from './_pixels-generate-jobs.js'
+import { registerPixelsGenerateJob, updatePixelsGenerateJob } from './_pixels-generate-jobs.js'
 import { failPixelsGenerateJob } from './_pixels-generate-payment.js'
 import {
   claimBatchShotForGenerate,
@@ -91,9 +88,9 @@ export async function POST(request: Request): Promise<Response> {
   let prompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
   let duration = clampSeedanceDuration(typeof body.duration === 'number' ? body.duration : 5)
   let resolution: SeedanceResolution = body.resolution === '480p' ? '480p' : '720p'
-  let aspect_ratio = (typeof body.aspect_ratio === 'string'
-    ? body.aspect_ratio
-    : '16:9') as SeedanceAspectRatio
+  let aspect_ratio = (
+    typeof body.aspect_ratio === 'string' ? body.aspect_ratio : '16:9'
+  ) as SeedanceAspectRatio
   let quoteId = typeof body.quoteId === 'string' ? body.quoteId.trim() : ''
   let batchPaymentTxHash: string | null = null
   let skipBatchPaymentVerify = false
@@ -158,11 +155,15 @@ export async function POST(request: Request): Promise<Response> {
     } else {
       const paymentTxHash = typeof body.paymentTxHash === 'string' ? body.paymentTxHash.trim() : ''
       if (!paymentTxHash) {
-        await failPixelsGenerateJob(requestId, {
-          code: 'payment_required',
-          message: 'Payment required',
-          type: 'billing',
-        }, { releasePayment: false })
+        await failPixelsGenerateJob(
+          requestId,
+          {
+            code: 'payment_required',
+            message: 'Payment required',
+            type: 'billing',
+          },
+          { releasePayment: false },
+        )
         return Response.json({ error: 'payment_required' }, { status: 402 })
       }
       const verified = await verifySeedancePayment({
@@ -171,11 +172,15 @@ export async function POST(request: Request): Promise<Response> {
         minAmountWei: quote.minCrtvaiWei,
       })
       if (!verified.ok) {
-        await failPixelsGenerateJob(requestId, {
-          code: 'payment_failed',
-          message: verified.reason,
-          type: 'billing',
-        }, { releasePayment: false })
+        await failPixelsGenerateJob(
+          requestId,
+          {
+            code: 'payment_failed',
+            message: verified.reason,
+            type: 'billing',
+          },
+          { releasePayment: false },
+        )
         return Response.json({ error: verified.reason }, { status: 402 })
       }
       await updatePixelsGenerateJob(requestId, { paymentTxHash })
@@ -184,11 +189,15 @@ export async function POST(request: Request): Promise<Response> {
     try {
       const balanceCheck = await checkMetokenSufficient(auth.address, quote.estimatedUsdc6)
       if (!balanceCheck.sufficient) {
-        await failPixelsGenerateJob(requestId, {
-          code: 'insufficient_crtvai',
-          message: 'Insufficient CRTVAI balance',
-          type: 'billing',
-        }, { releasePayment: false })
+        await failPixelsGenerateJob(
+          requestId,
+          {
+            code: 'insufficient_crtvai',
+            message: 'Insufficient CRTVAI balance',
+            type: 'billing',
+          },
+          { releasePayment: false },
+        )
         return Response.json(
           {
             error: 'insufficient_crtvai',
@@ -211,11 +220,15 @@ export async function POST(request: Request): Promise<Response> {
       requestId,
     })
     if (!claimed.ok) {
-      await failPixelsGenerateJob(requestId, {
-        code: claimed.error,
-        message: 'Batch shot already started',
-        type: 'billing',
-      }, { releasePayment: false })
+      await failPixelsGenerateJob(
+        requestId,
+        {
+          code: claimed.error,
+          message: 'Batch shot already started',
+          type: 'billing',
+        },
+        { releasePayment: false },
+      )
       return Response.json({ error: claimed.error }, { status: 409 })
     }
   }

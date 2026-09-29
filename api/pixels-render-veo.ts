@@ -20,11 +20,7 @@ import {
   shortTaskId,
   startVeoVideo,
 } from './_vertex-generative.js'
-import {
-  isFlowBillingEnforced,
-  quoteFlowCreditsUsdc6,
-  verifyFlowPayment,
-} from './flow-billing.js'
+import { isFlowBillingEnforced, quoteFlowCreditsUsdc6, verifyFlowPayment } from './flow-billing.js'
 import {
   claimBatchShotForGenerate,
   completeBatchShotGenerate,
@@ -33,19 +29,13 @@ import {
   validateBatchGenerateAuthorization,
 } from './_director-batch-generate.js'
 import { isSeedanceGenerateEnabled } from './_seedance-pricing.js'
-import {
-  registerPixelsGenerateJob,
-  updatePixelsGenerateJob,
-} from './_pixels-generate-jobs.js'
+import { registerPixelsGenerateJob, updatePixelsGenerateJob } from './_pixels-generate-jobs.js'
 import { failPixelsGenerateJob } from './_pixels-generate-payment.js'
 
 const PIXELS_VEO_TIER: VeoTier = 'standard'
 const PIXELS_STILL_QUALITY: NanobananaQuality = '2K'
 
-async function stillToPublicUrl(
-  prompt: string,
-  requestUrl: string,
-): Promise<string> {
+async function stillToPublicUrl(prompt: string, requestUrl: string): Promise<string> {
   const image = await generateGeminiImage(prompt, { quality: PIXELS_STILL_QUALITY })
   const { storeFlowFrameFromDataUri } = await import('./flow-frame.js')
   const origin = new URL(requestUrl).origin
@@ -178,11 +168,15 @@ export async function POST(request: Request): Promise<Response> {
     } else {
       const paymentTxHash = typeof body.paymentTxHash === 'string' ? body.paymentTxHash.trim() : ''
       if (!paymentTxHash) {
-        await failPixelsGenerateJob(requestId, {
-          code: 'payment_required',
-          message: 'Payment required',
-          type: 'billing',
-        }, { releasePayment: false })
+        await failPixelsGenerateJob(
+          requestId,
+          {
+            code: 'payment_required',
+            message: 'Payment required',
+            type: 'billing',
+          },
+          { releasePayment: false },
+        )
         return Response.json({ error: 'payment_required' }, { status: 402 })
       }
       const verified = await verifyFlowPayment({
@@ -192,11 +186,15 @@ export async function POST(request: Request): Promise<Response> {
         purpose: 'pixels-render-veo',
       })
       if (!verified.ok) {
-        await failPixelsGenerateJob(requestId, {
-          code: 'payment_failed',
-          message: verified.reason,
-          type: 'billing',
-        }, { releasePayment: false })
+        await failPixelsGenerateJob(
+          requestId,
+          {
+            code: 'payment_failed',
+            message: verified.reason,
+            type: 'billing',
+          },
+          { releasePayment: false },
+        )
         return Response.json({ error: verified.reason }, { status: 402 })
       }
       await updatePixelsGenerateJob(requestId, { paymentTxHash })
@@ -205,11 +203,15 @@ export async function POST(request: Request): Promise<Response> {
     try {
       const balanceCheck = await checkMetokenSufficient(auth.address, quote.estimatedUsdc6)
       if (!balanceCheck.sufficient) {
-        await failPixelsGenerateJob(requestId, {
-          code: 'insufficient_crtvai',
-          message: 'Insufficient CRTVAI balance',
-          type: 'billing',
-        }, { releasePayment: false })
+        await failPixelsGenerateJob(
+          requestId,
+          {
+            code: 'insufficient_crtvai',
+            message: 'Insufficient CRTVAI balance',
+            type: 'billing',
+          },
+          { releasePayment: false },
+        )
         return Response.json(
           {
             error: 'insufficient_crtvai',
@@ -232,11 +234,15 @@ export async function POST(request: Request): Promise<Response> {
       requestId,
     })
     if (!claimed.ok) {
-      await failPixelsGenerateJob(requestId, {
-        code: claimed.error,
-        message: 'Batch shot already started',
-        type: 'billing',
-      }, { releasePayment: false })
+      await failPixelsGenerateJob(
+        requestId,
+        {
+          code: claimed.error,
+          message: 'Batch shot already started',
+          type: 'billing',
+        },
+        { releasePayment: false },
+      )
       return Response.json({ error: claimed.error }, { status: 409 })
     }
   }
