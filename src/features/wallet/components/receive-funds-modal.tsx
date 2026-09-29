@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Copy, ExternalLink, Loader2, QrCode } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { base } from 'viem/chains'
@@ -29,7 +29,6 @@ export function ReceiveFundsModal({ open, onOpenChange }: ReceiveFundsModalProps
   const [copied, setCopied] = useState(false)
   const [switchingToBase, setSwitchingToBase] = useState(false)
   const [switchError, setSwitchError] = useState<string | null>(null)
-  const sawProvisioning = useRef(false)
 
   const onBase = chain.id === RECEIVE_CHAIN_ID
   const showReceiveDetails = Boolean(
@@ -38,14 +37,11 @@ export function ReceiveFundsModal({ open, onOpenChange }: ReceiveFundsModalProps
 
   useEffect(() => {
     if (!switchingToBase) return
-    if (smartAccountStatus === 'pending') sawProvisioning.current = true
     if (smartAccountStatus === 'error') {
-      sawProvisioning.current = false
       setSwitchingToBase(false)
       return
     }
-    if (sawProvisioning.current && onBase && smartAccountStatus === 'ready' && account) {
-      sawProvisioning.current = false
+    if (onBase && smartAccountStatus === 'ready' && account) {
       setSwitchingToBase(false)
     }
   }, [account, onBase, smartAccountStatus, switchingToBase])
@@ -62,7 +58,6 @@ export function ReceiveFundsModal({ open, onOpenChange }: ReceiveFundsModalProps
     setSwitchError(null)
     setSwitchingToBase(true)
     void switchChain(RECEIVE_CHAIN_ID).catch(() => {
-      sawProvisioning.current = false
       setSwitchingToBase(false)
       setSwitchError('Could not switch to Base.')
     })
