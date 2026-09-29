@@ -11,6 +11,9 @@
     "viewOnGitHub": "View on GitHub",
     "newProject": "New Project",
     "importProject": "Import Project",
+    "header": {
+      "menu": "Menu"
+    },
     "errorLoading": "Error loading projects",
     "loadingProjects": "Loading projects...",
     "copySuffix": "{{name}} (Copy)",
@@ -229,6 +232,7 @@
       "download": "Download"
     },
     "import": {
+      "unavailable": "Import requires a Chromium-based desktop browser with folder access (Chrome, Edge, Brave). It is not available on Safari, Firefox, or most mobile browsers.",
       "invalidFile": "Please select a valid {{extension}} file",
       "cannotSelectSystemFolders": "Cannot select system folders directly. Use \"New Folder\" in the picker to create a folder first, then select it.",
       "selectDestinationFailed": "Failed to select destination folder. Please try a different location.",
@@ -251,6 +255,11 @@
       "createInSubfolder": "Create in <code>{{folder}}</code> subfolder",
       "mediaWillBeSavedTo": "Media will be saved to:",
       "startImport": "Start Import"
+    },
+    "create": {
+      "unavailableTitle": "Not available on this device",
+      "unavailable": "New projects require a Chromium-based desktop browser with a local workspace folder (Chrome, Edge, Brave). This is not available on Safari, Firefox, or most mobile browsers.",
+      "reconnectRequired": "Could not save to your workspace folder. Open Pixels on a desktop browser, reconnect your workspace, then try again."
     },
     "landing": {
       "beta": "Beta",

@@ -252,6 +252,11 @@
       "mediaWillBeSavedTo": "媒体将保存到：",
       "startImport": "开始导入"
     },
+    "create": {
+      "unavailableTitle": "此设备不可用",
+      "unavailable": "创建新项目需要支持本地工作区文件夹的 Chromium 桌面浏览器（Chrome、Edge、Brave）。Safari、Firefox 以及大多数移动浏览器均不支持。",
+      "reconnectRequired": "无法保存到工作区文件夹。请在桌面浏览器中打开 Pixels，重新连接工作区后再试。"
+    },
     "landing": {
       "beta": "测试版",
       "heroTitle": "编辑视频。<accent>在你的浏览器中。</accent>",

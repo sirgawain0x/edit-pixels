@@ -1,12 +1,19 @@
 # Changelog
 
-All notable changes to FreeCut. Weekly CalVer: `YYYY.MM.DD` = the Monday of the release week (Mon–Sun).
+All notable changes to Creative Pixels. Weekly CalVer: `YYYY.MM.DD` = the Monday of the release week (Mon–Sun).
 
 <!-- Entries below are generated via the `changelog` skill. Newest first. -->
 
-## [Current] — week of 2026-07-20
+## [Current] — week of 2026-09-15
+
+Generate AI video from text, batch-render Director storyboards, and drop finished shots onto your timeline. Paid Generate now walks you through quote → pay → render with clearer errors when something fails.
 
 ### Added
+- Phone-friendly Projects hub — menu sheet for Docs, Discord, GitHub, language, workspace, and import; wallet and New stay in the top bar
+- Generate video from text with Seedance or Veo, then drop the clip onto the timeline
+- Director "Render all shots" — one quote and confirm, live progress, retry failed shots, import to the media library
+- Auto-place finished Director clips on a new video track aligned to your audio (storyboard timing or equal split)
+- Manual "Lay on timeline" after a batch finishes, so you can re-lay without re-rendering
 - Solid color and gradient layers in Motion
 - Crop clips with handles directly on the canvas, including compound clips
 - Promote any clip to a Motion Clip and open it in the Motion editor
@@ -25,6 +32,14 @@ All notable changes to FreeCut. Weekly CalVer: `YYYY.MM.DD` = the Monday of the 
 - Timeline scrubbing cancels cleanly when the window loses focus
 
 ### Improved
+- Invalid or inverted storyboard timecodes fall back to equal-split placement with a clear warning
+- Re-lay on timeline shows a toast confirming crossfade or hard cuts
+- Director batch quotes survive Agent Engine restarts
+- Generate and Director batch quote errors show clearer, actionable messages
+- Phone New Project is soft-gated when local workspace folder access isn't reliable; create errors show clear reconnect/desktop copy instead of raw browser storage messages
+- Legacy migrate banner stacks cleanly on small screens
+- Import is disabled with a clear tip when folder access isn't available (Safari / most mobile browsers)
+- Paid Generate uses a clearer quote → pay → render flow with better errors when a job fails
 - Filmstrips and waveforms stay visible and smooth while zooming the timeline
 - The Motion dopesheet stays responsive with large layer stacks
 
@@ -210,7 +225,7 @@ All notable changes to FreeCut. Weekly CalVer: `YYYY.MM.DD` = the Monday of the 
 - Language picker in editor settings, with auto-detection from your browser
 - Effect names, timeline labels, and media library all translate alongside the rest of the UI
 - Supertonic voice engine added to AI text-to-speech
-- Install FreeCut as a desktop app, with prompts when new versions ship
+- Install Pixels as a desktop app, with prompts when new versions ship
 
 ## [2026.05.04] — week of 2026-05-04 to 2026-05-10
 

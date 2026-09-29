@@ -1,4 +1,5 @@
 import type { TransformProperties } from '@/types/transform'
+import { computeFitScaleTransform } from '@/shared/utils/fit-scale-transform'
 
 /**
  * Compute initial fit-to-canvas transform for an item.
@@ -10,18 +11,8 @@ export function computeInitialTransform(
   canvasWidth: number,
   canvasHeight: number,
 ): TransformProperties {
-  const scaleX = canvasWidth / sourceWidth
-  const scaleY = canvasHeight / sourceHeight
-  const fitScale = Math.min(scaleX, scaleY)
-
   // Note: opacity is intentionally omitted - undefined means "use default (1.0)"
   // Only set opacity explicitly when user changes it, so we can distinguish
   // between "default 100%" and "explicitly set to 100%"
-  return {
-    x: 0,
-    y: 0,
-    width: Math.round(sourceWidth * fitScale),
-    height: Math.round(sourceHeight * fitScale),
-    rotation: 0,
-  }
+  return computeFitScaleTransform(sourceWidth, sourceHeight, canvasWidth, canvasHeight)
 }

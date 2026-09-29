@@ -27,6 +27,7 @@ interface ProjectFormBaseProps {
   onCancel?: () => void
   defaultValues?: Partial<ProjectFormData>
   isSubmitting?: boolean
+  submitDisabled?: boolean
   mode: 'create' | 'edit'
   surface: 'page' | 'inline'
 }
@@ -46,6 +47,7 @@ function ProjectFormBase({
   onCancel,
   defaultValues,
   isSubmitting = false,
+  submitDisabled = false,
   mode,
   surface,
 }: ProjectFormBaseProps) {
@@ -288,7 +290,7 @@ function ProjectFormBase({
               type="submit"
               size="lg"
               className="min-w-[160px]"
-              disabled={!isValid || isSubmitting}
+              disabled={!isValid || isSubmitting || submitDisabled}
             >
               {isSubmitting
                 ? t('common.saving')

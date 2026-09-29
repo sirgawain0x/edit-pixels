@@ -25,6 +25,7 @@ import {
   ensureKnownWorkspaceForCurrent,
   getWorkspaceHandleRecord,
   isFileSystemAccessSupported,
+  isLikelyMobileBrowser,
   queryHandlePermission,
   requestHandlePermission,
   saveWorkspaceHandleRecord,
@@ -47,7 +48,7 @@ const logger = createLogger('WorkspaceGate')
 
 type GateStatus =
   | { kind: 'initializing' }
-  | { kind: 'unavailable' } // Non-Chromium browsers
+  | { kind: 'unavailable'; reason: 'browser' | 'mobile' }
   | { kind: 'pick' } // No saved handle
   | { kind: 'reconnect'; handleName: string } // Saved handle, permission revoked
   | { kind: 'ready' }
@@ -84,7 +85,11 @@ export function WorkspaceGate({ children }: { children: React.ReactNode }) {
     let cancelled = false
     ;(async () => {
       if (!isFileSystemAccessSupported()) {
-        if (!cancelled) setStatus({ kind: 'unavailable' })
+        if (!cancelled) setStatus({ kind: 'unavailable', reason: 'browser' })
+        return
+      }
+      if (isLikelyMobileBrowser()) {
+        if (!cancelled) setStatus({ kind: 'unavailable', reason: 'mobile' })
         return
       }
       // Promote any legacy `workspace:current` into a proper known-workspace

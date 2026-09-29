@@ -7,4 +7,6 @@ export {
   proxyFlowRun,
   proxyGetTask,
   useGenerativeAuth,
+  type SignedRequestParams,
+  type GenerativeTaskDetail,
 } from '@/features/generative'

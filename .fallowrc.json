@@ -138,6 +138,26 @@
       "exports": ["*"]
     },
     {
+      "file": "api/earn/vault.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/earn/position.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/earn/action.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/earn/deposit.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/earn/withdraw.ts",
+      "exports": ["*"]
+    },
+    {
       "file": "api/generate-task.ts",
       "exports": ["*"]
     },
@@ -155,6 +175,26 @@
     },
     {
       "file": "api/generate-video.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/seedance-plan.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/seedance-quote.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/seedance-generate.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/pixels-render-quote.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/pixels-render-veo.ts",
       "exports": ["*"]
     },
     {

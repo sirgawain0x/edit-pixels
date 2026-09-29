@@ -5,7 +5,7 @@ import { PixelsLogo } from '@/components/brand/pixels-logo'
 
 type Status =
   | { kind: 'initializing' }
-  | { kind: 'unavailable' }
+  | { kind: 'unavailable'; reason: 'browser' | 'mobile' }
   | { kind: 'pick' }
   | { kind: 'reconnect'; handleName: string }
 
@@ -40,10 +40,16 @@ export function WorkspaceGateSplash({ status, error, onPickFolder, onReconnect }
           <div className="space-y-3">
             <div className="flex items-center justify-center gap-2 text-destructive">
               <FolderX className="h-5 w-5" />
-              <span className="font-medium">{t('projects.workspaceGate.unsupportedBrowser')}</span>
+              <span className="font-medium">
+                {status.reason === 'mobile'
+                  ? t('projects.create.unavailableTitle')
+                  : t('projects.workspaceGate.unsupportedBrowser')}
+              </span>
             </div>
             <p className="text-sm text-muted-foreground">
-              {t('projects.workspaceGate.unsupportedBrowserDescription')}
+              {status.reason === 'mobile'
+                ? t('projects.create.unavailable')
+                : t('projects.workspaceGate.unsupportedBrowserDescription')}
             </p>
             <Button asChild variant="outline" size="sm" className="gap-2">
               <a href="/docs/workspaces">

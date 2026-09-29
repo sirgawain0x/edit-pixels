@@ -18,6 +18,20 @@ import { POST as c2paCertsChallengePost } from './api/c2pa/certs/challenge'
 import { POST as onrampUrlPost } from './api/onramp-url'
 import { POST as onrampVerifyPost } from './api/onramp-verify'
 import { POST as onrampVerifySubmitPost } from './api/onramp-verify-submit'
+import { GET as earnVaultGet } from './api/earn/vault'
+import { GET as earnPositionGet } from './api/earn/position'
+import { POST as earnDepositPost } from './api/earn/deposit'
+import { POST as earnWithdrawPost } from './api/earn/withdraw'
+import { GET as earnActionGet } from './api/earn/action'
+import { POST as seedancePlanPost } from './api/seedance-plan'
+import { POST as seedanceQuotePost } from './api/seedance-quote'
+import { POST as seedanceGeneratePost } from './api/seedance-generate'
+import { POST as pixelsRenderQuotePost } from './api/pixels-render-quote'
+import { POST as pixelsRenderVeoPost } from './api/pixels-render-veo'
+import { GET as pixelsGenerateTaskGet } from './api/pixels-generate-task'
+import { POST as pixelsGenerateCancelPost } from './api/pixels-generate-cancel'
+import { POST as pixelsDirectorBatchQuotePost } from './api/pixels-director-batch-quote'
+import { POST as pixelsDirectorBatchConfirmPost } from './api/pixels-director-batch-confirm'
 
 // Stamps public/sw.js with the hashed entry-chunk filename at build time so the service
 // worker's CACHE_VERSION — and the sw.js bytes — change on every deploy. Without this the
@@ -130,6 +144,43 @@ void c2paCertsChallengePost
 void onrampUrlPost
 void onrampVerifyPost
 void onrampVerifySubmitPost
+void seedancePlanPost
+void seedanceQuotePost
+void seedanceGeneratePost
+void pixelsRenderQuotePost
+void pixelsRenderVeoPost
+void pixelsGenerateTaskGet
+void pixelsGenerateCancelPost
+
+// fallow-ignore-next-line complexity
+async function proxyEarnDevRequest(
+  req: import('node:http').IncomingMessage,
+  res: import('node:http').ServerResponse,
+  handler: (request: Request) => Promise<Response>,
+): Promise<void> {
+  const chunks: Buffer[] = []
+  for await (const chunk of req) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+  }
+  const body = Buffer.concat(chunks)
+  const host = req.headers.host ?? 'localhost'
+  const headers = new Headers()
+  for (const [key, value] of Object.entries(req.headers)) {
+    if (typeof value === 'string') headers.set(key, value)
+    else if (Array.isArray(value)) headers.set(key, value.join(', '))
+  }
+  const request = new Request(`http://${host}${req.url ?? '/'}`, {
+    method: req.method ?? 'GET',
+    headers,
+    body: body.length > 0 && req.method !== 'GET' && req.method !== 'HEAD' ? body : undefined,
+  })
+  const response = await handler(request)
+  res.statusCode = response.status
+  response.headers.forEach((value, key) => {
+    res.setHeader(key, value)
+  })
+  res.end(await response.text())
+}
 
 function directorApiDevPlugin(): Plugin {
   return {
@@ -146,6 +197,163 @@ function directorApiDevPlugin(): Plugin {
       // fallow-ignore-next-line complexity
       server.middlewares.use((req, res, next) => {
         const path = req.url?.split('?')[0]
+
+        if (path === '/api/earn/vault' && req.method === 'GET') {
+          void proxyEarnDevRequest(req, res, () => earnVaultGet()).catch((error) => {
+            console.error('Earn vault API middleware error', error)
+            if (!res.headersSent) {
+              res.statusCode = 500
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Earn vault proxy failed' }))
+            }
+          })
+          return
+        }
+        if (path === '/api/earn/position' && req.method === 'GET') {
+          void proxyEarnDevRequest(req, res, earnPositionGet).catch((error) => {
+            console.error('Earn position API middleware error', error)
+            if (!res.headersSent) {
+              res.statusCode = 500
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Earn position proxy failed' }))
+            }
+          })
+          return
+        }
+        if (path === '/api/earn/action' && req.method === 'GET') {
+          void proxyEarnDevRequest(req, res, earnActionGet).catch((error) => {
+            console.error('Earn action API middleware error', error)
+            if (!res.headersSent) {
+              res.statusCode = 500
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Earn action proxy failed' }))
+            }
+          })
+          return
+        }
+        if (path === '/api/earn/deposit' && req.method === 'POST') {
+          void proxyEarnDevRequest(req, res, earnDepositPost).catch((error) => {
+            console.error('Earn deposit API middleware error', error)
+            if (!res.headersSent) {
+              res.statusCode = 500
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Earn deposit proxy failed' }))
+            }
+          })
+          return
+        }
+        if (path === '/api/earn/withdraw' && req.method === 'POST') {
+          void proxyEarnDevRequest(req, res, earnWithdrawPost).catch((error) => {
+            console.error('Earn withdraw API middleware error', error)
+            if (!res.headersSent) {
+              res.statusCode = 500
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Earn withdraw proxy failed' }))
+            }
+          })
+          return
+        }
+
+        if (path === '/api/seedance-plan' && req.method === 'POST') {
+          void proxyEarnDevRequest(req, res, seedancePlanPost).catch((error) => {
+            console.error('Seedance plan API middleware error', error)
+            if (!res.headersSent) {
+              res.statusCode = 500
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Seedance plan proxy failed' }))
+            }
+          })
+          return
+        }
+        if (path === '/api/seedance-quote' && req.method === 'POST') {
+          void proxyEarnDevRequest(req, res, seedanceQuotePost).catch((error) => {
+            console.error('Seedance quote API middleware error', error)
+            if (!res.headersSent) {
+              res.statusCode = 500
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Seedance quote proxy failed' }))
+            }
+          })
+          return
+        }
+        if (path === '/api/seedance-generate' && req.method === 'POST') {
+          void proxyEarnDevRequest(req, res, seedanceGeneratePost).catch((error) => {
+            console.error('Seedance generate API middleware error', error)
+            if (!res.headersSent) {
+              res.statusCode = 500
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Seedance generate proxy failed' }))
+            }
+          })
+          return
+        }
+        if (path === '/api/pixels-render-quote' && req.method === 'POST') {
+          void proxyEarnDevRequest(req, res, pixelsRenderQuotePost).catch((error) => {
+            console.error('Pixels render quote API middleware error', error)
+            if (!res.headersSent) {
+              res.statusCode = 500
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Pixels render quote proxy failed' }))
+            }
+          })
+          return
+        }
+        if (path === '/api/pixels-render-veo' && req.method === 'POST') {
+          void proxyEarnDevRequest(req, res, pixelsRenderVeoPost).catch((error) => {
+            console.error('Pixels render veo API middleware error', error)
+            if (!res.headersSent) {
+              res.statusCode = 500
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Pixels render veo proxy failed' }))
+            }
+          })
+          return
+        }
+        if (path === '/api/pixels-generate-task' && req.method === 'GET') {
+          void proxyEarnDevRequest(req, res, pixelsGenerateTaskGet).catch((error) => {
+            console.error('Pixels generate task API middleware error', error)
+            if (!res.headersSent) {
+              res.statusCode = 500
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Pixels generate task proxy failed' }))
+            }
+          })
+          return
+        }
+        if (path === '/api/pixels-generate-cancel' && req.method === 'POST') {
+          void proxyEarnDevRequest(req, res, pixelsGenerateCancelPost).catch((error) => {
+            console.error('Pixels generate cancel API middleware error', error)
+            if (!res.headersSent) {
+              res.statusCode = 500
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Pixels generate cancel proxy failed' }))
+            }
+          })
+          return
+        }
+        if (path === '/api/pixels-director-batch-quote' && req.method === 'POST') {
+          void proxyEarnDevRequest(req, res, pixelsDirectorBatchQuotePost).catch((error) => {
+            console.error('Pixels director batch quote API middleware error', error)
+            if (!res.headersSent) {
+              res.statusCode = 500
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Pixels director batch quote proxy failed' }))
+            }
+          })
+          return
+        }
+        if (path === '/api/pixels-director-batch-confirm' && req.method === 'POST') {
+          void proxyEarnDevRequest(req, res, pixelsDirectorBatchConfirmPost).catch((error) => {
+            console.error('Pixels director batch confirm API middleware error', error)
+            if (!res.headersSent) {
+              res.statusCode = 500
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Pixels director batch confirm proxy failed' }))
+            }
+          })
+          return
+        }
+
         if (path === '/api/director-sessions' && req.method === 'GET') {
           // fallow-ignore-next-line complexity
           void (async () => {

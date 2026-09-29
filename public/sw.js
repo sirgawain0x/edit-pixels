@@ -7,7 +7,9 @@ const CACHE_VERSION = 'pixels-app-shell-__PIXELS_BUILD_ID__'
 const APP_SHELL_URLS = [
   '/',
   '/index.html',
+  '/favicon.ico',
   '/favicon.svg',
+  '/apple-touch-icon.png',
   '/manifest.webmanifest',
   '/icons/icon-192.png',
   '/icons/icon-512.png',

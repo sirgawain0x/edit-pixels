@@ -340,6 +340,11 @@
       "mediaWillBeSavedTo": "Medya şuraya kaydedilecek:",
       "startImport": "İçe Aktarmayı Başlat"
     },
+    "create": {
+      "unavailableTitle": "Bu cihazda kullanılamaz",
+      "unavailable": "Yeni projeler, yerel bir workspace klasörüne sahip Chromium tabanlı bir masaüstü tarayıcı (Chrome, Edge, Brave) gerektirir. Safari, Firefox ve çoğu mobil tarayıcıda kullanılamaz.",
+      "reconnectRequired": "Workspace klasörüne kaydedilemedi. Pixels'i masaüstü tarayıcıda açın, workspace'inizi yeniden bağlayın ve tekrar deneyin."
+    },
     "settings": {
       "localInference": {
         "noRuntimes": "Etkin veya bellekte kalan yerel çıkarım çalışma zamanı yok.",

@@ -274,3 +274,37 @@ export async function requestHandlePermission(
 export function isFileSystemAccessSupported(): boolean {
   return typeof window !== 'undefined' && typeof window.showDirectoryPicker === 'function'
 }
+
+type NavigatorWithMobileHint = Navigator & {
+  userAgentData?: { mobile?: boolean }
+}
+
+/**
+ * Heuristic for phone/tablet browsers where Chromium may expose
+ * `showDirectoryPicker` but workspace writes still fail (InvalidStateError).
+ */
+export function isLikelyMobileBrowser(): boolean {
+  if (typeof navigator === 'undefined') return false
+
+  const nav = navigator as NavigatorWithMobileHint
+  if (nav.userAgentData?.mobile === true) return true
+
+  const ua = nav.userAgent || ''
+  if (/Android/i.test(ua) && /Mobile/i.test(ua)) return true
+  if (/iPhone|iPod/i.test(ua)) return true
+  if (/iPad/i.test(ua)) return true
+
+  // iPadOS 13+ reports as Mac; touch-capable "Mac" is treated as mobile here.
+  if (nav.platform === 'MacIntel' && nav.maxTouchPoints > 1) return true
+
+  return false
+}
+
+/**
+ * True when the app can rely on a local workspace folder via the File System
+ * Access API on a desktop-class browser. Android/iOS may pass the API probe
+ * alone but still fail atomic writes — gate create/import on this instead.
+ */
+export function isLocalWorkspaceFolderAvailable(): boolean {
+  return isFileSystemAccessSupported() && !isLikelyMobileBrowser()
+}

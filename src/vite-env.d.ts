@@ -14,6 +14,12 @@ interface ImportMetaEnv {
   readonly VITE_ONRAMP_API_URL?: string
   /** Set to "true" to use sandbox- partnerUserRef and fake Apple/Google Pay sheets. */
   readonly VITE_ONRAMP_SANDBOX?: string
+  /** Enable Creative Pixels Seedance generate tab (server must also enable). */
+  readonly VITE_ENABLE_SEEDANCE_GENERATE?: string
+  /** Override Director batch Seedance (Higgsfield) concurrency (default 20). */
+  readonly VITE_DIRECTOR_BATCH_SEEDANCE_CONCURRENCY?: string
+  /** Alias for VITE_DIRECTOR_BATCH_SEEDANCE_CONCURRENCY. */
+  readonly VITE_DIRECTOR_BATCH_CONCURRENCY?: string
 }
 
 interface ImportMeta {

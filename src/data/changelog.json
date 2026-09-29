@@ -1,9 +1,24 @@
 {
   "current": {
     "version": "current",
-    "date": "2026-07-26",
+    "date": "2026-09-20",
     "groups": {
       "added": [
+        {
+          "title": "Phone-friendly Projects hub — menu sheet for Docs, Discord, GitHub, language, workspace, and import; wallet and New stay in the top bar"
+        },
+        {
+          "title": "Generate video from text with Seedance or Veo, then drop the clip onto the timeline"
+        },
+        {
+          "title": "Director \"Render all shots\" — one quote and confirm, live progress, retry failed shots, import to the media library"
+        },
+        {
+          "title": "Auto-place finished Director clips on a new video track aligned to your audio (storyboard timing or equal split)"
+        },
+        {
+          "title": "Manual \"Lay on timeline\" after a batch finishes, so you can re-lay without re-rendering"
+        },
         {
           "title": "Solid color and gradient layers in Motion"
         },
@@ -50,6 +65,30 @@
         }
       ],
       "improved": [
+        {
+          "title": "Invalid or inverted storyboard timecodes fall back to equal-split placement with a clear warning"
+        },
+        {
+          "title": "Re-lay on timeline shows a toast confirming crossfade or hard cuts"
+        },
+        {
+          "title": "Director batch quotes survive Agent Engine restarts"
+        },
+        {
+          "title": "Generate and Director batch quote errors show clearer, actionable messages"
+        },
+        {
+          "title": "Phone New Project is soft-gated when local workspace folder access isn't reliable; create errors show clear reconnect/desktop copy instead of raw browser storage messages"
+        },
+        {
+          "title": "Legacy migrate banner stacks cleanly on small screens"
+        },
+        {
+          "title": "Import is disabled with a clear tip when folder access isn't available (Safari / most mobile browsers)"
+        },
+        {
+          "title": "Paid Generate uses a clearer quote → pay → render flow with better errors when a job fails"
+        },
         {
           "title": "Filmstrips and waveforms stay visible and smooth while zooming the timeline"
         },
@@ -503,7 +542,7 @@
             "title": "Supertonic voice engine added to AI text-to-speech"
           },
           {
-            "title": "Install FreeCut as a desktop app, with prompts when new versions ship"
+            "title": "Install Pixels as a desktop app, with prompts when new versions ship"
           }
         ]
       }
