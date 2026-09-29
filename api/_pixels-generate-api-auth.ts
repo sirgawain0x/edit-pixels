@@ -29,7 +29,10 @@ export async function authorizePixelsGeneratePost(
 
   const token = getBearerToken(request) || (typeof body.token === 'string' ? body.token : null)
   if (!token) {
-    return { ok: false, response: Response.json({ error: 'missing authorization' }, { status: 401 }) }
+    return {
+      ok: false,
+      response: Response.json({ error: 'missing authorization' }, { status: 401 }),
+    }
   }
 
   const auth = await verifyPrivyAccessToken(
@@ -37,7 +40,10 @@ export async function authorizePixelsGeneratePost(
     typeof body.walletAddress === 'string' ? body.walletAddress : undefined,
   )
   if (!auth) {
-    return { ok: false, response: Response.json({ error: 'invalid authorization' }, { status: 401 }) }
+    return {
+      ok: false,
+      response: Response.json({ error: 'invalid authorization' }, { status: 401 }),
+    }
   }
 
   return { ok: true, auth, body }

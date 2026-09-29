@@ -123,9 +123,7 @@ function computeStoryboardPlacements(
   return shots.map((shot) => {
     const startSeconds = shot.startSeconds ?? 0
     const duration =
-      shot.endSeconds !== undefined
-        ? shot.endSeconds - startSeconds
-        : (shot.durationSeconds ?? 1)
+      shot.endSeconds !== undefined ? shot.endSeconds - startSeconds : (shot.durationSeconds ?? 1)
     return {
       shotId: shot.shotId,
       startFrame: audioStartFrame + secondsToOffsetFrames(startSeconds, fps),

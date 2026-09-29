@@ -22,7 +22,11 @@ describe('computeDirectorBatchPlacements', () => {
 
     expect(placements).toHaveLength(2)
     expect(placements[0]).toMatchObject({ shotId: 'shot-1', startFrame: 0, durationInFrames: 300 })
-    expect(placements[1]).toMatchObject({ shotId: 'shot-2', startFrame: 300, durationInFrames: 450 })
+    expect(placements[1]).toMatchObject({
+      shotId: 'shot-2',
+      startFrame: 300,
+      durationInFrames: 450,
+    })
   })
 
   it('uses startSeconds + durationSeconds in storyboard mode', () => {

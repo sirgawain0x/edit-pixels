@@ -1,7 +1,6 @@
 import type { DirectorStoryboardShotPayload } from './seedance-client'
 
-const SCENE_HEADER_RE =
-  /^(?:#{1,3}\s*)?(?:shot|scene)\s*(\d+)(?:\s*[—–:-]\s*(.+))?$/i
+const SCENE_HEADER_RE = /^(?:#{1,3}\s*)?(?:shot|scene)\s*(\d+)(?:\s*[—–:-]\s*(.+))?$/i
 const DURATION_RE =
   /(?:\((\d+(?:\.\d+)?)\s*s(?:ec(?:ond)?s?)?\)|(\d+(?:\.\d+)?)\s*s(?:ec(?:ond)?s?)\b|(\d+):(\d{2})(?:–|-)(\d+):(\d{2}))/i
 const ASPECT_RE = /\b(16:9|9:16|4:3|3:4|1:1|21:9)\b/
@@ -26,14 +25,19 @@ function splitStoryboardSections(markdown: string): string[] {
   const sceneLines = trimmed
     .split('\n')
     .map((line) => line.trim())
-    .filter((line) => /^(-|\*)?\s*(shot|scene)\s+\d+/i.test(line) || /^#{1,3}\s*(shot|scene)/i.test(line))
+    .filter(
+      (line) => /^(-|\*)?\s*(shot|scene)\s+\d+/i.test(line) || /^#{1,3}\s*(shot|scene)/i.test(line),
+    )
 
   if (sceneLines.length > 0) {
     const sections: string[] = []
     let current: string[] = []
     for (const line of trimmed.split('\n')) {
       const trimmedLine = line.trim()
-      if (/^(-|\*)?\s*(shot|scene)\s+\d+/i.test(trimmedLine) || /^#{1,3}\s*(shot|scene)/i.test(trimmedLine)) {
+      if (
+        /^(-|\*)?\s*(shot|scene)\s+\d+/i.test(trimmedLine) ||
+        /^#{1,3}\s*(shot|scene)/i.test(trimmedLine)
+      ) {
         if (current.length > 0) sections.push(current.join('\n').trim())
         current = [line]
       } else if (current.length > 0) {
@@ -51,9 +55,11 @@ function parseTimecodeToSeconds(minutes: string, seconds: string): number {
   return Number.parseInt(minutes, 10) * 60 + Number.parseInt(seconds, 10)
 }
 
-function extractTimingHints(
-  section: string,
-): { duration?: number; startSeconds?: number; endSeconds?: number } {
+function extractTimingHints(section: string): {
+  duration?: number
+  startSeconds?: number
+  endSeconds?: number
+} {
   const match = section.match(DURATION_RE)
   if (!match) return {}
 
@@ -91,14 +97,23 @@ function extractPrompt(section: string): string {
   const joined = body.join(' ').trim()
   if (joined) return joined
 
-  const header = lines[0]?.trim().replace(/^#{1,3}\s*/, '').replace(/^[-*]\s*/, '') ?? ''
+  const header =
+    lines[0]
+      ?.trim()
+      .replace(/^#{1,3}\s*/, '')
+      .replace(/^[-*]\s*/, '') ?? ''
   const headerMatch = header.match(SCENE_HEADER_RE)
   if (headerMatch?.[2]) return headerMatch[2].trim()
   return header
 }
 
 function shotIdFromSection(section: string, index: number): string {
-  const firstLine = section.split('\n')[0]?.trim().replace(/^#{1,3}\s*/, '').replace(/^[-*]\s*/, '') ?? ''
+  const firstLine =
+    section
+      .split('\n')[0]
+      ?.trim()
+      .replace(/^#{1,3}\s*/, '')
+      .replace(/^[-*]\s*/, '') ?? ''
   const match = firstLine.match(SCENE_HEADER_RE)
   if (match?.[1]) return `shot-${match[1]}`
   return `shot-${index + 1}`

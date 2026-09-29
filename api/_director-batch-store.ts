@@ -77,7 +77,11 @@ function shotClaimKey(batchConfirmId: string, shotId: string): string {
   return `${BATCH_SHOT_CLAIM_PREFIX}${batchConfirmId.trim()}:${shotId.trim()}`
 }
 
-async function persistJson(key: string, value: unknown, ttlSeconds = BATCH_TTL_SECONDS): Promise<void> {
+async function persistJson(
+  key: string,
+  value: unknown,
+  ttlSeconds = BATCH_TTL_SECONDS,
+): Promise<void> {
   if (!isRedisConfigured()) return
   const redis = await getRedis()
   if (!redis) return
@@ -315,7 +319,11 @@ export async function markDirectorBatchShotStarted(
   }
 
   memoryConfirms.set(confirm.batchConfirmId, next)
-  await persistJson(`${BATCH_CONFIRM_PREFIX}${confirm.batchConfirmId}`, next, BATCH_CONFIRM_REFRESH_SECONDS)
+  await persistJson(
+    `${BATCH_CONFIRM_PREFIX}${confirm.batchConfirmId}`,
+    next,
+    BATCH_CONFIRM_REFRESH_SECONDS,
+  )
   return next
 }
 
@@ -326,9 +334,7 @@ export function findBatchConfirmShot(
 ): DirectorBatchConfirmShot | null {
   const sid = shotId.trim()
   const rid = requestId.trim()
-  return (
-    confirm.shots.find((shot) => shot.shotId === sid && shot.requestId === rid) ?? null
-  )
+  return confirm.shots.find((shot) => shot.shotId === sid && shot.requestId === rid) ?? null
 }
 
 /** Test-only reset. */

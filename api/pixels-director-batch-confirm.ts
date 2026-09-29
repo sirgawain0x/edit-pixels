@@ -14,7 +14,11 @@ function parseSelections(raw: unknown): Array<{
   requestId: string
 }> | null {
   if (!Array.isArray(raw)) return null
-  const selections = []
+  const selections: Array<{
+    shotId: string
+    provider: PixelsRenderProvider
+    requestId: string
+  }> = []
   for (const item of raw) {
     if (typeof item !== 'object' || item === null || Array.isArray(item)) return null
     const row = item as Record<string, unknown>
@@ -77,8 +81,7 @@ export async function POST(request: Request): Promise<Response> {
   return Response.json({
     ...result.confirm,
     enqueue: {
-      note:
-        'Call generateEndpoint per job with batchConfirmId, shotId, requestId, and generate fields from the batch quote. Payment is already bound — do not send paymentTxHash on per-shot calls.',
+      note: 'Call generateEndpoint per job with batchConfirmId, shotId, requestId, and generate fields from the batch quote. Payment is already bound — do not send paymentTxHash on per-shot calls.',
       batchConfirmId: result.confirm.batchConfirmId,
     },
   })

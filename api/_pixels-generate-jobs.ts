@@ -173,9 +173,7 @@ export async function getPixelsGenerateJob(id: string): Promise<PixelsGenerateJo
   return entry.job
 }
 
-export async function getPixelsGenerateJobIdByVeoTask(
-  veoTaskId: string,
-): Promise<string | null> {
+export async function getPixelsGenerateJobIdByVeoTask(veoTaskId: string): Promise<string | null> {
   const trimmed = veoTaskId.trim()
   if (!trimmed) return null
 

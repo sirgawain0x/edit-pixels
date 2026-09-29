@@ -33,7 +33,8 @@ describe('pixels generate billing', () => {
 
   describe('canCancelPixelsGenerateJob', () => {
     it('allows cancel only while processing without output', async () => {
-      const { canCancelPixelsGenerateJob } = await import('../../../../api/_pixels-generate-payment')
+      const { canCancelPixelsGenerateJob } =
+        await import('../../../../api/_pixels-generate-payment')
       expect(
         canCancelPixelsGenerateJob({
           id: 'j1',

@@ -167,9 +167,7 @@ export async function quoteDirectorStoryboardBatch(input: {
     const recommendedWei =
       recommendedProvider === 'seedance' ? seedanceQuote.minCrtvaiWei : veoQuote.crtvaiWei
     const recommendedUsdc6 =
-      recommendedProvider === 'seedance'
-        ? seedanceQuote.estimatedUsdc6
-        : veoQuote.estimatedUsdc6
+      recommendedProvider === 'seedance' ? seedanceQuote.estimatedUsdc6 : veoQuote.estimatedUsdc6
 
     allVeoWei += veoQuote.crtvaiWei
     allSeedanceWei += seedanceQuote.minCrtvaiWei
@@ -314,9 +312,7 @@ export function bindDirectorBatchSelections(
       return { ok: false, error: 'selection_mismatch' }
     }
     weiValues.push(
-      BigInt(
-        selection.provider === 'veo' ? stored.veoCrtvaiWei : stored.seedanceCrtvaiWei,
-      ),
+      BigInt(selection.provider === 'veo' ? stored.veoCrtvaiWei : stored.seedanceCrtvaiWei),
     )
   }
 

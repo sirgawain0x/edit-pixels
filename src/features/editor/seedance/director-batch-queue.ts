@@ -27,11 +27,7 @@ export function buildBatchSelections(
     shotId: shot.shotId,
     provider:
       perShotOverrides?.[shot.shotId] ??
-      (path === 'allVeo'
-        ? 'veo'
-        : path === 'allSeedance'
-          ? 'seedance'
-          : shot.recommendedProvider),
+      (path === 'allVeo' ? 'veo' : path === 'allSeedance' ? 'seedance' : shot.recommendedProvider),
     requestId: crypto.randomUUID(),
   }))
 }
@@ -60,11 +56,7 @@ export function totalCrtvaiForPath(
   for (const shot of quote.shots) {
     const provider =
       perShotOverrides[shot.shotId] ??
-      (path === 'allVeo'
-        ? 'veo'
-        : path === 'allSeedance'
-          ? 'seedance'
-          : shot.recommendedProvider)
+      (path === 'allVeo' ? 'veo' : path === 'allSeedance' ? 'seedance' : shot.recommendedProvider)
     const line = provider === 'veo' ? shot.veo : shot.seedance
     totalWei += BigInt(line.crtvaiRequired)
   }
@@ -129,18 +121,14 @@ export async function runWithConcurrency<T>(
 
 export function resetFailedJobsForRetry(jobs: DirectorBatchShotJob[]): DirectorBatchShotJob[] {
   return jobs.map((job) =>
-    job.status === 'failed'
-      ? { ...job, status: 'queued', progress: 0, error: undefined }
-      : job,
+    job.status === 'failed' ? { ...job, status: 'queued', progress: 0, error: undefined } : job,
   )
 }
 
 /** After a page reload, in-flight shots should be re-enqueued (browser killed mid-poll). */
 export function prepareJobsForResume(jobs: DirectorBatchShotJob[]): DirectorBatchShotJob[] {
   return jobs.map((job) =>
-    job.status === 'running'
-      ? { ...job, status: 'queued', progress: 0 }
-      : job,
+    job.status === 'running' ? { ...job, status: 'queued', progress: 0 } : job,
   )
 }
 

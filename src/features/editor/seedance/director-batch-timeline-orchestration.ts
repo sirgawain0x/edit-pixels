@@ -27,9 +27,7 @@ export function resolveDirectorBatchPanelSession(shotsKey: string): DirectorBatc
   const saved = loadDirectorBatchJob()
   const savedShotIds = saved?.jobs.map((job) => job.shotId).join(',') ?? ''
   if (saved && savedShotIds === shotsKey) {
-    const hasRunning = saved.jobs.some(
-      (job) => job.status === 'queued' || job.status === 'running',
-    )
+    const hasRunning = saved.jobs.some((job) => job.status === 'queued' || job.status === 'running')
     const hasFailed = saved.jobs.some((job) => job.status === 'failed')
     return {
       activeJob: saved,
@@ -152,8 +150,7 @@ export async function maybeAutoLayDirectorBatch(input: {
   if (!hasAudio) {
     toast.warning(
       t('director.batch.noAudioForTimeline', {
-        defaultValue:
-          'Clips imported — place audio on the timeline, then use Lay on timeline.',
+        defaultValue: 'Clips imported — place audio on the timeline, then use Lay on timeline.',
       }),
     )
     return

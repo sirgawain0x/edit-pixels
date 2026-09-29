@@ -15,7 +15,11 @@ import {
   quoteSeedanceUsdc6,
   type SeedanceResolution,
 } from './_seedance-pricing.js'
-import { isFlowBillingEnforced, verifyFlowPayment, type PaymentVerifyResult } from './flow-billing.js'
+import {
+  isFlowBillingEnforced,
+  verifyFlowPayment,
+  type PaymentVerifyResult,
+} from './flow-billing.js'
 
 export interface SeedanceBillingQuote {
   quoteId: string
@@ -111,9 +115,13 @@ async function persistReservation(reservation: SeedanceBillingReservation): Prom
   if (!redis) return
 
   const ttlSeconds = Math.max(60, Math.ceil((reservation.expiresAtMs - Date.now()) / 1000))
-  await redis.set(`${RESERVATION_KEY_PREFIX}${reservation.reservationId}`, JSON.stringify(reservation), {
-    ex: ttlSeconds,
-  })
+  await redis.set(
+    `${RESERVATION_KEY_PREFIX}${reservation.reservationId}`,
+    JSON.stringify(reservation),
+    {
+      ex: ttlSeconds,
+    },
+  )
 }
 
 async function loadReservation(reservationId: string): Promise<SeedanceBillingReservation | null> {

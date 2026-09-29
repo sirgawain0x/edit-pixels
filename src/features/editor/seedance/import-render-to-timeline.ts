@@ -1,4 +1,7 @@
-import { importMediaLibraryService, useMediaLibraryStore } from '@/features/editor/deps/media-library'
+import {
+  importMediaLibraryService,
+  useMediaLibraryStore,
+} from '@/features/editor/deps/media-library'
 import { blobUrlManager } from '@/infrastructure/browser/blob-url-manager'
 import { insertGeneratedVideoOnNewTrack } from '../utils/insert-generated-video'
 
