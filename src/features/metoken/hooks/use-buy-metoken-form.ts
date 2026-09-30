@@ -14,7 +14,7 @@ import {
   readCrtvaiMintQuote,
 } from '@/config/metoken'
 import { buildBuyMetokenOps } from '@/features/metoken/api/buy-metoken'
-import { moveUsdcToSmartWallet } from '@/hooks/usdc-wallet-transfers'
+import { moveUsdcToSmartWalletPreferGasless } from '@/hooks/usdc-wallet-transfers'
 import { totalUsdcForPurchase } from '@/features/metoken/deps/credits-contract'
 import {
   getErrorMessage,
@@ -29,11 +29,14 @@ export function useBuyMetokenForm(
   onOpenChange: (open: boolean) => void,
   initialUsdcAmount?: string,
 ) {
-  const { account, signerAddress, chain, walletClient } = useWalletContext()
+  const { account, signerAddress, chain, walletClient, switchChain } = useWalletContext()
   const queryClient = useQueryClient()
   const { sendOps, ready: walletReady } = useSmartWalletOps()
   const { balance: usdcBalance, formatted: usdcFormatted } = useUsdcBalance(chain, account)
-  const { balance: signerUsdcBalance } = useUsdcBalance(chain, signerAddress)
+  const { balance: signerUsdcBalance, formatted: signerUsdcFormatted } = useUsdcBalance(
+    chain,
+    signerAddress,
+  )
   const { formatted: crtvaiFormatted, symbol } = useCrtvaiBalance(account)
 
   const [usdcInput, setUsdcInput] = useState('')
@@ -66,7 +69,7 @@ export function useBuyMetokenForm(
   }, [usdcInput, usdcBalance, requiredUsdc6])
 
   const needsEoaTransfer = useMemo(() => {
-    if (!signerUsdcBalance || !usdcBalance || requiredUsdc6 === 0) return false
+    if (!onBase || !signerUsdcBalance || !usdcBalance || requiredUsdc6 === 0) return false
     try {
       const smartRaw = parseUnits(usdcBalance, USDC_DECIMALS)
       const eoaRaw = parseUnits(signerUsdcBalance, USDC_DECIMALS)
@@ -74,7 +77,7 @@ export function useBuyMetokenForm(
     } catch {
       return false
     }
-  }, [signerUsdcBalance, usdcBalance, requiredUsdc6])
+  }, [onBase, signerUsdcBalance, usdcBalance, requiredUsdc6])
 
   useEffect(() => {
     if (!open) return
@@ -138,20 +141,24 @@ export function useBuyMetokenForm(
 
     setTransferring(true)
     try {
-      await moveUsdcToSmartWallet({
+      if (chain.id !== BASE_CHAIN_ID) {
+        await switchChain(BASE_CHAIN_ID)
+      }
+      await moveUsdcToSmartWalletPreferGasless({
         walletClient,
-        chain,
+        chain: base,
         smartAccount: account,
         signerAddress,
         signerUsdcBalance,
         smartUsdcBalance: usdcBalance,
         requiredUsdc6,
+        sendOps,
       })
       toast.success('USDC moved to smart wallet')
-      invalidateUsdcBalance(queryClient, chain.id, account)
-      invalidateUsdcBalance(queryClient, chain.id, signerAddress)
+      invalidateUsdcBalance(queryClient, BASE_CHAIN_ID, account)
+      invalidateUsdcBalance(queryClient, BASE_CHAIN_ID, signerAddress)
     } catch (error) {
-      toast.error(`Transfer failed: ${getErrorMessage(error)}`)
+      toast.error(getErrorMessage(error))
     } finally {
       setTransferring(false)
     }
@@ -163,6 +170,8 @@ export function useBuyMetokenForm(
     usdcBalance,
     requiredUsdc6,
     chain,
+    switchChain,
+    sendOps,
     queryClient,
   ])
 
@@ -207,6 +216,7 @@ export function useBuyMetokenForm(
     transferring,
     onBase,
     usdcFormatted,
+    signerUsdcFormatted,
     crtvaiFormatted,
     symbol,
     hasSufficientUsdc,
