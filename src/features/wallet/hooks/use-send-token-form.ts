@@ -16,6 +16,7 @@ import {
   computeMaxSendableWei,
   formatMaxSendAmount,
   hasInsufficientSendBalance,
+  needsUsdcMoveToSmartWallet,
   parsePositiveAmountWei,
   type SendToken,
 } from '@/features/wallet/lib/send-token-math'
@@ -91,35 +92,29 @@ export function useSendTokenForm(open: boolean, onOpenChange: (open: boolean) =>
     }
   }, [token, amountWei, signerUsdcBalance, onBase, insufficientBalance])
 
-  const needsMoveToSmartWallet = useMemo(() => {
-    if (
-      !onBase ||
-      token !== 'usdc' ||
-      !amountWei ||
-      !account ||
-      !signerUsdcBalance ||
-      !usdcBalance
-    ) {
-      return false
-    }
-    try {
-      const smartRaw = parseUnits(usdcBalance, USDC_DECIMALS)
-      const signerRaw = parseUnits(signerUsdcBalance, USDC_DECIMALS)
-      const required = amountWei + BigInt(gasBufferUsdc6)
-      return smartRaw < required && signerRaw > 0n && !canSendFromSigner
-    } catch {
-      return false
-    }
-  }, [
-    onBase,
-    token,
-    amountWei,
-    account,
-    signerUsdcBalance,
-    usdcBalance,
-    gasBufferUsdc6,
-    canSendFromSigner,
-  ])
+  const needsMoveToSmartWallet = useMemo(
+    () =>
+      needsUsdcMoveToSmartWallet({
+        onBase,
+        token,
+        amountWei,
+        hasSmartAccount: Boolean(account),
+        signerUsdcBalance,
+        usdcBalance,
+        gasBufferUsdc6,
+        canSendFromSigner,
+      }),
+    [
+      onBase,
+      token,
+      amountWei,
+      account,
+      signerUsdcBalance,
+      usdcBalance,
+      gasBufferUsdc6,
+      canSendFromSigner,
+    ],
+  )
 
   const handleMax = useCallback(() => {
     setAmountInput(formatMaxSendAmount(maxSendableWei, decimals))

@@ -55,3 +55,37 @@ export function formatMaxSendAmount(maxSendableWei: bigint, decimals: number): s
   if (maxSendableWei <= 0n) return '0'
   return formatUnits(maxSendableWei, decimals)
 }
+
+export interface NeedsUsdcMoveToSmartWalletParams {
+  onBase: boolean
+  token: SendToken
+  amountWei: bigint | null
+  hasSmartAccount: boolean
+  signerUsdcBalance: string | null
+  usdcBalance: string | null
+  gasBufferUsdc6: number
+  canSendFromSigner: boolean
+}
+
+/** True when USDC for a send must be pulled from the signer EOA onto the smart wallet. */
+export function needsUsdcMoveToSmartWallet({
+  onBase,
+  token,
+  amountWei,
+  hasSmartAccount,
+  signerUsdcBalance,
+  usdcBalance,
+  gasBufferUsdc6,
+  canSendFromSigner,
+}: NeedsUsdcMoveToSmartWalletParams): boolean {
+  if (!onBase || token !== 'usdc' || !amountWei || !hasSmartAccount) return false
+  if (!signerUsdcBalance || !usdcBalance || canSendFromSigner) return false
+  try {
+    const smartRaw = parseUnits(usdcBalance, USDC_DECIMALS)
+    const signerRaw = parseUnits(signerUsdcBalance, USDC_DECIMALS)
+    const required = amountWei + BigInt(gasBufferUsdc6)
+    return smartRaw < required && signerRaw > 0n
+  } catch {
+    return false
+  }
+}

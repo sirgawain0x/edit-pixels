@@ -13,7 +13,7 @@ import { getBasePublicClient } from '@/config/base-client'
 import type { SendOpsResult, SmartWalletOp } from '@/hooks/use-smart-wallet-ops'
 
 /** Minimum native ETH (wei) required before attempting an unsponsored EOA transfer. */
-export const MIN_EOA_GAS_WEI = 50_000_000_000_000n // 0.00005 ETH
+const MIN_EOA_GAS_WEI = 50_000_000_000_000n // 0.00005 ETH
 
 /** EIP-712 domain for native USDC on Base (Circle FiatTokenV2). */
 export const USDC_BASE_EIP712_DOMAIN = {
@@ -181,7 +181,7 @@ export interface MoveUsdcToSmartWalletParams {
 }
 
 /** Unsponsored EOA ERC-20 transfer (requires Base ETH for gas). */
-export async function moveUsdcToSmartWallet({
+async function moveUsdcToSmartWallet({
   walletClient,
   chain,
   smartAccount,
@@ -223,7 +223,7 @@ export interface MoveUsdcToSmartWalletGaslessParams extends MoveUsdcToSmartWalle
  * Gasless EOA→SCA USDC move: signer signs EIP-3009 ReceiveWithAuthorization;
  * the smart wallet submits receiveWithAuthorization as a sponsored UserOp.
  */
-export async function moveUsdcToSmartWalletGasless({
+async function moveUsdcToSmartWalletGasless({
   walletClient,
   smartAccount,
   signerAddress,
