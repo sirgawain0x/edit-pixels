@@ -21,27 +21,40 @@ function getErrorCause(error: unknown): unknown {
   return (error as { cause?: unknown }).cause
 }
 
+const USER_REJECTION_MESSAGE_HINTS = [
+  'user rejected',
+  'user denied',
+  'rejected the request',
+] as const
+
+function errorMessageLooksLikeUserRejection(error: Error): boolean {
+  const message = error.message.toLowerCase()
+  for (const hint of USER_REJECTION_MESSAGE_HINTS) {
+    if (message.includes(hint)) return true
+  }
+  return false
+}
+
+function isUserRejectedWalletErrorRecord(value: object): boolean {
+  const record = value as Record<string, unknown>
+  return (
+    record.code === UserRejectedRequestError.code ||
+    record.name === 'UserRejectedRequestError'
+  )
+}
+
+function walletErrorNodeIsUserRejection(node: unknown): boolean {
+  if (node instanceof UserRejectedRequestError) return true
+  if (typeof node === 'object' && node !== null && isUserRejectedWalletErrorRecord(node)) {
+    return true
+  }
+  return node instanceof Error && errorMessageLooksLikeUserRejection(node)
+}
+
 /** True when the wallet declined signing or sending (EIP-1193 4001 and common wrappers). */
 export function isUserRejectedWalletRequest(error: unknown): boolean {
   for (let current: unknown = error; current != null; current = getErrorCause(current)) {
-    if (current instanceof UserRejectedRequestError) return true
-
-    if (typeof current === 'object') {
-      const record = current as Record<string, unknown>
-      if (record.code === UserRejectedRequestError.code) return true
-      if (record.name === 'UserRejectedRequestError') return true
-    }
-
-    if (current instanceof Error) {
-      const message = current.message.toLowerCase()
-      if (
-        message.includes('user rejected') ||
-        message.includes('user denied') ||
-        message.includes('rejected the request')
-      ) {
-        return true
-      }
-    }
+    if (walletErrorNodeIsUserRejection(current)) return true
   }
   return false
 }
