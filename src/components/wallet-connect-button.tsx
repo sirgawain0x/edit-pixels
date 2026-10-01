@@ -31,8 +31,8 @@ import {
 } from '@/components/ui/select'
 import { SWITCHABLE_CHAINS } from '@/config/chains'
 import { BuyUsdcOnrampModal } from '@/features/onramp'
-import { BuyCreditsModal } from '@/features/credits'
 import { EarnModal } from '@/features/earn'
+import { BuyMetokenModal } from '@/features/metoken'
 import { ReceiveFundsModal, SendTokenModal } from '@/features/wallet'
 import { cn } from '@/shared/ui/cn'
 
@@ -126,7 +126,7 @@ function ConnectedWalletMenu({
   onDisconnect,
 }: ConnectedWalletMenuProps) {
   const [copied, setCopied] = useState(false)
-  const [buyCreditsOpen, setBuyCreditsOpen] = useState(false)
+  const [buyCrtvaiOpen, setBuyCrtvaiOpen] = useState(false)
   const [buyOnrampOpen, setBuyOnrampOpen] = useState(false)
   const [receiveOpen, setReceiveOpen] = useState(false)
   const [sendOpen, setSendOpen] = useState(false)
@@ -228,7 +228,7 @@ function ConnectedWalletMenu({
           </DropdownMenuItem>
 
           <DropdownMenuItem
-            onClick={() => setBuyCreditsOpen(true)}
+            onClick={() => setBuyCrtvaiOpen(true)}
             disabled={!smartAccountActionsReady}
             className="flex cursor-pointer items-center gap-2"
             aria-label="Buy CRTVAI"
@@ -265,7 +265,7 @@ function ConnectedWalletMenu({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <BuyCreditsModal open={buyCreditsOpen} onOpenChange={setBuyCreditsOpen} />
+      <BuyMetokenModal open={buyCrtvaiOpen} onOpenChange={setBuyCrtvaiOpen} />
       <BuyUsdcOnrampModal open={buyOnrampOpen} onOpenChange={setBuyOnrampOpen} />
       <ReceiveFundsModal open={receiveOpen} onOpenChange={setReceiveOpen} />
       <SendTokenModal open={sendOpen} onOpenChange={setSendOpen} />
