@@ -15,11 +15,17 @@ import { ALCHEMY_GAS_MAX_USDC6, ALCHEMY_GAS_POLICY_TYPE, ALCHEMY_POLICY_ID } fro
 /** Cap on USDC spent on gas per user operation (6 decimals). Default $1. */
 export const DEFAULT_MAX_GAS_USDC6 = 1_000_000
 
-/** Extra USDC (6 decimals) to reserve for ERC-20 gas when buying credit packs. */
+/**
+ * USDC (6 decimals) a balance check holds back for ERC-20 gas.
+ * The paymaster cap is a charge ceiling; recent Base user operations cost a few cents.
+ */
+const PURCHASE_GAS_RESERVE_USDC6 = 50_000
+
+/** Extra USDC (6 decimals) to reserve so an ERC-20 paymaster can collect gas. */
 export function getPurchaseGasBufferUsdc6(chainId: number): number {
   if (ALCHEMY_GAS_POLICY_TYPE !== 'erc20' || !ALCHEMY_POLICY_ID) return 0
   if (!(chainId in USDC_ADDRESS_BY_CHAIN_ID)) return 0
-  return ALCHEMY_GAS_MAX_USDC6
+  return PURCHASE_GAS_RESERVE_USDC6
 }
 
 export interface Erc20PaymasterCapabilities {

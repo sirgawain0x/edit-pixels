@@ -40,10 +40,6 @@ export function BuyMetokenModal({ open, onOpenChange, initialUsdcAmount }: BuyMe
             <span className="font-medium">{form.usdcFormatted} USDC</span>
           </div>
           <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Signer wallet USDC:</span>
-            <span className="font-medium">{form.signerUsdcFormatted} USDC</span>
-          </div>
-          <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Smart wallet {form.symbol}:</span>
             <span className="font-medium">
               {form.crtvaiFormatted} {form.symbol}
