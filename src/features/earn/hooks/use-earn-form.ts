@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   createPublicClient,
   erc20Abi,
+  formatUnits,
   http,
   parseAbi,
   parseUnits,
@@ -22,8 +23,8 @@ import {
 import { USDC_DECIMALS } from '@/config/metoken'
 import { USDC_ADDRESS_BY_CHAIN_ID } from '@/config/chains'
 import { ALCHEMY_API_KEY } from '@/config/alchemy'
-import { getBasePublicClient } from '@/config/base-client'
 import { buildErc20TransferOp, parsePositiveAmountWei } from '@/features/earn/deps/wallet'
+import { moveUsdcToSmartWalletPreferGasless } from '@/hooks/usdc-wallet-transfers'
 import {
   pollEarnActionUntilSettled,
   postEarnDeposit,
@@ -173,6 +174,24 @@ export function useEarnForm(open: boolean) {
     if (raw <= 0n) return
     const usdcAddress = USDC_ADDRESS_BY_CHAIN_ID[chain.id]
     if (!usdcAddress) return
+
+    // Base: prefer gasless EIP-3009 pull (signer often has no ETH).
+    if (chain.id === 8453) {
+      const signerUsdcBalance = formatUnits(raw, USDC_DECIMALS)
+      await moveUsdcToSmartWalletPreferGasless({
+        walletClient,
+        chain,
+        smartAccount: account,
+        signerAddress,
+        signerUsdcBalance,
+        smartUsdcBalance: '0',
+        requiredUsdc6: 0,
+        amountWei: raw,
+        sendOps,
+      })
+      return
+    }
+
     const hash = await walletClient.writeContract({
       address: usdcAddress,
       abi: erc20Abi,
@@ -181,17 +200,12 @@ export function useEarnForm(open: boolean) {
       chain,
       account: signerAddress,
     })
-    // Base has a dedicated client; other chains wait via the same RPC used for balances.
-    if (chain.id === 8453) {
-      await getBasePublicClient().waitForTransactionReceipt({ hash })
-    } else {
-      const rpcUrl = getRpcUrl(chain)
-      if (rpcUrl) {
-        const client = createPublicClient({ chain, transport: http(rpcUrl) })
-        await client.waitForTransactionReceipt({ hash })
-      }
+    const rpcUrl = getRpcUrl(chain)
+    if (rpcUrl) {
+      const client = createPublicClient({ chain, transport: http(rpcUrl) })
+      await client.waitForTransactionReceipt({ hash })
     }
-  }, [account, chain, signerAddress, walletClient])
+  }, [account, chain, sendOps, signerAddress, walletClient])
 
   const submitDeposit = useCallback(async () => {
     if (!amountWei || !amountInput || insufficientDeposit) return

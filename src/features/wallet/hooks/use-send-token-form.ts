@@ -11,11 +11,12 @@ import { getErrorMessage, invalidateUsdcBalance } from '@/hooks/invalidate-walle
 import { CRTVAI_DECIMALS, USDC_DECIMALS } from '@/config/metoken'
 import { getPurchaseGasBufferUsdc6 } from '@/config/gas-sponsorship'
 import { submitTokenSend, tokenSendErrorMessage } from '@/features/wallet/api/submit-token-send'
-import { moveUsdcToSmartWallet } from '@/hooks/usdc-wallet-transfers'
+import { moveUsdcToSmartWalletPreferGasless } from '@/hooks/usdc-wallet-transfers'
 import {
   computeMaxSendableWei,
   formatMaxSendAmount,
   hasInsufficientSendBalance,
+  needsUsdcMoveToSmartWallet,
   parsePositiveAmountWei,
   type SendToken,
 } from '@/features/wallet/lib/send-token-math'
@@ -23,7 +24,7 @@ import {
 const BASE_CHAIN_ID = base.id
 
 export function useSendTokenForm(open: boolean, onOpenChange: (open: boolean) => void) {
-  const { account, signerAddress, chain, walletClient } = useWalletContext()
+  const { account, signerAddress, chain, walletClient, switchChain } = useWalletContext()
   const queryClient = useQueryClient()
   const { sendOps, ready: walletReady } = useSmartWalletOps()
   const { balance: usdcBalance, formatted: usdcFormatted } = useUsdcBalance(chain, account)
@@ -91,18 +92,29 @@ export function useSendTokenForm(open: boolean, onOpenChange: (open: boolean) =>
     }
   }, [token, amountWei, signerUsdcBalance, onBase, insufficientBalance])
 
-  const needsMoveToSmartWallet = useMemo(() => {
-    if (token !== 'usdc' || !amountWei || !account || !signerUsdcBalance || !usdcBalance)
-      return false
-    try {
-      const smartRaw = parseUnits(usdcBalance, USDC_DECIMALS)
-      const signerRaw = parseUnits(signerUsdcBalance, USDC_DECIMALS)
-      const required = amountWei + BigInt(gasBufferUsdc6)
-      return smartRaw < required && signerRaw > 0n && !canSendFromSigner
-    } catch {
-      return false
-    }
-  }, [token, amountWei, account, signerUsdcBalance, usdcBalance, gasBufferUsdc6, canSendFromSigner])
+  const needsMoveToSmartWallet = useMemo(
+    () =>
+      needsUsdcMoveToSmartWallet({
+        onBase,
+        token,
+        amountWei,
+        hasSmartAccount: Boolean(account),
+        signerUsdcBalance,
+        usdcBalance,
+        gasBufferUsdc6,
+        canSendFromSigner,
+      }),
+    [
+      onBase,
+      token,
+      amountWei,
+      account,
+      signerUsdcBalance,
+      usdcBalance,
+      gasBufferUsdc6,
+      canSendFromSigner,
+    ],
+  )
 
   const handleMax = useCallback(() => {
     setAmountInput(formatMaxSendAmount(maxSendableWei, decimals))
@@ -114,21 +126,25 @@ export function useSendTokenForm(open: boolean, onOpenChange: (open: boolean) =>
 
     setTransferring(true)
     try {
+      if (chain.id !== BASE_CHAIN_ID) {
+        await switchChain(BASE_CHAIN_ID)
+      }
       const requiredUsdc6 = Number(amountWei + BigInt(gasBufferUsdc6))
-      await moveUsdcToSmartWallet({
+      await moveUsdcToSmartWalletPreferGasless({
         walletClient,
-        chain,
+        chain: base,
         smartAccount: account,
         signerAddress,
         signerUsdcBalance,
         smartUsdcBalance: usdcBalance,
         requiredUsdc6,
+        sendOps,
       })
       toast.success('USDC moved to smart wallet')
-      invalidateUsdcBalance(queryClient, chain.id, account)
-      invalidateUsdcBalance(queryClient, chain.id, signerAddress)
+      invalidateUsdcBalance(queryClient, BASE_CHAIN_ID, account)
+      invalidateUsdcBalance(queryClient, BASE_CHAIN_ID, signerAddress)
     } catch (error) {
-      toast.error(`Transfer failed: ${getErrorMessage(error)}`)
+      toast.error(getErrorMessage(error))
     } finally {
       setTransferring(false)
     }
@@ -138,9 +154,11 @@ export function useSendTokenForm(open: boolean, onOpenChange: (open: boolean) =>
     signerAddress,
     signerUsdcBalance,
     chain,
+    switchChain,
     amountWei,
     gasBufferUsdc6,
     usdcBalance,
+    sendOps,
     queryClient,
   ])
 

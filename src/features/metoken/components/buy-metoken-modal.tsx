@@ -36,11 +36,15 @@ export function BuyMetokenModal({ open, onOpenChange, initialUsdcAmount }: BuyMe
 
         <div className="space-y-4 py-2">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Wallet USDC:</span>
+            <span className="text-muted-foreground">Smart wallet USDC:</span>
             <span className="font-medium">{form.usdcFormatted} USDC</span>
           </div>
           <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Wallet {form.symbol}:</span>
+            <span className="text-muted-foreground">Signer wallet USDC:</span>
+            <span className="font-medium">{form.signerUsdcFormatted} USDC</span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Smart wallet {form.symbol}:</span>
             <span className="font-medium">
               {form.crtvaiFormatted} {form.symbol}
             </span>
@@ -94,7 +98,10 @@ export function BuyMetokenModal({ open, onOpenChange, initialUsdcAmount }: BuyMe
           )}
           {form.needsEoaTransfer && (
             <div className="space-y-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-              <p>USDC is in your signer wallet. Move it to your smart wallet before minting.</p>
+              <p>
+                USDC is in your signer wallet ({form.signerUsdcFormatted} USDC). Move it to your smart
+                wallet before minting — this uses a gasless signature (no ETH required).
+              </p>
               <Button
                 type="button"
                 variant="outline"
