@@ -92,15 +92,13 @@ export function BuyMetokenModal({ open, onOpenChange, initialUsdcAmount }: BuyMe
             <p className="text-xs text-amber-500">Switch to Base network to mint CRTVAI.</p>
           )}
           {!form.hasSufficientUsdc && form.usdcInput && !form.needsEoaTransfer && (
-            <p className="text-xs text-destructive">
-              Insufficient USDC balance (includes gas reserve).
-            </p>
+            <p className="text-xs text-destructive">Insufficient USDC balance.</p>
           )}
           {form.needsEoaTransfer && (
             <div className="space-y-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
               <p>
-                USDC is in your signer wallet ({form.signerUsdcFormatted} USDC). Move it to your smart
-                wallet before minting — this uses a gasless signature (no ETH required).
+                USDC is in your signer wallet ({form.signerUsdcFormatted} USDC). Move it to your
+                smart wallet before minting — this uses a gasless signature (no ETH required).
               </p>
               <Button
                 type="button"
@@ -116,7 +114,7 @@ export function BuyMetokenModal({ open, onOpenChange, initialUsdcAmount }: BuyMe
                     Moving USDC…
                   </>
                 ) : (
-                  'Move USDC to smart wallet'
+                  'Move all USDC to smart wallet'
                 )}
               </Button>
             </div>

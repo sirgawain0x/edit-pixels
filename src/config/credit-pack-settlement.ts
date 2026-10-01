@@ -43,6 +43,17 @@ export interface CreditPackDefinition {
  * The three retail packs. IDs 0/1/2 must match the `setPack` calldata @boo
  * registers on-chain. $0.10/credit: $20→200, $50→500, $100→1000.
  */
+export const SETTLEMENT_USDC6_PER_CREDIT = 100_000
+
+/** Display USDC string for a whole credit count at the fixed retail rate ($0.10/credit). */
+export function usdcDisplayFromCredits(credits: number): string {
+  if (!Number.isFinite(credits) || credits < 1) return ''
+  const wholeCredits = Math.floor(credits)
+  if (wholeCredits < 1) return ''
+  const usdc6 = wholeCredits * SETTLEMENT_USDC6_PER_CREDIT
+  return (usdc6 / 1_000_000).toFixed(2)
+}
+
 export const SETTLEMENT_CREDIT_PACKS: readonly CreditPackDefinition[] = [
   {
     id: 0,
