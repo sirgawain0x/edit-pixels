@@ -56,7 +56,7 @@ export function SendTokenFundingHints({
                 Moving USDC…
               </>
             ) : (
-              'Move USDC to smart wallet'
+              'Move all USDC to smart wallet'
             )}
           </Button>
         </div>

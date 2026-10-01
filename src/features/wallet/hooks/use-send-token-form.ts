@@ -138,6 +138,7 @@ export function useSendTokenForm(open: boolean, onOpenChange: (open: boolean) =>
         signerUsdcBalance,
         smartUsdcBalance: usdcBalance,
         requiredUsdc6,
+        amountWei: parseUnits(signerUsdcBalance, USDC_DECIMALS),
         sendOps,
       })
       toast.success('USDC moved to smart wallet')
