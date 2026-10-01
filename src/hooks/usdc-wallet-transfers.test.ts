@@ -9,6 +9,7 @@ import {
   recoverTypedDataAddress,
   serializeSignature,
   UserRejectedRequestError,
+  type WalletClient,
 } from 'viem'
 import { USDC_BASE_ADDRESS } from '@/config/metoken'
 import {
@@ -231,24 +232,25 @@ describe('isUserRejectedWalletRequest', () => {
 })
 
 describe('moveUsdcToSmartWalletPreferGasless', () => {
-  const baseParams = {
-    walletClient: { signTypedData: vi.fn() } as never,
-    chain: { id: 8453 } as never,
-    smartAccount: '0x2222222222222222222222222222222222222222' as const,
-    signerAddress: '0x1111111111111111111111111111111111111111' as const,
-    signerUsdcBalance: '5',
-    smartUsdcBalance: '0',
-    requiredUsdc6: 5_000_000,
-    sendOps: vi.fn(),
-  }
-
   it('rethrows signature rejection without checking ETH or EOA fallback', async () => {
     getBalance.mockClear()
     const rejection = new UserRejectedRequestError(new Error('declined'))
-    baseParams.walletClient.signTypedData = vi.fn().mockRejectedValue(rejection)
+    const signTypedData = vi.fn().mockRejectedValue(rejection)
+    const sendOps = vi.fn()
 
-    await expect(moveUsdcToSmartWalletPreferGasless(baseParams)).rejects.toBe(rejection)
+    await expect(
+      moveUsdcToSmartWalletPreferGasless({
+        walletClient: { signTypedData } as unknown as WalletClient,
+        chain: { id: 8453 } as never,
+        smartAccount: '0x2222222222222222222222222222222222222222',
+        signerAddress: '0x1111111111111111111111111111111111111111',
+        signerUsdcBalance: '5',
+        smartUsdcBalance: '0',
+        requiredUsdc6: 5_000_000,
+        sendOps,
+      }),
+    ).rejects.toBe(rejection)
     expect(getBalance).not.toHaveBeenCalled()
-    expect(baseParams.sendOps).not.toHaveBeenCalled()
+    expect(sendOps).not.toHaveBeenCalled()
   })
 })
