@@ -5,6 +5,7 @@ import {
   parseSignature,
   parseUnits,
   toHex,
+  UserRejectedRequestError,
   type Address,
 } from 'viem'
 import { base } from 'viem/chains'
@@ -14,6 +15,36 @@ import type { SendOpsResult, SmartWalletOp } from '@/hooks/use-smart-wallet-ops'
 
 /** Minimum native ETH (wei) required before attempting an unsponsored EOA transfer. */
 const MIN_EOA_GAS_WEI = 50_000_000_000_000n // 0.00005 ETH
+
+function getErrorCause(error: unknown): unknown {
+  if (typeof error !== 'object' || error === null || !('cause' in error)) return undefined
+  return (error as { cause?: unknown }).cause
+}
+
+/** True when the wallet declined signing or sending (EIP-1193 4001 and common wrappers). */
+export function isUserRejectedWalletRequest(error: unknown): boolean {
+  for (let current: unknown = error; current != null; current = getErrorCause(current)) {
+    if (current instanceof UserRejectedRequestError) return true
+
+    if (typeof current === 'object') {
+      const record = current as Record<string, unknown>
+      if (record.code === UserRejectedRequestError.code) return true
+      if (record.name === 'UserRejectedRequestError') return true
+    }
+
+    if (current instanceof Error) {
+      const message = current.message.toLowerCase()
+      if (
+        message.includes('user rejected') ||
+        message.includes('user denied') ||
+        message.includes('rejected the request')
+      ) {
+        return true
+      }
+    }
+  }
+  return false
+}
 
 /** EIP-712 domain for native USDC on Base (Circle FiatTokenV2). */
 export const USDC_BASE_EIP712_DOMAIN = {
@@ -267,7 +298,9 @@ export async function moveUsdcToSmartWalletPreferGasless({
   try {
     return await moveUsdcToSmartWalletGasless(params)
   } catch (gaslessError) {
-    if (gaslessOnly) throw gaslessError
+    if (gaslessOnly || isUserRejectedWalletRequest(gaslessError)) {
+      throw gaslessError
+    }
 
     const nativeBalance = await getBasePublicClient().getBalance({
       address: params.signerAddress,

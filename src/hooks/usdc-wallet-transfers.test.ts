@@ -8,17 +8,28 @@ import {
   parseSignature,
   recoverTypedDataAddress,
   serializeSignature,
+  UserRejectedRequestError,
 } from 'viem'
 import { USDC_BASE_ADDRESS } from '@/config/metoken'
 import {
   buildUsdcReceiveAuthorizationMessage,
   buildUsdcReceiveWithAuthorizationOp,
   createUsdcAuthorizationNonce,
+  isUserRejectedWalletRequest,
+  moveUsdcToSmartWalletPreferGasless,
   resolveMoveUsdcAmount,
   signUsdcReceiveWithAuthorization,
   USDC_BASE_EIP712_DOMAIN,
   USDC_RECEIVE_WITH_AUTHORIZATION_TYPES,
 } from '@/hooks/usdc-wallet-transfers'
+
+const getBalance = vi.fn()
+
+vi.mock('@/config/base-client', () => ({
+  getBasePublicClient: () => ({
+    getBalance,
+  }),
+}))
 
 describe('resolveMoveUsdcAmount', () => {
   it('returns 0 when the signer has no USDC', () => {
@@ -202,5 +213,42 @@ describe('USDC EIP-3009 receiveWithAuthorization helpers', () => {
       signature,
     })
     expect(recovered.toLowerCase()).toBe(account.address.toLowerCase())
+  })
+})
+
+describe('isUserRejectedWalletRequest', () => {
+  it('detects viem UserRejectedRequestError', () => {
+    expect(isUserRejectedWalletRequest(new UserRejectedRequestError(new Error('no')))).toBe(true)
+  })
+
+  it('detects EIP-1193 code 4001 on plain objects', () => {
+    expect(isUserRejectedWalletRequest({ code: 4001, message: 'fail' })).toBe(true)
+  })
+
+  it('detects rejection messages on wrapped errors', () => {
+    expect(isUserRejectedWalletRequest(new Error('User rejected the request.'))).toBe(true)
+  })
+})
+
+describe('moveUsdcToSmartWalletPreferGasless', () => {
+  const baseParams = {
+    walletClient: { signTypedData: vi.fn() } as never,
+    chain: { id: 8453 } as never,
+    smartAccount: '0x2222222222222222222222222222222222222222' as const,
+    signerAddress: '0x1111111111111111111111111111111111111111' as const,
+    signerUsdcBalance: '5',
+    smartUsdcBalance: '0',
+    requiredUsdc6: 5_000_000,
+    sendOps: vi.fn(),
+  }
+
+  it('rethrows signature rejection without checking ETH or EOA fallback', async () => {
+    getBalance.mockClear()
+    const rejection = new UserRejectedRequestError(new Error('declined'))
+    baseParams.walletClient.signTypedData = vi.fn().mockRejectedValue(rejection)
+
+    await expect(moveUsdcToSmartWalletPreferGasless(baseParams)).rejects.toBe(rejection)
+    expect(getBalance).not.toHaveBeenCalled()
+    expect(baseParams.sendOps).not.toHaveBeenCalled()
   })
 })
