@@ -25,23 +25,24 @@
  *   projectId             - local workspace project id (optional, for Firestore index)
  */
 
-import { getVertexAccessToken, getVertexLocation, getVertexProject } from './_vertex-auth'
-import { assertDirectorAuthorized } from './_director-auth'
+import { getVertexAccessToken, getVertexLocation, getVertexProject } from './_vertex-auth.js'
+import { assertDirectorAuthorized } from './_director-auth.js'
 import {
   isDirectorBillingEnforced,
   quoteDirectorForWallet,
   releaseDirectorPayment,
   verifyAndConsumeDirectorPayment,
   type DirectorBillingQuote,
-} from './director-billing'
-import { probeAudioDurationSeconds } from './_audio-duration'
+} from './director-billing.js'
+import { probeAudioDurationSeconds } from './_audio-duration.js'
 import {
   finalizeDirectorSession,
   persistDirectorPayment,
   upsertDirectorSession,
   type DirectorPersistContext,
-} from './_director-firestore'
-import { DirectorSsePersistAccumulator } from './_director-sse-persist'
+} from './_director-firestore.js'
+import { readFirstEngineChunk } from './_director-engine-preamble.js'
+import { DirectorSsePersistAccumulator } from './_director-sse-persist.js'
 
 const DEFAULT_ENGINE_ID = '7129954674127405056'
 
@@ -265,7 +266,8 @@ async function fetchEngineStream(
 
 function proxyEngineSse(
   request: Request,
-  upstream: Response,
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  firstChunk: Uint8Array,
   upstreamAbort: AbortController,
   persist?: DirectorPersistContext,
 ): Response {
@@ -275,33 +277,40 @@ function proxyEngineSse(
   const accumulator = persist ? new DirectorSsePersistAccumulator(persist.initialSessionId) : null
   const decoder = new TextDecoder()
   let persistFinalized = false
+  let persistChain: Promise<void> = Promise.resolve()
+
+  const enqueuePersist = (task: () => Promise<void>) => {
+    persistChain = persistChain.then(task).catch((error) => {
+      console.error('Director Firestore persist step failed', error)
+    })
+  }
+
+  if (accumulator) accumulator.pushChunk(firstChunk, decoder)
+  if (persist) {
+    const sessionPersist = persist
+    enqueuePersist(() =>
+      upsertDirectorSession(sessionPersist, 'streaming', sessionPersist.initialSessionId),
+    )
+  }
 
   const finalizePersist = (status: 'completed' | 'failed') => {
     if (!persist || !accumulator || persistFinalized) return
     persistFinalized = true
     accumulator.flush(decoder)
-    void finalizeDirectorSession(persist, accumulator.state, status).catch((error) => {
-      console.error('Director Firestore finalize failed', error)
-    })
+    const snapshot = accumulator.state
+    const sessionPersist = persist
+    enqueuePersist(() => finalizeDirectorSession(sessionPersist, snapshot, status))
   }
 
   const stream = new ReadableStream<Uint8Array>({
     // fallow-ignore-next-line complexity
     async start(controller) {
-      if (persist) {
-        try {
-          await upsertDirectorSession(persist, 'streaming', persist.initialSessionId)
-        } catch (error) {
-          console.error('Director Firestore session upsert failed', error)
-        }
-      }
-
-      const reader = upstream.body!.getReader()
+      controller.enqueue(firstChunk)
       try {
         while (true) {
           const { done, value } = await reader.read()
           if (done) break
-          if (value) {
+          if (value && value.byteLength > 0) {
             if (accumulator) accumulator.pushChunk(value, decoder)
             controller.enqueue(value)
           }
@@ -309,21 +318,27 @@ function proxyEngineSse(
         finalizePersist(accumulator?.state.hadError ? 'failed' : 'completed')
         controller.close()
       } catch (error) {
+        console.error('Director engine stream failed', error)
         finalizePersist('failed')
-        if (!upstreamAbort.signal.aborted) {
-          controller.error(error)
-        } else {
+        try {
           controller.close()
+        } catch {
+          // The client already stopped reading.
         }
       } finally {
         request.signal.removeEventListener('abort', onClientAbort)
-        reader.releaseLock()
+        try {
+          reader.releaseLock()
+        } catch {
+          // cancel() already released the reader.
+        }
       }
     },
     cancel() {
       finalizePersist('failed')
       upstreamAbort.abort()
       request.signal.removeEventListener('abort', onClientAbort)
+      void reader.cancel().catch(() => undefined)
     },
   })
 
@@ -444,8 +459,19 @@ async function handleDirectorPost(
     )
   }
 
-  // Persist only after SSE is open so Firestore work cannot race Vertex setup
-  // on a consumed payment (and never loads the Node SDK in this isolate).
+  const preamble = await readFirstEngineChunk(upstream.body)
+  if (!preamble.ok) {
+    request.signal.removeEventListener('abort', onClientAbort)
+    await releaseReservedPayment()
+    console.error('Director engine preamble failed', upstream.status)
+    return Response.json(
+      { error: 'Creative Director engine request failed', status: upstream.status },
+      { status: 502 },
+    )
+  }
+
+  // Persist only after the first SSE byte is in hand so Firestore work cannot
+  // race Vertex setup on a consumed payment.
   logDirectorStage('sse_open', {
     paymentTxHash: reservedPaymentTxHash,
     wallet: parsed.data.walletAddress?.toLowerCase() ?? null,
@@ -468,7 +494,7 @@ async function handleDirectorPost(
       console.error('Director Firestore payment persist failed', error)
     })
   }
-  return proxyEngineSse(request, upstream, upstreamAbort, persistCtx)
+  return proxyEngineSse(request, preamble.reader, preamble.chunk, upstreamAbort, persistCtx)
 }
 
 export async function POST(request: Request): Promise<Response> {
