@@ -32,6 +32,7 @@ import { GET as pixelsGenerateTaskGet } from './api/pixels-generate-task'
 import { POST as pixelsGenerateCancelPost } from './api/pixels-generate-cancel'
 import { POST as pixelsDirectorBatchQuotePost } from './api/pixels-director-batch-quote'
 import { POST as pixelsDirectorBatchConfirmPost } from './api/pixels-director-batch-confirm'
+import { isMipdStoreModule } from './src/vendor/mipd-store-id.ts'
 
 // Stamps public/sw.js with the hashed entry-chunk filename at build time so the service
 // worker's CACHE_VERSION — and the sw.js bytes — change on every deploy. Without this the
@@ -433,16 +434,7 @@ function mipdStorePatchPlugin(): Plugin {
     name: 'mipd-store-patch',
     enforce: 'pre',
     resolveId(source, importer) {
-      const sourcePath = source.replaceAll('\\', '/')
-      const importerPath = importer?.replaceAll('\\', '/')
-      const isStoreSpecifier =
-        sourcePath === 'mipd/dist/esm/store.js' ||
-        sourcePath.endsWith('/mipd/dist/esm/store.js') ||
-        sourcePath.endsWith('/mipd/dist/cjs/store.js')
-      const isRelativeStoreFromMipd =
-        (sourcePath === './store.js' || sourcePath === './store.cjs') &&
-        Boolean(importerPath?.includes('/mipd/dist/'))
-      if (!isStoreSpecifier && !isRelativeStoreFromMipd) return null
+      if (!isMipdStoreModule(source, importer)) return null
       return replacement
     },
   }
