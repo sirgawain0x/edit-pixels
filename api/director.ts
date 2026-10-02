@@ -316,10 +316,12 @@ function proxyEngineSse(
           }
         }
         finalizePersist(accumulator?.state.hadError ? 'failed' : 'completed')
+        await persistChain
         controller.close()
       } catch (error) {
         console.error('Director engine stream failed', error)
         finalizePersist('failed')
+        await persistChain
         try {
           controller.close()
         } catch {
@@ -339,6 +341,7 @@ function proxyEngineSse(
       upstreamAbort.abort()
       request.signal.removeEventListener('abort', onClientAbort)
       void reader.cancel().catch(() => undefined)
+      return persistChain
     },
   })
 
