@@ -2,13 +2,29 @@
 /**
  * Firestore persistence for Creative Director sessions, storyboards, and billing audit.
  * Agent Engine remains the source of truth for conversation memory.
+ *
+ * Uses Firestore REST (not `@google-cloud/firestore`) so SDK/gRPC init cannot
+ * crash `POST /api/director`.
  */
 // fallow-ignore-file complexity
 
-import type { Firestore } from '@google-cloud/firestore'
 import type { DirectorBillingQuote } from './director-billing.js'
-import { getFirestoreDb, isDirectorFirestoreEnabled } from './_firestore-client.js'
-import { loadFirestore } from './_firestore-loader.js'
+import {
+  createFirestoreDocument,
+  encodeFirestoreInteger,
+  encodeFirestoreNull,
+  encodeFirestoreNumber,
+  encodeFirestoreString,
+  encodeFirestoreStringArray,
+  encodeFirestoreTimestamp,
+  FIRESTORE_REST_TIMEOUT_MS,
+  isDirectorFirestoreEnabled,
+  patchFirestoreDocument,
+  readFirestoreString,
+  readFirestoreTimestamp,
+  documentIdFromName,
+  runFirestoreStructuredQuery,
+} from './_firestore-rest.js'
 import { extractStoryboardScenes, type DirectorSsePersistState } from './_director-sse-persist.js'
 
 const SESSIONS = 'director_sessions'
@@ -25,19 +41,6 @@ export interface DirectorPersistContext {
   engineId: string
   initialSessionId?: string
   promptPreview: string
-}
-
-interface DirectorSessionRecord {
-  sessionId: string
-  userId: string
-  wallet: string | null
-  projectId: string | null
-  engineId: string
-  audioUri: string | null
-  promptPreview: string
-  status: DirectorSessionStatus
-  createdAt: string
-  updatedAt: string
 }
 
 export interface DirectorSessionListItem {
@@ -62,22 +65,9 @@ function sessionDocId(sessionId: string | null | undefined, fallbackSeed: string
   return `pending-${fallbackSeed}`
 }
 
-async function serverTimestamp(): Promise<unknown | null> {
-  const loaded = await loadFirestore()
-  if (!loaded) return null
-  return loaded.FieldValue.serverTimestamp()
-}
-
-async function withDb<T>(fn: (db: Firestore) => Promise<T>): Promise<T | null> {
-  if (!isDirectorFirestoreEnabled()) return null
-  const db = await getFirestoreDb()
-  if (!db) return null
-  try {
-    return await fn(db)
-  } catch (error) {
-    console.error('Director Firestore write failed', error)
-    return null
-  }
+function stringOrNull(value: string | null | undefined) {
+  const trimmed = value?.trim()
+  return trimmed ? encodeFirestoreString(trimmed) : encodeFirestoreNull()
 }
 
 export async function persistDirectorPayment(input: {
@@ -88,30 +78,25 @@ export async function persistDirectorPayment(input: {
   sessionId?: string
   projectId?: string
 }): Promise<void> {
+  if (!isDirectorFirestoreEnabled()) return
+
   const wallet = normalizeWallet(input.walletAddress)
   const txHash = input.txHash.trim().toLowerCase()
   if (!wallet || !txHash.startsWith('0x')) return
 
-  const createdAt = await serverTimestamp()
-  if (createdAt == null) return
-
-  await withDb(async (db) => {
-    await db
-      .collection(PAYMENTS)
-      .doc(txHash)
-      .set(
-        {
-          wallet,
-          quoteUsdc6: input.quote.estimatedUsdc6,
-          billableMinutes: input.quote.billableMinutes,
-          tier: input.quote.tier,
-          audioSeconds: input.audioDurationSeconds,
-          sessionId: input.sessionId?.trim() || null,
-          projectId: input.projectId?.trim() || null,
-          createdAt,
-        },
-        { merge: true },
-      )
+  await patchFirestoreDocument({
+    collection: PAYMENTS,
+    documentId: txHash,
+    fields: {
+      wallet: encodeFirestoreString(wallet),
+      quoteUsdc6: encodeFirestoreInteger(input.quote.estimatedUsdc6),
+      billableMinutes: encodeFirestoreNumber(input.quote.billableMinutes),
+      tier: encodeFirestoreString(input.quote.tier),
+      audioSeconds: encodeFirestoreNumber(input.audioDurationSeconds),
+      sessionId: stringOrNull(input.sessionId),
+      projectId: stringOrNull(input.projectId),
+      createdAt: encodeFirestoreTimestamp(),
+    },
   })
 }
 
@@ -120,29 +105,30 @@ export async function upsertDirectorSession(
   status: DirectorSessionStatus,
   sessionId?: string | null,
 ): Promise<void> {
+  if (!isDirectorFirestoreEnabled()) return
+
   const wallet = normalizeWallet(ctx.walletAddress)
   const resolvedSessionId = sessionDocId(sessionId ?? ctx.initialSessionId, ctx.userId)
-  const projectId = ctx.projectId?.trim() || null
+  const stamped = encodeFirestoreTimestamp()
 
-  const stamped = await serverTimestamp()
-  if (stamped == null) return
+  const fields: Parameters<typeof patchFirestoreDocument>[0]['fields'] = {
+    userId: encodeFirestoreString(ctx.userId),
+    wallet: wallet ? encodeFirestoreString(wallet) : encodeFirestoreNull(),
+    projectId: stringOrNull(ctx.projectId),
+    engineId: encodeFirestoreString(ctx.engineId),
+    audioUri: stringOrNull(ctx.audioUri),
+    promptPreview: encodeFirestoreString(ctx.promptPreview.slice(0, 240)),
+    status: encodeFirestoreString(status),
+    updatedAt: stamped,
+  }
+  if (status === 'streaming') {
+    fields.createdAt = stamped
+  }
 
-  await withDb(async (db) => {
-    const ref = db.collection(SESSIONS).doc(resolvedSessionId)
-    await ref.set(
-      {
-        userId: ctx.userId,
-        wallet,
-        projectId,
-        engineId: ctx.engineId,
-        audioUri: ctx.audioUri?.trim() || null,
-        promptPreview: ctx.promptPreview.slice(0, 240),
-        status,
-        updatedAt: stamped,
-        ...(status === 'streaming' ? { createdAt: stamped } : {}),
-      },
-      { merge: true },
-    )
+  await patchFirestoreDocument({
+    collection: SESSIONS,
+    documentId: resolvedSessionId,
+    fields,
   })
 }
 
@@ -156,23 +142,22 @@ export async function finalizeDirectorSession(
 
   const markdown = sseState.assistantText.trim()
   if (status !== 'completed' || markdown.length < 50) return
+  if (!isDirectorFirestoreEnabled()) return
 
-  const projectId = ctx.projectId?.trim() || null
-  const wallet = normalizeWallet(ctx.walletAddress)
-
-  const createdAt = await serverTimestamp()
-  if (createdAt == null) return
-
-  await withDb(async (db) => {
-    await db.collection(STORYBOARDS).add({
-      sessionId: resolvedSessionId,
-      projectId,
-      wallet,
-      userId: ctx.userId,
-      markdown,
-      scenes: extractStoryboardScenes(markdown),
-      createdAt,
-    })
+  await createFirestoreDocument({
+    collection: STORYBOARDS,
+    fields: {
+      sessionId: encodeFirestoreString(resolvedSessionId),
+      projectId: stringOrNull(ctx.projectId),
+      wallet: (() => {
+        const wallet = normalizeWallet(ctx.walletAddress)
+        return wallet ? encodeFirestoreString(wallet) : encodeFirestoreNull()
+      })(),
+      userId: encodeFirestoreString(ctx.userId),
+      markdown: encodeFirestoreString(markdown),
+      scenes: encodeFirestoreStringArray(extractStoryboardScenes(markdown)),
+      createdAt: encodeFirestoreTimestamp(),
+    },
   })
 }
 
@@ -183,36 +168,42 @@ export async function listDirectorSessions(input: {
 }): Promise<DirectorSessionListItem[]> {
   const wallet = normalizeWallet(input.walletAddress)
   if (!wallet) return []
-
-  const db = await getFirestoreDb()
-  if (!db) return []
+  if (!isDirectorFirestoreEnabled()) return []
 
   const limit = Math.min(Math.max(input.limit ?? 20, 1), 50)
-  let query = db
-    .collection(SESSIONS)
-    .where('wallet', '==', wallet)
-    .orderBy('updatedAt', 'desc')
-    .limit(limit)
-
   const projectId = input.projectId?.trim()
+
   try {
-    const snap = await query.get()
-    return snap.docs
+    const documents = await runFirestoreStructuredQuery({
+      timeoutMs: FIRESTORE_REST_TIMEOUT_MS,
+      structuredQuery: {
+        from: [{ collectionId: SESSIONS }],
+        where: {
+          fieldFilter: {
+            field: { fieldPath: 'wallet' },
+            op: 'EQUAL',
+            value: { stringValue: wallet },
+          },
+        },
+        orderBy: [{ field: { fieldPath: 'updatedAt' }, direction: 'DESCENDING' }],
+        limit,
+      },
+    })
+
+    return documents
       .map((doc) => {
-        const data = doc.data()
-        const createdAt = data.createdAt?.toDate?.()?.toISOString?.() ?? ''
-        const updatedAt = data.updatedAt?.toDate?.()?.toISOString?.() ?? ''
+        const fields = doc.fields ?? {}
         return {
-          sessionId: doc.id,
-          projectId: typeof data.projectId === 'string' ? data.projectId : null,
-          promptPreview: typeof data.promptPreview === 'string' ? data.promptPreview : '',
-          status: (data.status as DirectorSessionStatus) ?? 'completed',
-          audioUri: typeof data.audioUri === 'string' ? data.audioUri : null,
-          createdAt,
-          updatedAt,
+          sessionId: documentIdFromName(doc.name),
+          projectId: readFirestoreString(fields.projectId),
+          promptPreview: readFirestoreString(fields.promptPreview) ?? '',
+          status: (readFirestoreString(fields.status) as DirectorSessionStatus) ?? 'completed',
+          audioUri: readFirestoreString(fields.audioUri),
+          createdAt: readFirestoreTimestamp(fields.createdAt),
+          updatedAt: readFirestoreTimestamp(fields.updatedAt),
         }
       })
-      .filter((row) => !projectId || row.projectId === projectId)
+      .filter((row) => row.sessionId && (!projectId || row.projectId === projectId))
   } catch (error) {
     console.error('Director Firestore list failed', error)
     return []

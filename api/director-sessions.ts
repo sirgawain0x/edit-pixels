@@ -1,7 +1,10 @@
 /// <reference types="node" />
 /**
  * GET /api/director-sessions?wallet=0x...&projectId=...
- * Lists persisted Director session metadata from Firestore.
+ * Lists persisted Director session metadata from Firestore REST.
+ *
+ * List uses an 8s REST timeout so a WIF/Firestore hang returns `[]` instead of
+ * burning Vercel `maxDuration` (30s) and surfacing as 504.
  */
 // fallow-ignore-file complexity
 
@@ -27,11 +30,15 @@ export async function GET(request: Request): Promise<Response> {
   const limitRaw = url.searchParams.get('limit')
   const limit = limitRaw ? Number.parseInt(limitRaw, 10) : undefined
 
-  const sessions = await listDirectorSessions({
-    walletAddress,
-    projectId,
-    limit: Number.isFinite(limit) ? limit : undefined,
-  })
-
-  return Response.json({ sessions })
+  try {
+    const sessions = await listDirectorSessions({
+      walletAddress,
+      projectId,
+      limit: Number.isFinite(limit) ? limit : undefined,
+    })
+    return Response.json({ sessions })
+  } catch (error) {
+    console.error('Director sessions list failed', error)
+    return Response.json({ sessions: [] })
+  }
 }
