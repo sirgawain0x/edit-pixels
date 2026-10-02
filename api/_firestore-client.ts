@@ -4,7 +4,8 @@
  * Uses the same WIF / ADC auth path as Vertex (`api/_vertex-auth.ts`).
  */
 
-import { Firestore } from '@google-cloud/firestore'
+import type { Firestore } from '@google-cloud/firestore'
+import { loadFirestore } from './_firestore-loader.js'
 import { getGoogleAuthClient, getVertexProject } from './_vertex-auth.js'
 
 let firestore: Firestore | null = null
@@ -25,10 +26,14 @@ export function isDirectorFirestoreEnabled(): boolean {
 async function createFirestore(): Promise<Firestore | null> {
   if (!isDirectorFirestoreEnabled()) return null
   try {
+    const loaded = await loadFirestore()
+    if (!loaded) return null
     const authClient = await getGoogleAuthClient()
-    return new Firestore({
+    return new loaded.Firestore({
       projectId: getVertexProject(),
       databaseId: getFirestoreDatabaseId(),
+      // REST avoids the native gRPC binary, which is what takes the function down on Vercel.
+      preferRest: true,
       authClient,
     })
   } catch (error) {

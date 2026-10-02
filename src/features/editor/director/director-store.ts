@@ -4,6 +4,7 @@
  */
 
 import { create } from 'zustand'
+import { directorFailureMessage } from './director-api-error'
 import { consumeSseBuffer, parseSseDataLine, type DirectorStreamEvent } from './parse-sse'
 
 type DirectorPhase = 'idle' | 'streaming'
@@ -127,14 +128,11 @@ function applyStreamEvents(events: DirectorStreamEvent[], set: DirectorSet): voi
 }
 
 async function readDirectorError(response: Response): Promise<string> {
-  let message = `Director request failed (${response.status})`
   try {
-    const data = (await response.json()) as { error?: string }
-    if (data.error) message = data.error
+    return directorFailureMessage(response.status, await response.json())
   } catch {
-    // ignore body parse errors
+    return directorFailureMessage(response.status, null)
   }
-  return message
 }
 
 async function consumeDirectorSse(

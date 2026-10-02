@@ -333,8 +333,15 @@ function buildPersistContext(data: ParsedDirectorRequest): DirectorPersistContex
   }
 }
 
+interface ReservedDirectorPayment {
+  txHash: string | null
+}
+
 // fallow-ignore-next-line complexity
-export async function POST(request: Request): Promise<Response> {
+async function handleDirectorPost(
+  request: Request,
+  reserved: ReservedDirectorPayment,
+): Promise<Response> {
   const authError = assertDirectorAuthorized(request)
   if (authError) return authError
 
@@ -344,6 +351,7 @@ export async function POST(request: Request): Promise<Response> {
   const payment = await assertDirectorPayment(parsed.data)
   if ('error' in payment) return payment.error
   const reservedPaymentTxHash = payment.paymentTxHash
+  reserved.txHash = reservedPaymentTxHash
   const persistCtx = buildPersistContext(parsed.data)
 
   if (
@@ -426,4 +434,18 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   return proxyEngineSse(request, upstream, upstreamAbort, persistCtx)
+}
+
+export async function POST(request: Request): Promise<Response> {
+  const reserved: ReservedDirectorPayment = { txHash: null }
+  try {
+    return await handleDirectorPost(request, reserved)
+  } catch (error) {
+    console.error('Director request failed', error)
+    if (reserved.txHash) {
+      await releaseDirectorPayment(reserved.txHash).catch(() => undefined)
+    }
+    const message = error instanceof Error ? error.message : 'Creative Director request failed'
+    return Response.json({ error: message }, { status: 500 })
+  }
 }

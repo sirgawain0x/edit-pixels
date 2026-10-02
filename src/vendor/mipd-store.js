@@ -1,7 +1,20 @@
-import { requestProviders } from 'mipd/dist/esm/utils.js'
+// Inlined from mipd's requestProviders. The package export map blocks
+// `mipd/dist/esm/utils.js`, and a relative import would still pull the
+// unpatched store through index.js.
+function requestProviders(listener) {
+  if (typeof window === 'undefined') return undefined
+  const handler = (event) => listener(event.detail)
+  window.addEventListener('eip6963:announceProvider', handler)
+  window.dispatchEvent(new CustomEvent('eip6963:requestProvider'))
+  return () => window.removeEventListener('eip6963:announceProvider', handler)
+}
 
-function isValidProviderDetail(providerDetail) {
+export function isValidProviderDetail(providerDetail) {
   return Boolean(providerDetail?.info?.uuid)
+}
+
+export function hasProviderUuid(providerDetails, uuid) {
+  return providerDetails.some((existing) => existing?.info?.uuid === uuid)
 }
 
 export function createStore() {
@@ -10,7 +23,7 @@ export function createStore() {
   const request = () =>
     requestProviders((providerDetail) => {
       if (!isValidProviderDetail(providerDetail)) return
-      if (providerDetails.some((existing) => existing?.info?.uuid === providerDetail.info.uuid)) {
+      if (hasProviderUuid(providerDetails, providerDetail.info.uuid)) {
         return
       }
       providerDetails = [...providerDetails, providerDetail]
