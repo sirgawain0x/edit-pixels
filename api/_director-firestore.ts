@@ -5,9 +5,10 @@
  */
 // fallow-ignore-file complexity
 
-import { FieldValue, type Firestore } from '@google-cloud/firestore'
+import type { Firestore } from '@google-cloud/firestore'
 import type { DirectorBillingQuote } from './director-billing.js'
 import { getFirestoreDb, isDirectorFirestoreEnabled } from './_firestore-client.js'
+import { loadFirestore } from './_firestore-loader.js'
 import { extractStoryboardScenes, type DirectorSsePersistState } from './_director-sse-persist.js'
 
 const SESSIONS = 'director_sessions'
@@ -61,6 +62,12 @@ function sessionDocId(sessionId: string | null | undefined, fallbackSeed: string
   return `pending-${fallbackSeed}`
 }
 
+async function serverTimestamp(): Promise<unknown | null> {
+  const loaded = await loadFirestore()
+  if (!loaded) return null
+  return loaded.FieldValue.serverTimestamp()
+}
+
 async function withDb<T>(fn: (db: Firestore) => Promise<T>): Promise<T | null> {
   if (!isDirectorFirestoreEnabled()) return null
   const db = await getFirestoreDb()
@@ -85,6 +92,9 @@ export async function persistDirectorPayment(input: {
   const txHash = input.txHash.trim().toLowerCase()
   if (!wallet || !txHash.startsWith('0x')) return
 
+  const createdAt = await serverTimestamp()
+  if (createdAt == null) return
+
   await withDb(async (db) => {
     await db
       .collection(PAYMENTS)
@@ -98,7 +108,7 @@ export async function persistDirectorPayment(input: {
           audioSeconds: input.audioDurationSeconds,
           sessionId: input.sessionId?.trim() || null,
           projectId: input.projectId?.trim() || null,
-          createdAt: FieldValue.serverTimestamp(),
+          createdAt,
         },
         { merge: true },
       )
@@ -114,6 +124,9 @@ export async function upsertDirectorSession(
   const resolvedSessionId = sessionDocId(sessionId ?? ctx.initialSessionId, ctx.userId)
   const projectId = ctx.projectId?.trim() || null
 
+  const stamped = await serverTimestamp()
+  if (stamped == null) return
+
   await withDb(async (db) => {
     const ref = db.collection(SESSIONS).doc(resolvedSessionId)
     await ref.set(
@@ -125,8 +138,8 @@ export async function upsertDirectorSession(
         audioUri: ctx.audioUri?.trim() || null,
         promptPreview: ctx.promptPreview.slice(0, 240),
         status,
-        updatedAt: FieldValue.serverTimestamp(),
-        ...(status === 'streaming' ? { createdAt: FieldValue.serverTimestamp() } : {}),
+        updatedAt: stamped,
+        ...(status === 'streaming' ? { createdAt: stamped } : {}),
       },
       { merge: true },
     )
@@ -147,6 +160,9 @@ export async function finalizeDirectorSession(
   const projectId = ctx.projectId?.trim() || null
   const wallet = normalizeWallet(ctx.walletAddress)
 
+  const createdAt = await serverTimestamp()
+  if (createdAt == null) return
+
   await withDb(async (db) => {
     await db.collection(STORYBOARDS).add({
       sessionId: resolvedSessionId,
@@ -155,7 +171,7 @@ export async function finalizeDirectorSession(
       userId: ctx.userId,
       markdown,
       scenes: extractStoryboardScenes(markdown),
-      createdAt: FieldValue.serverTimestamp(),
+      createdAt,
     })
   })
 }

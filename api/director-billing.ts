@@ -175,11 +175,18 @@ export async function verifyAndConsumeDirectorPayment(options: {
   if (!verified.ok) return verified
 
   if (isDirectorBillingEnforced()) {
-    const consumed = await consumePaymentTxHash(options.txHash, {
-      wallet: options.from,
-      purpose: options.purpose,
-    })
-    if (!consumed.ok) return { ok: false, reason: consumed.reason }
+    try {
+      const consumed = await consumePaymentTxHash(options.txHash, {
+        wallet: options.from,
+        purpose: options.purpose,
+      })
+      if (!consumed.ok) return { ok: false, reason: consumed.reason }
+    } catch (error) {
+      return {
+        ok: false,
+        reason: error instanceof Error ? error.message : 'Payment ledger failed',
+      }
+    }
   }
 
   return verified

@@ -32,6 +32,7 @@ import { GET as pixelsGenerateTaskGet } from './api/pixels-generate-task'
 import { POST as pixelsGenerateCancelPost } from './api/pixels-generate-cancel'
 import { POST as pixelsDirectorBatchQuotePost } from './api/pixels-director-batch-quote'
 import { POST as pixelsDirectorBatchConfirmPost } from './api/pixels-director-batch-confirm'
+import { isMipdStoreModule } from './src/vendor/mipd-store-id.ts'
 
 // Stamps public/sw.js with the hashed entry-chunk filename at build time so the service
 // worker's CACHE_VERSION — and the sw.js bytes — change on every deploy. Without this the
@@ -422,6 +423,23 @@ const toolIgnorePatterns = [
   'scripts/**',
 ]
 
+/**
+ * Package-internal `./store.js` imports do not match a string alias, so the
+ * unpatched mipd store still runs in production and throws when a wallet
+ * announces a null EIP-6963 detail (`providerDetail.info`).
+ */
+function mipdStorePatchPlugin(): Plugin {
+  const replacement = fileURLToPath(new URL('./src/vendor/mipd-store.js', import.meta.url))
+  return {
+    name: 'mipd-store-patch',
+    enforce: 'pre',
+    resolveId(source, importer) {
+      if (!isMipdStoreModule(source, importer)) return null
+      return replacement
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   lint: {
@@ -462,6 +480,7 @@ export default defineConfig({
     },
   },
   plugins: lazyPlugins(() => [
+    mipdStorePatchPlugin(),
     react(),
     tailwindcss(),
     serviceWorkerVersionPlugin(),
@@ -470,9 +489,6 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
-      'mipd/dist/esm/store.js': fileURLToPath(
-        new URL('./src/vendor/mipd-store.js', import.meta.url),
-      ),
     },
     // Keep every UI dependency on the same React dispatcher. This also prevents
     // an optimizer refresh from leaving Radix on a stale React module during HMR.
