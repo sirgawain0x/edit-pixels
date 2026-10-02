@@ -89,18 +89,23 @@ function AgentMark({ variant = 'agent' }: { variant?: 'agent' | 'tool' | 'error'
   )
 }
 
+function directorMessageText(content: unknown): string {
+  return typeof content === 'string' ? content : 'Director request failed'
+}
+
 function DirectorMessage({
   role,
   content,
 }: {
   role: 'user' | 'assistant' | 'tool' | 'error'
-  content: string
+  content: unknown
 }) {
+  const text = directorMessageText(content)
   if (role === 'user') {
     return (
       <div className="flex justify-end gap-2.5">
         <div className="max-w-[88%] rounded-2xl rounded-br-md bg-primary px-3 py-2 text-[12px] leading-relaxed whitespace-pre-wrap text-primary-foreground">
-          {content}
+          {text}
         </div>
       </div>
     )
@@ -121,7 +126,7 @@ function DirectorMessage({
             'rounded-md border border-destructive/40 bg-destructive/10 px-2.5 py-1.5 text-destructive',
         )}
       >
-        {content}
+        {text}
       </div>
     </div>
   )
