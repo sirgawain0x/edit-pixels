@@ -320,10 +320,14 @@ function proxyEngineSse(
       } catch (error) {
         console.error('Director engine stream failed', error)
         finalizePersist('failed')
-        try {
-          controller.close()
-        } catch {
-          // The client already stopped reading.
+        if (!upstreamAbort.signal.aborted) {
+          controller.error(error)
+        } else {
+          try {
+            controller.close()
+          } catch {
+            // The client already stopped reading.
+          }
         }
       } finally {
         request.signal.removeEventListener('abort', onClientAbort)
