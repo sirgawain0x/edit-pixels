@@ -63,6 +63,7 @@ function sessionDocId(sessionId: string | null | undefined, fallbackSeed: string
 }
 
 async function serverTimestamp(): Promise<unknown | null> {
+  if (!isDirectorFirestoreEnabled()) return null
   const loaded = await loadFirestore()
   if (!loaded) return null
   return loaded.FieldValue.serverTimestamp()
