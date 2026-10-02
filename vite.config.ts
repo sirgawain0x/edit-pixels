@@ -422,6 +422,32 @@ const toolIgnorePatterns = [
   'scripts/**',
 ]
 
+/**
+ * Package-internal `./store.js` imports do not match a string alias, so the
+ * unpatched mipd store still runs in production and throws when a wallet
+ * announces a null EIP-6963 detail (`providerDetail.info`).
+ */
+function mipdStorePatchPlugin(): Plugin {
+  const replacement = fileURLToPath(new URL('./src/vendor/mipd-store.js', import.meta.url))
+  return {
+    name: 'mipd-store-patch',
+    enforce: 'pre',
+    resolveId(source, importer) {
+      const sourcePath = source.replaceAll('\\', '/')
+      const importerPath = importer?.replaceAll('\\', '/')
+      const isStoreSpecifier =
+        sourcePath === 'mipd/dist/esm/store.js' ||
+        sourcePath.endsWith('/mipd/dist/esm/store.js') ||
+        sourcePath.endsWith('/mipd/dist/cjs/store.js')
+      const isRelativeStoreFromMipd =
+        (sourcePath === './store.js' || sourcePath === './store.cjs') &&
+        Boolean(importerPath?.includes('/mipd/dist/'))
+      if (!isStoreSpecifier && !isRelativeStoreFromMipd) return null
+      return replacement
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   lint: {
@@ -462,6 +488,7 @@ export default defineConfig({
     },
   },
   plugins: lazyPlugins(() => [
+    mipdStorePatchPlugin(),
     react(),
     tailwindcss(),
     serviceWorkerVersionPlugin(),
@@ -470,9 +497,6 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
-      'mipd/dist/esm/store.js': fileURLToPath(
-        new URL('./src/vendor/mipd-store.js', import.meta.url),
-      ),
     },
     // Keep every UI dependency on the same React dispatcher. This also prevents
     // an optimizer refresh from leaving Radix on a stale React module during HMR.
