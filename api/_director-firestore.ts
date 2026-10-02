@@ -41,6 +41,8 @@ export interface DirectorPersistContext {
   engineId: string
   initialSessionId?: string
   promptPreview: string
+  /** In-flight `streaming` upsert; finalize awaits this so a late PATCH cannot overwrite terminal status. */
+  streamingUpsert?: Promise<void>
 }
 
 export interface DirectorSessionListItem {

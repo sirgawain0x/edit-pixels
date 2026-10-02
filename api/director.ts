@@ -280,9 +280,14 @@ function proxyEngineSse(
     if (!persist || !accumulator || persistFinalized) return
     persistFinalized = true
     accumulator.flush(decoder)
-    void finalizeDirectorSession(persist, accumulator.state, status).catch((error) => {
-      console.error('Director Firestore finalize failed', error)
-    })
+    void (async () => {
+      try {
+        await persist.streamingUpsert?.catch(() => undefined)
+        await finalizeDirectorSession(persist, accumulator.state, status)
+      } catch (error) {
+        console.error('Director Firestore finalize failed', error)
+      }
+    })()
   }
 
   const stream = new ReadableStream<Uint8Array>({
@@ -460,7 +465,11 @@ async function handleDirectorPost(
       console.error('Director Firestore payment persist failed', error)
     })
   }
-  void upsertDirectorSession(persistCtx, 'streaming', parsed.data.sessionId).catch((error) => {
+  persistCtx.streamingUpsert = upsertDirectorSession(
+    persistCtx,
+    'streaming',
+    parsed.data.sessionId,
+  ).catch((error) => {
     console.error('Director Firestore session upsert failed', error)
   })
 

@@ -114,23 +114,26 @@ async function firestoreFetch(
   init: RequestInit & { timeoutMs?: number } = {},
 ): Promise<Response> {
   const timeoutMs = init.timeoutMs ?? FIRESTORE_REST_TIMEOUT_MS
-  const token = await getVertexAccessToken()
-  const headers = new Headers(init.headers)
-  headers.set('Authorization', `Bearer ${token}`)
-  if (init.body != null && !headers.has('Content-Type')) {
-    headers.set('Content-Type', 'application/json')
-  }
-
-  const requestInit: RequestInit = {
-    method: init.method,
-    headers,
-    body: init.body,
-    signal: AbortSignal.timeout(timeoutMs),
-  }
+  const label = `Firestore REST ${init.method || 'GET'} ${path}`
   return withTimeout(
-    fetch(`${firestoreDocumentsRoot()}${path}`, requestInit),
-    timeoutMs + 250,
-    `Firestore REST ${init.method || 'GET'} ${path}`,
+    (async () => {
+      const token = await getVertexAccessToken()
+      const headers = new Headers(init.headers)
+      headers.set('Authorization', `Bearer ${token}`)
+      if (init.body != null && !headers.has('Content-Type')) {
+        headers.set('Content-Type', 'application/json')
+      }
+
+      const requestInit: RequestInit = {
+        method: init.method,
+        headers,
+        body: init.body,
+        signal: AbortSignal.timeout(timeoutMs),
+      }
+      return fetch(`${firestoreDocumentsRoot()}${path}`, requestInit)
+    })(),
+    timeoutMs,
+    label,
   )
 }
 
