@@ -83,6 +83,13 @@ function engineStreamUrl(): string {
   return `https://${location}-aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/reasoningEngines/${engineId}:streamQuery?alt=sse`
 }
 
+function logDirectorStage(
+  stage: string,
+  fields: Record<string, string | number | boolean | null | undefined> = {},
+): void {
+  console.info('Director stage', { stage, ...fields })
+}
+
 // fallow-ignore-next-line complexity
 async function parseDirectorRequest(
   request: Request,
@@ -344,6 +351,7 @@ async function handleDirectorPost(
 ): Promise<Response> {
   const authError = assertDirectorAuthorized(request)
   if (authError) return authError
+  logDirectorStage('auth')
 
   const parsed = await parseDirectorRequest(request)
   if (!parsed.ok) return parsed.response
@@ -353,32 +361,18 @@ async function handleDirectorPost(
   const reservedPaymentTxHash = payment.paymentTxHash
   reserved.txHash = reservedPaymentTxHash
   const persistCtx = buildPersistContext(parsed.data)
-
-  if (
-    payment.paymentTxHash &&
-    payment.quote &&
-    payment.audioSeconds != null &&
-    parsed.data.walletAddress
-  ) {
-    void persistDirectorPayment({
-      txHash: payment.paymentTxHash,
-      walletAddress: parsed.data.walletAddress,
-      quote: payment.quote,
-      audioDurationSeconds: payment.audioSeconds,
-      sessionId: parsed.data.sessionId,
-      projectId: parsed.data.projectId,
-    }).catch((error) => {
-      console.error('Director Firestore payment persist failed', error)
-    })
-  }
-
-  void upsertDirectorSession(persistCtx, 'streaming', parsed.data.sessionId).catch((error) => {
-    console.error('Director Firestore session upsert failed', error)
+  logDirectorStage('payment_consumed', {
+    paymentTxHash: reservedPaymentTxHash,
+    wallet: parsed.data.walletAddress?.toLowerCase() ?? null,
+    projectId: parsed.data.projectId ?? null,
+    audioSeconds: payment.audioSeconds,
+    estimatedUsdc6: payment.quote?.estimatedUsdc6 ?? null,
   })
 
   const releaseReservedPayment = async () => {
     if (reservedPaymentTxHash) {
       await releaseDirectorPayment(reservedPaymentTxHash).catch(() => undefined)
+      logDirectorStage('payment_released', { paymentTxHash: reservedPaymentTxHash })
     }
   }
 
@@ -389,6 +383,10 @@ async function handleDirectorPost(
   let token: string
   try {
     token = await getVertexAccessToken()
+    logDirectorStage('vertex_token', {
+      paymentTxHash: reservedPaymentTxHash,
+      wallet: parsed.data.walletAddress?.toLowerCase() ?? null,
+    })
   } catch (error) {
     await releaseReservedPayment()
     console.error('Director auth error', error)
@@ -412,6 +410,11 @@ async function handleDirectorPost(
   let upstream: Response
   try {
     upstream = await fetchEngineStream(token, input, upstreamAbort.signal)
+    logDirectorStage('engine_fetch', {
+      paymentTxHash: reservedPaymentTxHash,
+      wallet: parsed.data.walletAddress?.toLowerCase() ?? null,
+      status: upstream.status,
+    })
   } catch (error) {
     request.signal.removeEventListener('abort', onClientAbort)
     await releaseReservedPayment()
@@ -433,6 +436,34 @@ async function handleDirectorPost(
     )
   }
 
+  // Persist only after SSE is open so Firestore work cannot race Vertex setup
+  // on a consumed payment (and never loads the Node SDK in this isolate).
+  logDirectorStage('sse_open', {
+    paymentTxHash: reservedPaymentTxHash,
+    wallet: parsed.data.walletAddress?.toLowerCase() ?? null,
+    projectId: parsed.data.projectId ?? null,
+  })
+  if (
+    payment.paymentTxHash &&
+    payment.quote &&
+    payment.audioSeconds != null &&
+    parsed.data.walletAddress
+  ) {
+    void persistDirectorPayment({
+      txHash: payment.paymentTxHash,
+      walletAddress: parsed.data.walletAddress,
+      quote: payment.quote,
+      audioDurationSeconds: payment.audioSeconds,
+      sessionId: parsed.data.sessionId,
+      projectId: parsed.data.projectId,
+    }).catch((error) => {
+      console.error('Director Firestore payment persist failed', error)
+    })
+  }
+  void upsertDirectorSession(persistCtx, 'streaming', parsed.data.sessionId).catch((error) => {
+    console.error('Director Firestore session upsert failed', error)
+  })
+
   return proxyEngineSse(request, upstream, upstreamAbort, persistCtx)
 }
 
@@ -444,6 +475,10 @@ export async function POST(request: Request): Promise<Response> {
     console.error('Director request failed', error)
     if (reserved.txHash) {
       await releaseDirectorPayment(reserved.txHash).catch(() => undefined)
+      logDirectorStage('payment_released', {
+        paymentTxHash: reserved.txHash,
+        reason: 'uncaught',
+      })
     }
     const message = error instanceof Error ? error.message : 'Creative Director request failed'
     return Response.json({ error: message }, { status: 500 })

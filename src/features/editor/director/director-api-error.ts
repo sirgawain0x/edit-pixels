@@ -20,9 +20,17 @@ export function directorFailureMessage(status: number, body: unknown): string {
 
   if (record.error && typeof record.error === 'object') {
     const nested = record.error as Record<string, unknown>
-    const nestedMessage = textField(nested.message)
-    if (nestedMessage) return nestedMessage
     const code = textField(nested.code)
+    if (code === 'FUNCTION_INVOCATION_FAILED') {
+      return 'Director crashed before streaming. If you were charged, retry once — contact support if payment is rejected as already used.'
+    }
+    const nestedMessage = textField(nested.message)
+    if (nestedMessage && nestedMessage !== 'A server error has occurred') {
+      return nestedMessage
+    }
+    if (nestedMessage) {
+      return 'Director crashed before streaming. If you were charged, retry once — contact support if payment is rejected as already used.'
+    }
     if (code) return `${fallback}: ${code}`
   }
 
