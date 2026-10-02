@@ -30,6 +30,21 @@ describe('content security policy', () => {
     expect(policy?.value).toEqual(expect.any(String))
     const value = policy?.value ?? ''
 
+    const directives = Object.fromEntries(
+      value
+        .split(';')
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .map((part) => {
+          const [name, ...rest] = part.split(/\s+/)
+          return [name, rest.join(' ')]
+        }),
+    )
+    for (const name of ['script-src', 'style-src', 'frame-src', 'connect-src']) {
+      expect(directives[name], name).toContain('https://hcaptcha.com')
+      expect(directives[name], name).toContain('https://*.hcaptcha.com')
+    }
+
     for (const required of [
       "default-src 'self'",
       'https://auth.privy.io',
@@ -49,6 +64,8 @@ describe('content security policy', () => {
       'https://fonts.googleapis.com',
       'https://fonts.gstatic.com',
       'https://pay.coinbase.com',
+      'https://hcaptcha.com',
+      'https://*.hcaptcha.com',
       "worker-src 'self' blob:",
       "frame-ancestors 'none'",
     ]) {
