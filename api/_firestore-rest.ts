@@ -114,7 +114,14 @@ async function firestoreFetch(
   init: RequestInit & { timeoutMs?: number } = {},
 ): Promise<Response> {
   const timeoutMs = init.timeoutMs ?? FIRESTORE_REST_TIMEOUT_MS
-  const token = await getVertexAccessToken()
+  const deadlineMs = Date.now() + timeoutMs
+  const remainingMs = () => Math.max(1, deadlineMs - Date.now())
+
+  const token = await withTimeout(
+    getVertexAccessToken(),
+    remainingMs(),
+    'Firestore vertex access token',
+  )
   const headers = new Headers(init.headers)
   headers.set('Authorization', `Bearer ${token}`)
   if (init.body != null && !headers.has('Content-Type')) {
@@ -125,11 +132,11 @@ async function firestoreFetch(
     method: init.method,
     headers,
     body: init.body,
-    signal: AbortSignal.timeout(timeoutMs),
+    signal: AbortSignal.timeout(remainingMs()),
   }
   return withTimeout(
     fetch(`${firestoreDocumentsRoot()}${path}`, requestInit),
-    timeoutMs + 250,
+    remainingMs() + 250,
     `Firestore REST ${init.method || 'GET'} ${path}`,
   )
 }

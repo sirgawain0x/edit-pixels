@@ -288,6 +288,14 @@ function proxyEngineSse(
   const stream = new ReadableStream<Uint8Array>({
     // fallow-ignore-next-line complexity
     async start(controller) {
+      if (persist) {
+        try {
+          await upsertDirectorSession(persist, 'streaming', persist.initialSessionId)
+        } catch (error) {
+          console.error('Director Firestore session upsert failed', error)
+        }
+      }
+
       const reader = upstream.body!.getReader()
       try {
         while (true) {
@@ -460,10 +468,6 @@ async function handleDirectorPost(
       console.error('Director Firestore payment persist failed', error)
     })
   }
-  void upsertDirectorSession(persistCtx, 'streaming', parsed.data.sessionId).catch((error) => {
-    console.error('Director Firestore session upsert failed', error)
-  })
-
   return proxyEngineSse(request, upstream, upstreamAbort, persistCtx)
 }
 
