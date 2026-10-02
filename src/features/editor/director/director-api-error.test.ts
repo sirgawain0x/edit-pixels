@@ -12,7 +12,7 @@ describe('directorFailureMessage', () => {
     const message = directorFailureMessage(500, {
       error: { code: 'FUNCTION_INVOCATION_FAILED', message: 'A server error has occurred' },
     })
-    expect(message).toBe('A server error has occurred')
+    expect(message).toContain('Director crashed before streaming')
     expect(typeof message).toBe('string')
   })
 
