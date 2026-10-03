@@ -11,12 +11,30 @@ const DEFAULT_PROJECT = 'creative-ai-491118'
 const DEFAULT_LOCATION = 'us-east1'
 const CLOUD_PLATFORM_SCOPE = 'https://www.googleapis.com/auth/cloud-platform'
 
-interface WifConfig {
+interface WifProviderIds {
   projectNumber: string
   poolId: string
   providerId: string
+}
+
+interface WifConfig extends WifProviderIds {
   serviceAccountEmail: string
-  audience: string
+  /** Vercel OIDC JWT `aud`. STS rejects this URL as the token-exchange audience. */
+  oidcAudience: string
+  /** Identity Provider resource name sent to https://sts.googleapis.com/v1/token. */
+  stsAudience: string
+}
+
+/** Audience Vercel stamps on the OIDC token. Must match the GCP provider allowlist. */
+export function oidcAudienceForProvider(input: WifProviderIds, configuredAudience?: string): string {
+  const configured = configuredAudience?.trim()
+  if (configured) return configured
+  return `https://iam.googleapis.com/projects/${input.projectNumber}/locations/global/workloadIdentityPools/${input.poolId}/providers/${input.providerId}`
+}
+
+/** Full resource name STS requires. Not interchangeable with the https OIDC audience. */
+export function stsAudienceForProvider(input: WifProviderIds): string {
+  return `//iam.googleapis.com/projects/${input.projectNumber}/locations/global/workloadIdentityPools/${input.poolId}/providers/${input.providerId}`
 }
 
 export function getVertexProject(): string {
@@ -40,11 +58,13 @@ function readWifConfig(): WifConfig | null {
     return null
   }
 
-  const audience =
-    process.env.GCP_AUDIENCE?.trim() ||
-    `https://iam.googleapis.com/projects/${projectNumber}/locations/global/workloadIdentityPools/${poolId}/providers/${providerId}`
-
-  return { projectNumber, poolId, providerId, serviceAccountEmail, audience }
+  const provider = { projectNumber, poolId, providerId }
+  return {
+    ...provider,
+    serviceAccountEmail,
+    oidcAudience: oidcAudienceForProvider(provider, process.env.GCP_AUDIENCE),
+    stsAudience: stsAudienceForProvider(provider),
+  }
 }
 
 function tokenFromResponse(tokenResponse: unknown): string | null {
@@ -63,14 +83,14 @@ function tokenFromResponse(tokenResponse: unknown): string | null {
 function buildExternalAccountClient(config: WifConfig): AnyAuthClient {
   const client = ExternalAccountClient.fromJSON({
     type: 'external_account',
-    audience: config.audience,
+    audience: config.stsAudience,
     subject_token_type: 'urn:ietf:params:oauth:token-type:jwt',
     token_url: 'https://sts.googleapis.com/v1/token',
     service_account_impersonation_url: `https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${config.serviceAccountEmail}:generateAccessToken`,
     subject_token_supplier: {
       getSubjectToken: () =>
         getVercelOidcToken({
-          audience: config.audience,
+          audience: config.oidcAudience,
         }),
     },
   })
