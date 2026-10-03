@@ -25,7 +25,12 @@
  *   projectId             - local workspace project id (optional, for Firestore index)
  */
 
-import { getVertexAccessToken, getVertexLocation, getVertexProject } from './_vertex-auth.js'
+import {
+  directorVertexAuthFailureHint,
+  getVertexAccessToken,
+  getVertexLocation,
+  getVertexProject,
+} from './_vertex-auth.js'
 import { assertDirectorAuthorized } from './_director-auth.js'
 import {
   isDirectorBillingEnforced,
@@ -418,9 +423,7 @@ async function handleDirectorPost(
     await releaseReservedPayment()
     console.error('Director auth error', error)
     const detail = error instanceof Error ? error.message : String(error)
-    const hint = process.env.VERCEL
-      ? 'Set GCP Workload Identity Federation env vars (Vercel OIDC).'
-      : 'Run `gcloud auth application-default login` (local ADC). GCP_* from `vercel env pull` are ignored off-Vercel.'
+    const hint = directorVertexAuthFailureHint()
     return Response.json(
       {
         error: `Director auth failed: ${hint}`,

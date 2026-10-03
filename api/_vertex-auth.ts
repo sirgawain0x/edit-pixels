@@ -11,6 +11,16 @@ const DEFAULT_PROJECT = 'creative-ai-491118'
 const DEFAULT_LOCATION = 'us-east1'
 const CLOUD_PLATFORM_SCOPE = 'https://www.googleapis.com/auth/cloud-platform'
 
+/** Required on Vercel for Workload Identity Federation (all four must be set). */
+export const REQUIRED_WIF_ENV_KEYS = [
+  'GCP_PROJECT_NUMBER',
+  'GCP_WORKLOAD_IDENTITY_POOL_ID',
+  'GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID',
+  'GCP_SERVICE_ACCOUNT_EMAIL',
+] as const
+
+export type RequiredWifEnvKey = (typeof REQUIRED_WIF_ENV_KEYS)[number]
+
 interface WifProviderIds {
   projectNumber: string
   poolId: string
@@ -23,6 +33,32 @@ interface WifConfig extends WifProviderIds {
   oidcAudience: string
   /** Identity Provider resource name sent to https://sts.googleapis.com/v1/token. */
   stsAudience: string
+}
+
+/** Names of required WIF env vars that are unset or blank. */
+export function listMissingWifEnvVars(): RequiredWifEnvKey[] {
+  return REQUIRED_WIF_ENV_KEYS.filter((key) => !process.env[key]?.trim())
+}
+
+/**
+ * User-facing hint when Vertex token acquisition fails.
+ * On Vercel, names missing GCP_* keys when WIF config is incomplete.
+ */
+export function directorVertexAuthFailureHint(): string {
+  if (!process.env.VERCEL) {
+    return (
+      'Run `gcloud auth application-default login` (local ADC). ' +
+      'GCP_* from `vercel env pull` are ignored off-Vercel.'
+    )
+  }
+  const missing = listMissingWifEnvVars()
+  if (missing.length > 0) {
+    return `Missing GCP Workload Identity Federation env vars (Vercel OIDC): ${missing.join(', ')}.`
+  }
+  return (
+    'GCP Workload Identity Federation env vars are set but auth failed. ' +
+    'Check GCP_AUDIENCE (OIDC aud), Vercel OIDC, and SA impersonation IAM.'
+  )
 }
 
 /** Audience Vercel stamps on the OIDC token. Must match the GCP provider allowlist. */
