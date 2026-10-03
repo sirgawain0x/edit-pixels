@@ -11,6 +11,16 @@ const DEFAULT_PROJECT = 'creative-ai-491118'
 const DEFAULT_LOCATION = 'us-east1'
 const CLOUD_PLATFORM_SCOPE = 'https://www.googleapis.com/auth/cloud-platform'
 
+/** Required on Vercel for Workload Identity Federation (all four must be set). */
+const REQUIRED_WIF_ENV_KEYS = [
+  'GCP_PROJECT_NUMBER',
+  'GCP_WORKLOAD_IDENTITY_POOL_ID',
+  'GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID',
+  'GCP_SERVICE_ACCOUNT_EMAIL',
+] as const
+
+type RequiredWifEnvKey = (typeof REQUIRED_WIF_ENV_KEYS)[number]
+
 interface WifProviderIds {
   projectNumber: string
   poolId: string
@@ -23,6 +33,37 @@ interface WifConfig extends WifProviderIds {
   oidcAudience: string
   /** Identity Provider resource name sent to https://sts.googleapis.com/v1/token. */
   stsAudience: string
+}
+
+/** Names of required WIF env vars that are unset or blank. */
+export function listMissingWifEnvVars(): RequiredWifEnvKey[] {
+  return REQUIRED_WIF_ENV_KEYS.filter((key) => !process.env[key]?.trim())
+}
+
+/**
+ * User-facing hint when Vertex token acquisition fails.
+ * On Vercel, names missing GCP_* keys when WIF config is incomplete.
+ */
+export function directorVertexAuthFailureHint(): string {
+  return vertexAuthFailureHint()
+}
+
+/** Shared Vertex/WIF auth failure hint (Director, Seedance/Pixels plan, Flow). */
+export function vertexAuthFailureHint(): string {
+  if (!process.env.VERCEL) {
+    return (
+      'Run `gcloud auth application-default login` (local ADC). ' +
+      'GCP_* from `vercel env pull` are ignored off-Vercel.'
+    )
+  }
+  const missing = listMissingWifEnvVars()
+  if (missing.length > 0) {
+    return `Missing GCP Workload Identity Federation env vars (Vercel OIDC): ${missing.join(', ')}.`
+  }
+  return (
+    'GCP Workload Identity Federation env vars are set but auth failed. ' +
+    'Check GCP_AUDIENCE (OIDC aud), Vercel OIDC, and SA impersonation IAM.'
+  )
 }
 
 /** Audience Vercel stamps on the OIDC token. Must match the GCP provider allowlist. */
@@ -131,17 +172,10 @@ export async function getVertexAccessToken(): Promise<string> {
   return getAccessTokenViaAdc()
 }
 
-/** Auth client for GCP SDKs (Firestore, etc.) — same WIF / ADC path as Vertex. */
-export async function getGoogleAuthClient(): Promise<AnyAuthClient> {
-  const wif = readWifConfig()
-  if (wif && process.env.VERCEL) {
-    return buildExternalAccountClient(wif)
-  }
-  const auth = new GoogleAuth({ scopes: [CLOUD_PLATFORM_SCOPE] })
-  return auth.getClient()
-}
-
 export function isVertexAuthConfigured(): boolean {
-  if (readWifConfig() && process.env.VERCEL) return true
+  if (process.env.VERCEL) {
+    return listMissingWifEnvVars().length === 0
+  }
+  // Local: ADC (`gcloud auth application-default login`); WIF vars are ignored off-Vercel.
   return true
 }
