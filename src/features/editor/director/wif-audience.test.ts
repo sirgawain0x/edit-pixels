@@ -4,6 +4,7 @@ import {
   listMissingWifEnvVars,
   oidcAudienceForProvider,
   stsAudienceForProvider,
+  vertexAuthFailureHint,
 } from '../../../../api/_vertex-auth'
 
 const provider = {
@@ -67,9 +68,10 @@ describe('missing WIF env messaging', () => {
     vi.stubEnv('GCP_WORKLOAD_IDENTITY_POOL_ID', '')
     vi.stubEnv('GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID', 'vercel')
     vi.stubEnv('GCP_SERVICE_ACCOUNT_EMAIL', '')
-    expect(directorVertexAuthFailureHint()).toBe(
+    expect(vertexAuthFailureHint()).toBe(
       'Missing GCP Workload Identity Federation env vars (Vercel OIDC): GCP_WORKLOAD_IDENTITY_POOL_ID, GCP_SERVICE_ACCOUNT_EMAIL.',
     )
+    expect(directorVertexAuthFailureHint()).toBe(vertexAuthFailureHint())
   })
 
   it('points at audience/IAM when all required WIF keys are present on Vercel', () => {
@@ -78,11 +80,11 @@ describe('missing WIF env messaging', () => {
     vi.stubEnv('GCP_WORKLOAD_IDENTITY_POOL_ID', 'vercel')
     vi.stubEnv('GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID', 'vercel')
     vi.stubEnv('GCP_SERVICE_ACCOUNT_EMAIL', 'sa@example.iam.gserviceaccount.com')
-    expect(directorVertexAuthFailureHint()).toContain('GCP_AUDIENCE')
+    expect(vertexAuthFailureHint()).toContain('GCP_AUDIENCE')
   })
 
   it('keeps the local ADC hint off-Vercel', () => {
     vi.stubEnv('VERCEL', '')
-    expect(directorVertexAuthFailureHint()).toContain('gcloud auth application-default login')
+    expect(vertexAuthFailureHint()).toContain('gcloud auth application-default login')
   })
 })

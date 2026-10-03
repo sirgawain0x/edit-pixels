@@ -45,6 +45,11 @@ export function listMissingWifEnvVars(): RequiredWifEnvKey[] {
  * On Vercel, names missing GCP_* keys when WIF config is incomplete.
  */
 export function directorVertexAuthFailureHint(): string {
+  return vertexAuthFailureHint()
+}
+
+/** Shared Vertex/WIF auth failure hint (Director, Seedance/Pixels plan, Flow). */
+export function vertexAuthFailureHint(): string {
   if (!process.env.VERCEL) {
     return (
       'Run `gcloud auth application-default login` (local ADC). ' +
@@ -178,6 +183,9 @@ export async function getGoogleAuthClient(): Promise<AnyAuthClient> {
 }
 
 export function isVertexAuthConfigured(): boolean {
-  if (readWifConfig() && process.env.VERCEL) return true
+  if (process.env.VERCEL) {
+    return listMissingWifEnvVars().length === 0
+  }
+  // Local: ADC (`gcloud auth application-default login`); WIF vars are ignored off-Vercel.
   return true
 }

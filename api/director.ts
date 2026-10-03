@@ -26,10 +26,10 @@
  */
 
 import {
-  directorVertexAuthFailureHint,
   getVertexAccessToken,
   getVertexLocation,
   getVertexProject,
+  vertexAuthFailureHint,
 } from './_vertex-auth.js'
 import { assertDirectorAuthorized } from './_director-auth.js'
 import {
@@ -423,7 +423,7 @@ async function handleDirectorPost(
     await releaseReservedPayment()
     console.error('Director auth error', error)
     const detail = error instanceof Error ? error.message : String(error)
-    const hint = directorVertexAuthFailureHint()
+    const hint = vertexAuthFailureHint()
     return Response.json(
       {
         error: `Director auth failed: ${hint}`,
