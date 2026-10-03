@@ -1,10 +1,11 @@
 /**
  * POST /api/seedance-plan — Gemini shot brief for Seedance (no Higgsfield).
  */
-// fallow-ignore-file complexity
+// fallow-ignore-file complexity,code-duplication
 
 import { getBearerToken, verifyPrivyAccessToken } from './_wallet-auth.js'
 import { isSeedanceGenerateEnabled } from './_seedance-pricing.js'
+import { listMissingWifEnvVars, vertexAuthFailureHint } from './_vertex-auth.js'
 import { isVertexGenerativeConfigured, planSeedanceShotBrief } from './_vertex-generative.js'
 
 export async function POST(request: Request): Promise<Response> {
@@ -12,7 +13,7 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'feature_disabled' }, { status: 404 })
   }
   if (!isVertexGenerativeConfigured()) {
-    return Response.json({ error: 'service unavailable' }, { status: 503 })
+    return Response.json({ error: vertexAuthFailureHint() }, { status: 503 })
   }
 
   let body: Record<string, unknown>
@@ -52,9 +53,14 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ brief })
   } catch (e) {
     console.error('seedance-plan error', e)
-    return Response.json(
-      { error: e instanceof Error ? e.message : 'planning failed' },
-      { status: 502 },
-    )
+    const message = e instanceof Error ? e.message : 'planning failed'
+    const authRelated =
+      /access token|Workload Identity|application-default|ADC|OIDC|unauthorized|401|403/i.test(
+        message,
+      )
+    if (process.env.VERCEL && (authRelated || listMissingWifEnvVars().length > 0)) {
+      return Response.json({ error: vertexAuthFailureHint() }, { status: 503 })
+    }
+    return Response.json({ error: message }, { status: 502 })
   }
 }
