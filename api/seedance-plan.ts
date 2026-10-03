@@ -55,9 +55,7 @@ export async function POST(request: Request): Promise<Response> {
     console.error('seedance-plan error', e)
     const message = e instanceof Error ? e.message : 'planning failed'
     const authRelated =
-      /access token|Workload Identity|application-default|ADC|OIDC|unauthorized|401|403/i.test(
-        message,
-      )
+      /access token|Workload Identity|application-default|ADC|OIDC/i.test(message)
     if (process.env.VERCEL && (authRelated || listMissingWifEnvVars().length > 0)) {
       return Response.json({ error: vertexAuthFailureHint() }, { status: 503 })
     }
