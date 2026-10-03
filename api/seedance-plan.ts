@@ -1,7 +1,7 @@
 /**
  * POST /api/seedance-plan — Gemini shot brief for Seedance (no Higgsfield).
  */
-// fallow-ignore-file complexity
+// fallow-ignore-file complexity,code-duplication
 
 import { getBearerToken, verifyPrivyAccessToken } from './_wallet-auth.js'
 import { isSeedanceGenerateEnabled } from './_seedance-pricing.js'

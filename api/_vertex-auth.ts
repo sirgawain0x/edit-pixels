@@ -12,14 +12,14 @@ const DEFAULT_LOCATION = 'us-east1'
 const CLOUD_PLATFORM_SCOPE = 'https://www.googleapis.com/auth/cloud-platform'
 
 /** Required on Vercel for Workload Identity Federation (all four must be set). */
-export const REQUIRED_WIF_ENV_KEYS = [
+const REQUIRED_WIF_ENV_KEYS = [
   'GCP_PROJECT_NUMBER',
   'GCP_WORKLOAD_IDENTITY_POOL_ID',
   'GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID',
   'GCP_SERVICE_ACCOUNT_EMAIL',
 ] as const
 
-export type RequiredWifEnvKey = (typeof REQUIRED_WIF_ENV_KEYS)[number]
+type RequiredWifEnvKey = (typeof REQUIRED_WIF_ENV_KEYS)[number]
 
 interface WifProviderIds {
   projectNumber: string
@@ -170,16 +170,6 @@ export async function getVertexAccessToken(): Promise<string> {
     return getAccessTokenViaWif(wif)
   }
   return getAccessTokenViaAdc()
-}
-
-/** Auth client for GCP SDKs (Firestore, etc.) — same WIF / ADC path as Vertex. */
-export async function getGoogleAuthClient(): Promise<AnyAuthClient> {
-  const wif = readWifConfig()
-  if (wif && process.env.VERCEL) {
-    return buildExternalAccountClient(wif)
-  }
-  const auth = new GoogleAuth({ scopes: [CLOUD_PLATFORM_SCOPE] })
-  return auth.getClient()
 }
 
 export function isVertexAuthConfigured(): boolean {
