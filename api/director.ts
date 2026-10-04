@@ -55,6 +55,7 @@ import {
   getDirectorAdkAppName,
   getDirectorAdkBaseUrl,
   runAdkDirector,
+  withAdkSessionEvent,
 } from './_director-adk.js'
 
 const DEFAULT_ENGINE_ID = '7129954674127405056'
@@ -264,23 +265,19 @@ async function persistDirectorPaymentIfNeeded(
   payment: Awaited<ReturnType<typeof assertDirectorPayment>>,
   data: ParsedDirectorRequest,
 ): Promise<void> {
-  if (
-    payment.paymentTxHash &&
-    payment.quote &&
-    payment.audioSeconds != null &&
-    data.walletAddress
-  ) {
-    await persistDirectorPayment({
-      txHash: payment.paymentTxHash,
-      walletAddress: data.walletAddress,
-      quote: payment.quote,
-      audioDurationSeconds: payment.audioSeconds,
-      sessionId: data.sessionId,
-      projectId: data.projectId,
-    }).catch((error) => {
-      console.error('Director Firestore payment persist failed', error)
-    })
+  if (!payment.paymentTxHash || !payment.quote || payment.audioSeconds == null || !data.walletAddress) {
+    return
   }
+  await persistDirectorPayment({
+    txHash: payment.paymentTxHash,
+    walletAddress: data.walletAddress,
+    quote: payment.quote,
+    audioDurationSeconds: payment.audioSeconds,
+    sessionId: data.sessionId,
+    projectId: data.projectId,
+  }).catch((error) => {
+    console.error('Director Firestore payment persist failed', error)
+  })
 }
 
 // fallow-ignore-next-line complexity
@@ -333,17 +330,7 @@ async function handleDirectorAdkPost(
     return Response.json({ error: 'Failed to reach Creative Director engine' }, { status: 502 })
   }
 
-  const hasSessionEvent = events.some((raw) => {
-    if (!raw || typeof raw !== 'object') return false
-    const record = raw as Record<string, unknown>
-    return (
-      (typeof record.sessionId === 'string' && record.sessionId.length > 0) ||
-      (typeof record.session_id === 'string' && record.session_id.length > 0)
-    )
-  })
-  const outboundEvents = hasSessionEvent
-    ? events
-    : [{ sessionId, session_id: sessionId }, ...events]
+  const outboundEvents = withAdkSessionEvent(events, sessionId)
 
   logDirectorStage('sse_open', {
     paymentTxHash: reservedPaymentTxHash,
