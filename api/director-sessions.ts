@@ -11,6 +11,10 @@
 import { assertDirectorAuthorized } from './_director-auth.js'
 import { listDirectorSessions } from './_director-firestore.js'
 import { isDirectorFirestoreEnabled } from './_firestore-client.js'
+import {
+  isServiceAccountImpersonationDenied,
+  vertexAuthFailureMessage,
+} from './_vertex-auth.js'
 
 export async function GET(request: Request): Promise<Response> {
   const authError = assertDirectorAuthorized(request)
@@ -39,6 +43,12 @@ export async function GET(request: Request): Promise<Response> {
     return Response.json({ sessions })
   } catch (error) {
     console.error('Director sessions list failed', error)
+    if (isServiceAccountImpersonationDenied(error)) {
+      return Response.json(
+        { error: `Director auth failed: ${vertexAuthFailureMessage(error)}`, sessions: [] },
+        { status: 503 },
+      )
+    }
     return Response.json({ sessions: [] })
   }
 }

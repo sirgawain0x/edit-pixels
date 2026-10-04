@@ -30,7 +30,7 @@ import {
   getVertexAccessToken,
   getVertexLocation,
   getVertexProject,
-  vertexAuthFailureHint,
+  vertexAuthFailureMessage,
 } from './_vertex-auth.js'
 import { assertDirectorAuthorized } from './_director-auth.js'
 import {
@@ -509,6 +509,10 @@ async function handleDirectorPost(
 
   const message = buildMessage(parsed.data.prompt, parsed.data.audioUri)
   const adkBase = getDirectorAdkBaseUrl()
+  logDirectorStage('backend', {
+    backend: adkBase ? 'adk' : 'vertex',
+    adkConfigured: Boolean(adkBase),
+  })
   if (adkBase) {
     return handleDirectorAdkPost(
       request,
@@ -536,7 +540,7 @@ async function handleDirectorPost(
     await releaseReservedPayment()
     console.error('Director auth error', error)
     const detail = error instanceof Error ? error.message : String(error)
-    const hint = vertexAuthFailureHint()
+    const hint = vertexAuthFailureMessage(error)
     return Response.json(
       {
         error: `Director auth failed: ${hint}`,

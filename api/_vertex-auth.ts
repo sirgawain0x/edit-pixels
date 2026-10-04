@@ -48,6 +48,38 @@ export function directorVertexAuthFailureHint(): string {
   return vertexAuthFailureHint()
 }
 
+function googleAuthErrorText(error: unknown): string {
+  if (typeof error === 'string') return error
+  if (!error || typeof error !== 'object') return ''
+  const record = error as { message?: unknown; cause?: unknown }
+  const parts: string[] = []
+  if (typeof record.message === 'string') parts.push(record.message)
+  if (record.cause) parts.push(googleAuthErrorText(record.cause))
+  return parts.join('\n')
+}
+
+/** True when WIF STS succeeded but IAM Credentials refused `:generateAccessToken`. */
+export function isServiceAccountImpersonationDenied(error: unknown): boolean {
+  return googleAuthErrorText(error).includes('iam.serviceAccounts.getAccessToken')
+}
+
+export function rethrowIfServiceAccountImpersonationDenied(error: unknown): void {
+  if (isServiceAccountImpersonationDenied(error)) throw error
+}
+
+/** Client-safe copy when impersonating `GCP_SERVICE_ACCOUNT_EMAIL` is denied. */
+export function vertexImpersonationFailureDetail(error: unknown): string | null {
+  if (!isServiceAccountImpersonationDenied(error)) return null
+  const serviceAccount =
+    process.env.GCP_SERVICE_ACCOUNT_EMAIL?.trim() || 'GCP_SERVICE_ACCOUNT_EMAIL'
+  return (
+    `Permission iam.serviceAccounts.getAccessToken denied while impersonating ${serviceAccount}. ` +
+    'Grant the Vercel OIDC WIF principal roles/iam.workloadIdentityUser on that service account. ' +
+    'Firestore past briefs need this even when chat uses Cloud Run. ' +
+    'To skip Vertex WIF for chat, set DIRECTOR_ADK_BASE_URL to the ADK Cloud Run URL.'
+  )
+}
+
 /** Shared Vertex/WIF auth failure hint (Director, Seedance/Pixels plan, Flow). */
 export function vertexAuthFailureHint(): string {
   if (!process.env.VERCEL) {
@@ -62,8 +94,14 @@ export function vertexAuthFailureHint(): string {
   }
   return (
     'GCP Workload Identity Federation env vars are set but auth failed. ' +
-    'Check GCP_AUDIENCE (OIDC aud), Vercel OIDC, and SA impersonation IAM.'
+    'Grant the WIF principal roles/iam.workloadIdentityUser on GCP_SERVICE_ACCOUNT_EMAIL. ' +
+    'Also check GCP_AUDIENCE (OIDC aud), Vercel OIDC, and DIRECTOR_ADK_BASE_URL for Cloud Run ADK.'
   )
+}
+
+/** Prefer the impersonation IAM detail when the thrown error names it. */
+export function vertexAuthFailureMessage(error?: unknown): string {
+  return (error ? vertexImpersonationFailureDetail(error) : null) ?? vertexAuthFailureHint()
 }
 
 /** Audience Vercel stamps on the OIDC token. Must match the GCP provider allowlist. */
