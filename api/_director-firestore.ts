@@ -70,7 +70,7 @@ function stringOrNull(value: string | null | undefined) {
   return trimmed ? encodeFirestoreString(trimmed) : encodeFirestoreNull()
 }
 
-export async function persistDirectorPayment(input: {
+async function persistDirectorPayment(input: {
   txHash: string
   walletAddress: string
   quote: DirectorBillingQuote
@@ -97,6 +97,29 @@ export async function persistDirectorPayment(input: {
       projectId: stringOrNull(input.projectId),
       createdAt: encodeFirestoreTimestamp(),
     },
+  })
+}
+
+export async function persistDirectorPaymentWhenQuoted(input: {
+  paymentTxHash: string | null
+  quote: DirectorBillingQuote | null
+  audioSeconds: number | null
+  walletAddress?: string
+  sessionId?: string
+  projectId?: string
+}): Promise<void> {
+  if (!input.paymentTxHash || !input.quote || input.audioSeconds == null || !input.walletAddress) {
+    return
+  }
+  await persistDirectorPayment({
+    txHash: input.paymentTxHash,
+    walletAddress: input.walletAddress,
+    quote: input.quote,
+    audioDurationSeconds: input.audioSeconds,
+    sessionId: input.sessionId,
+    projectId: input.projectId,
+  }).catch((error) => {
+    console.error('Director Firestore payment persist failed', error)
   })
 }
 
