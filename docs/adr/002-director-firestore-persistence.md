@@ -79,6 +79,7 @@ Uses the same GCP project and WIF/ADC credentials as Vertex:
 - `GOOGLE_CLOUD_PROJECT` / `GCP_PROJECT_ID` (default `creative-ai-491118`)
 - `FIRESTORE_DATABASE_ID` (default **`creative-director-1`** — the named DB in Firestore Studio)
 - WIF vars on Vercel (see [`api/_vertex-auth.ts`](../../api/_vertex-auth.ts))
+- The WIF principal must have `roles/iam.workloadIdentityUser` on `GCP_SERVICE_ACCOUNT_EMAIL` (typically `vercel@creative-ai-491118.iam.gserviceaccount.com`). A 403 `iam.serviceAccounts.getAccessToken` is this impersonation binding. `GET /api/director-sessions` always uses that token. Chat uses Cloud Run ADK when `DIRECTOR_ADK_BASE_URL` is set; otherwise it mints the same WIF token and calls Vertex `:streamQuery`.
 - `DIRECTOR_FIRESTORE_DISABLED=1` — opt out without removing code
 
 **edit-pixels uses the native `@google-cloud/firestore` SDK**, not the MongoDB compatibility connection strings shown in Firestore Studio. Those SCRAM/OIDC URLs are for MongoDB tools (Compass, Studio MQL) only.

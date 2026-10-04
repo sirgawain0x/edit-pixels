@@ -26,6 +26,7 @@ import {
   runFirestoreStructuredQuery,
 } from './_firestore-rest.js'
 import { extractStoryboardScenes, type DirectorSsePersistState } from './_director-sse-persist.js'
+import { rethrowIfServiceAccountImpersonationDenied } from './_vertex-auth.js'
 
 const SESSIONS = 'director_sessions'
 const STORYBOARDS = 'director_storyboards'
@@ -229,6 +230,7 @@ export async function listDirectorSessions(input: {
       .filter((row) => row.sessionId && (!projectId || row.projectId === projectId))
   } catch (error) {
     console.error('Director Firestore list failed', error)
+    rethrowIfServiceAccountImpersonationDenied(error)
     return []
   }
 }

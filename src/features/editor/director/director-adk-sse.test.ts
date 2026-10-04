@@ -1,9 +1,31 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   adkEventsIncludeSessionId,
   encodeAdkEventsAsSse,
+  getDirectorAdkBaseUrl,
   withAdkSessionEvent,
 } from '../../../../api/_director-adk.js'
+
+describe('DIRECTOR_ADK_BASE_URL', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('is unset when the Cloud Run env var is blank', () => {
+    vi.stubEnv('DIRECTOR_ADK_BASE_URL', '')
+    expect(getDirectorAdkBaseUrl()).toBeNull()
+  })
+
+  it('strips a trailing slash from the Cloud Run URL', () => {
+    vi.stubEnv(
+      'DIRECTOR_ADK_BASE_URL',
+      'https://creative-director-1037240986506.us-east1.run.app/',
+    )
+    expect(getDirectorAdkBaseUrl()).toBe(
+      'https://creative-director-1037240986506.us-east1.run.app',
+    )
+  })
+})
 
 describe('encodeAdkEventsAsSse', () => {
   it('detects session id on ADK events', () => {
