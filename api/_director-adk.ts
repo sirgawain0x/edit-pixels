@@ -37,10 +37,11 @@ async function ensureAdkDirectorSession(
     body: JSON.stringify({ state: {} }),
     signal,
   })
-  if (!response.ok) {
-    const detail = await response.text().catch(() => '')
-    throw new DirectorAdkError('session', response.status, detail)
+  if (response.ok || response.status === 409) {
+    return
   }
+  const detail = await response.text().catch(() => '')
+  throw new DirectorAdkError('session', response.status, detail)
 }
 
 export interface AdkRunParams {
