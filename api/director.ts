@@ -43,7 +43,7 @@ import {
 import { probeAudioDurationSeconds } from './_audio-duration.js'
 import {
   finalizeDirectorSession,
-  persistDirectorPayment,
+  persistDirectorPaymentWhenQuoted,
   upsertDirectorSession,
   type DirectorPersistContext,
 } from './_director-firestore.js'
@@ -261,25 +261,6 @@ async function assertDirectorPayment(data: ParsedDirectorRequest): Promise<
   }
 }
 
-async function persistDirectorPaymentIfNeeded(
-  payment: Awaited<ReturnType<typeof assertDirectorPayment>>,
-  data: ParsedDirectorRequest,
-): Promise<void> {
-  if (!payment.paymentTxHash || !payment.quote || payment.audioSeconds == null || !data.walletAddress) {
-    return
-  }
-  await persistDirectorPayment({
-    txHash: payment.paymentTxHash,
-    walletAddress: data.walletAddress,
-    quote: payment.quote,
-    audioDurationSeconds: payment.audioSeconds,
-    sessionId: data.sessionId,
-    projectId: data.projectId,
-  }).catch((error) => {
-    console.error('Director Firestore payment persist failed', error)
-  })
-}
-
 // fallow-ignore-next-line complexity
 async function handleDirectorAdkPost(
   request: Request,
@@ -338,7 +319,14 @@ async function handleDirectorAdkPost(
     projectId: data.projectId ?? null,
     backend: 'adk',
   })
-  void persistDirectorPaymentIfNeeded(payment, { ...data, sessionId })
+  void persistDirectorPaymentWhenQuoted({
+    paymentTxHash: payment.paymentTxHash,
+    quote: payment.quote,
+    audioSeconds: payment.audioSeconds,
+    walletAddress: data.walletAddress,
+    sessionId,
+    projectId: data.projectId,
+  })
 
   const sseBytes = encodeAdkEventsAsSse(outboundEvents)
   const stream = new ReadableStream<Uint8Array>({
@@ -609,7 +597,14 @@ async function handleDirectorPost(
     wallet: parsed.data.walletAddress?.toLowerCase() ?? null,
     projectId: parsed.data.projectId ?? null,
   })
-  void persistDirectorPaymentIfNeeded(payment, parsed.data)
+  void persistDirectorPaymentWhenQuoted({
+    paymentTxHash: payment.paymentTxHash,
+    quote: payment.quote,
+    audioSeconds: payment.audioSeconds,
+    walletAddress: parsed.data.walletAddress,
+    sessionId: parsed.data.sessionId,
+    projectId: parsed.data.projectId,
+  })
   return proxyEngineSse(request, preamble.reader, preamble.chunk, upstreamAbort, persistCtx)
 }
 

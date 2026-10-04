@@ -100,6 +100,29 @@ export async function persistDirectorPayment(input: {
   })
 }
 
+export async function persistDirectorPaymentWhenQuoted(input: {
+  paymentTxHash: string | null
+  quote: DirectorBillingQuote | null
+  audioSeconds: number | null
+  walletAddress?: string
+  sessionId?: string
+  projectId?: string
+}): Promise<void> {
+  if (!input.paymentTxHash || !input.quote || input.audioSeconds == null || !input.walletAddress) {
+    return
+  }
+  await persistDirectorPayment({
+    txHash: input.paymentTxHash,
+    walletAddress: input.walletAddress,
+    quote: input.quote,
+    audioDurationSeconds: input.audioSeconds,
+    sessionId: input.sessionId,
+    projectId: input.projectId,
+  }).catch((error) => {
+    console.error('Director Firestore payment persist failed', error)
+  })
+}
+
 export async function upsertDirectorSession(
   ctx: DirectorPersistContext,
   status: DirectorSessionStatus,
