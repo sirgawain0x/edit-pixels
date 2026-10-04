@@ -70,7 +70,7 @@ function stringOrNull(value: string | null | undefined) {
   return trimmed ? encodeFirestoreString(trimmed) : encodeFirestoreNull()
 }
 
-export async function persistDirectorPayment(input: {
+async function persistDirectorPayment(input: {
   txHash: string
   walletAddress: string
   quote: DirectorBillingQuote
