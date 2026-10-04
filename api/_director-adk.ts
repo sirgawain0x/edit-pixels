@@ -24,7 +24,7 @@ function sessionUrl(baseUrl: string, appName: string, userId: string, sessionId:
   return `${baseUrl}/apps/${encodeURIComponent(appName)}/users/${encodeURIComponent(userId)}/sessions/${encodeURIComponent(sessionId)}`
 }
 
-export async function ensureAdkDirectorSession(
+async function ensureAdkDirectorSession(
   baseUrl: string,
   appName: string,
   userId: string,
@@ -94,4 +94,25 @@ export async function runAdkDirector(params: AdkRunParams): Promise<unknown[]> {
     return [payload]
   }
   return payload
+}
+
+function readAdkSessionIdFromEvent(raw: unknown): string {
+  if (!raw || typeof raw !== 'object') return ''
+  const record = raw as Record<string, unknown>
+  if (typeof record.sessionId === 'string' && record.sessionId.length > 0) {
+    return record.sessionId
+  }
+  if (typeof record.session_id === 'string' && record.session_id.length > 0) {
+    return record.session_id
+  }
+  return ''
+}
+
+export function adkEventsIncludeSessionId(events: unknown[]): boolean {
+  return events.some((raw) => readAdkSessionIdFromEvent(raw).length > 0)
+}
+
+export function withAdkSessionEvent(events: unknown[], sessionId: string): unknown[] {
+  if (adkEventsIncludeSessionId(events)) return events
+  return [{ sessionId, session_id: sessionId }, ...events]
 }
