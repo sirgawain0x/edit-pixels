@@ -38,6 +38,10 @@ async function ensureAdkDirectorSession(
     signal,
   })
   if (!response.ok) {
+    // Session POST is create-only; an existing id is 409 (older ADK servers used 400).
+    if (response.status === 409 || response.status === 400) {
+      return
+    }
     const detail = await response.text().catch(() => '')
     throw new DirectorAdkError('session', response.status, detail)
   }
