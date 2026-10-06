@@ -80,16 +80,19 @@ Uses the same GCP project and WIF/ADC credentials as Vertex:
 - `FIRESTORE_DATABASE_ID` (default **`creative-director-1`** — the named DB in Firestore Studio)
 - WIF vars on Vercel (see [`api/_vertex-auth.ts`](../../api/_vertex-auth.ts))
 - The WIF principal must have `roles/iam.workloadIdentityUser` on `GCP_SERVICE_ACCOUNT_EMAIL` (typically `vercel@creative-ai-491118.iam.gserviceaccount.com`). A 403 `iam.serviceAccounts.getAccessToken` is this impersonation binding. `GET /api/director-sessions` always uses that token. Chat uses Cloud Run ADK when `DIRECTOR_ADK_BASE_URL` is set; otherwise it mints the same WIF token and calls Vertex `:streamQuery`.
+- When `DIRECTOR_ADK_BASE_URL` is set, the caller SA must also have `roles/iam.serviceAccountTokenCreator` **on itself** so IAM Credentials `:generateIdToken` can obtain `iam.serviceAccounts.getOpenIdToken`, plus `roles/run.invoker` on the Cloud Run service. See [`scripts/gcp-director-wif-fix.sh`](../../scripts/gcp-director-wif-fix.sh).
 - `DIRECTOR_FIRESTORE_DISABLED=1` — opt out without removing code
 
 **edit-pixels uses the native `@google-cloud/firestore` SDK**, not the MongoDB compatibility connection strings shown in Firestore Studio. Those SCRAM/OIDC URLs are for MongoDB tools (Compass, Studio MQL) only.
 
-**Firestore setup (GCP console):**
+**Firestore setup (GCP console / gcloud):**
 
-1. Database **`creative-director-1`** is already created (Firestore Studio / `nam5`).
-2. Grant the Vertex/WIF service account `roles/datastore.user` on that database.
+1. Create named database **`creative-director-1`** if it does not exist (`nam5` multi-region). A 404 `The database creative-director-1 does not exist` from `/api/director-sessions` means this step was skipped.
+2. Grant the Vertex/WIF service account `roles/datastore.user` on the project (or that database).
 3. Create composite index on **`director_sessions`**: `wallet` ASC, `updatedAt` DESC (Firestore suggests this on first list query).
 4. Deploy [`firestore.rules`](../../firestore.rules) if exposing client SDK later.
+
+Apply IAM + DB create in one pass with [`scripts/gcp-director-wif-fix.sh`](../../scripts/gcp-director-wif-fix.sh).
 
 ---
 

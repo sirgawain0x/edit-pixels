@@ -16,6 +16,14 @@ describe('directorFailureMessage', () => {
     expect(directorFailureMessage(503, { error })).toContain('DIRECTOR_ADK_BASE_URL')
   })
 
+  it('renders Cloud Run getOpenIdToken 503 copy from the error field', () => {
+    const error =
+      'Director auth failed: Permission iam.serviceAccounts.getOpenIdToken denied while minting a Cloud Run ID token for vercel@creative-ai-491118.iam.gserviceaccount.com. Grant that service account roles/iam.serviceAccountTokenCreator on itself, and roles/run.invoker on the Cloud Run service. Required when DIRECTOR_ADK_BASE_URL is set (WIF access token alone is not enough).'
+    expect(directorFailureMessage(503, { error })).toBe(error)
+    expect(directorFailureMessage(503, { error })).toContain('iam.serviceAccounts.getOpenIdToken')
+    expect(directorFailureMessage(503, { error })).toContain('serviceAccountTokenCreator')
+  })
+
   it('reads Vercel invocation errors without returning the object', () => {
     const message = directorFailureMessage(500, {
       error: { code: 'FUNCTION_INVOCATION_FAILED', message: 'A server error has occurred' },
