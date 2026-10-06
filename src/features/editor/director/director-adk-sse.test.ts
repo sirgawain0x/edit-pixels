@@ -3,8 +3,13 @@ import {
   adkEventsIncludeSessionId,
   encodeAdkEventsAsSse,
   getDirectorAdkBaseUrl,
+  runAdkDirector,
   withAdkSessionEvent,
 } from '../../../../api/_director-adk.js'
+
+vi.mock('../../../../api/_vertex-auth.js', () => ({
+  getCloudRunIdToken: vi.fn(async () => 'mock-id-token'),
+}))
 
 describe('DIRECTOR_ADK_BASE_URL', () => {
   afterEach(() => {
@@ -42,5 +47,43 @@ describe('encodeAdkEventsAsSse', () => {
     const bytes = encodeAdkEventsAsSse([{ content: { parts: [{ text: 'Hi' }] } }])
     const text = new TextDecoder().decode(bytes)
     expect(text).toBe('data: {"content":{"parts":[{"text":"Hi"}]}}\n\n')
+  })
+})
+
+describe('runAdkDirector Cloud Run auth', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('sends Authorization on session create and /run', async () => {
+    const baseUrl = 'https://creative-director-1037240986506.us-east1.run.app'
+    const calls: { url: string; init?: RequestInit }[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        calls.push({ url: String(url), init })
+        if (String(url).endsWith('/run')) {
+          return new Response(JSON.stringify([{ content: { parts: [{ text: 'ok' }] } }]), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        }
+        return new Response('', { status: 200 })
+      }),
+    )
+
+    await runAdkDirector({
+      baseUrl,
+      appName: 'agent',
+      userId: 'creator-user',
+      sessionId: 'sess-1',
+      message: 'hello',
+    })
+
+    expect(calls).toHaveLength(2)
+    for (const call of calls) {
+      const headers = call.init?.headers as Record<string, string> | undefined
+      expect(headers?.Authorization).toBe('Bearer mock-id-token')
+    }
   })
 })

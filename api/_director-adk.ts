@@ -3,6 +3,8 @@
  * Converts unary `/run` JSON event arrays into SSE for the Pixels UI.
  */
 
+import { getCloudRunIdToken } from './_vertex-auth.js'
+
 const DEFAULT_ADK_APP_NAME = 'agent'
 
 export function getDirectorAdkBaseUrl(): string | null {
@@ -24,16 +26,25 @@ function sessionUrl(baseUrl: string, appName: string, userId: string, sessionId:
   return `${baseUrl}/apps/${encodeURIComponent(appName)}/users/${encodeURIComponent(userId)}/sessions/${encodeURIComponent(sessionId)}`
 }
 
+async function adkJsonAuthHeaders(baseUrl: string): Promise<Record<string, string>> {
+  const token = await getCloudRunIdToken(baseUrl)
+  return {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${token}`,
+  }
+}
+
 async function ensureAdkDirectorSession(
   baseUrl: string,
   appName: string,
   userId: string,
   sessionId: string,
+  headers: Record<string, string>,
   signal?: AbortSignal,
 ): Promise<void> {
   const response = await fetch(sessionUrl(baseUrl, appName, userId, sessionId), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({ state: {} }),
     signal,
   })
@@ -71,11 +82,12 @@ export class DirectorAdkError extends Error {
 
 export async function runAdkDirector(params: AdkRunParams): Promise<unknown[]> {
   const { baseUrl, appName, userId, sessionId, message, signal } = params
-  await ensureAdkDirectorSession(baseUrl, appName, userId, sessionId, signal)
+  const headers = await adkJsonAuthHeaders(baseUrl)
+  await ensureAdkDirectorSession(baseUrl, appName, userId, sessionId, headers, signal)
 
   const response = await fetch(`${baseUrl}/run`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({
       appName,
       userId,

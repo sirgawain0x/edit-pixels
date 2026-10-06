@@ -10,7 +10,7 @@ describe('directorFailureMessage', () => {
 
   it('renders WIF impersonation 503 copy from the error field', () => {
     const error =
-      'Director auth failed: Permission iam.serviceAccounts.getAccessToken denied while impersonating vercel@creative-ai-491118.iam.gserviceaccount.com. Grant the Vercel OIDC WIF principal roles/iam.workloadIdentityUser on that service account. Firestore past briefs need this even when chat uses Cloud Run. To skip Vertex WIF for chat, set DIRECTOR_ADK_BASE_URL to the ADK Cloud Run URL.'
+      'Director auth failed: Permission iam.serviceAccounts.getAccessToken denied while impersonating vercel@creative-ai-491118.iam.gserviceaccount.com. Grant the Vercel OIDC WIF principal roles/iam.workloadIdentityUser on that service account. Firestore past briefs and Cloud Run ADK chat both need this impersonation binding when DIRECTOR_ADK_BASE_URL is set.'
     expect(directorFailureMessage(503, { error })).toBe(error)
     expect(directorFailureMessage(503, { error })).toContain('iam.serviceAccounts.getAccessToken')
     expect(directorFailureMessage(503, { error })).toContain('DIRECTOR_ADK_BASE_URL')

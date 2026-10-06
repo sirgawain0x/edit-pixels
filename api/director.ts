@@ -307,6 +307,18 @@ async function handleDirectorAdkPost(
         { status: 502 },
       )
     }
+    const authFailed =
+      error instanceof Error &&
+      (error.message.includes('Cloud Run ID token') ||
+        error.message.includes('Workload Identity Federation') ||
+        error.message.includes('Google Cloud access token'))
+    if (authFailed) {
+      console.error('Director ADK auth error', error)
+      return Response.json(
+        { error: `Director auth failed: ${vertexAuthFailureMessage(error)}` },
+        { status: 503 },
+      )
+    }
     console.error('Director ADK fetch error', error)
     return Response.json({ error: 'Failed to reach Creative Director engine' }, { status: 502 })
   }
