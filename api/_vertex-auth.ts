@@ -48,6 +48,37 @@ export function directorVertexAuthFailureHint(): string {
   return vertexAuthFailureHint()
 }
 
+function googleAuthErrorText(error: unknown): string {
+  if (typeof error === 'string') return error
+  if (!error || typeof error !== 'object') return ''
+  const record = error as { message?: unknown; cause?: unknown }
+  const parts: string[] = []
+  if (typeof record.message === 'string') parts.push(record.message)
+  if (record.cause) parts.push(googleAuthErrorText(record.cause))
+  return parts.join('\n')
+}
+
+/** True when WIF STS succeeded but IAM Credentials refused `:generateAccessToken`. */
+export function isServiceAccountImpersonationDenied(error: unknown): boolean {
+  return googleAuthErrorText(error).includes('iam.serviceAccounts.getAccessToken')
+}
+
+export function rethrowIfServiceAccountImpersonationDenied(error: unknown): void {
+  if (isServiceAccountImpersonationDenied(error)) throw error
+}
+
+/** Client-safe copy when impersonating `GCP_SERVICE_ACCOUNT_EMAIL` is denied. */
+export function vertexImpersonationFailureDetail(error: unknown): string | null {
+  if (!isServiceAccountImpersonationDenied(error)) return null
+  const serviceAccount =
+    process.env.GCP_SERVICE_ACCOUNT_EMAIL?.trim() || 'GCP_SERVICE_ACCOUNT_EMAIL'
+  return (
+    `Permission iam.serviceAccounts.getAccessToken denied while impersonating ${serviceAccount}. ` +
+    'Grant the Vercel OIDC WIF principal roles/iam.workloadIdentityUser on that service account. ' +
+    'Firestore past briefs and Cloud Run ADK chat both need this impersonation binding when DIRECTOR_ADK_BASE_URL is set.'
+  )
+}
+
 /** Shared Vertex/WIF auth failure hint (Director, Seedance/Pixels plan, Flow). */
 export function vertexAuthFailureHint(): string {
   if (!process.env.VERCEL) {
@@ -62,8 +93,14 @@ export function vertexAuthFailureHint(): string {
   }
   return (
     'GCP Workload Identity Federation env vars are set but auth failed. ' +
-    'Check GCP_AUDIENCE (OIDC aud), Vercel OIDC, and SA impersonation IAM.'
+    'Grant the WIF principal roles/iam.workloadIdentityUser on GCP_SERVICE_ACCOUNT_EMAIL. ' +
+    'Also check GCP_AUDIENCE (OIDC aud), Vercel OIDC, and DIRECTOR_ADK_BASE_URL for Cloud Run ADK.'
   )
+}
+
+/** Prefer the impersonation IAM detail when the thrown error names it. */
+export function vertexAuthFailureMessage(error?: unknown): string {
+  return (error ? vertexImpersonationFailureDetail(error) : null) ?? vertexAuthFailureHint()
 }
 
 /** Audience Vercel stamps on the OIDC token. Must match the GCP provider allowlist. */
@@ -178,4 +215,59 @@ export function isVertexAuthConfigured(): boolean {
   }
   // Local: ADC (`gcloud auth application-default login`); WIF vars are ignored off-Vercel.
   return true
+}
+
+function readBearerFromAuthHeaders(headers: Headers): string | null {
+  const raw = headers.get('authorization') ?? headers.get('Authorization')
+  if (!raw?.startsWith('Bearer ')) return null
+  const token = raw.slice('Bearer '.length).trim()
+  return token || null
+}
+
+async function generateIdTokenViaImpersonatedSa(
+  serviceAccountEmail: string,
+  accessToken: string,
+  audience: string,
+): Promise<string> {
+  const url = `https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${encodeURIComponent(serviceAccountEmail)}:generateIdToken`
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ audience, includeEmail: true }),
+  })
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '')
+    throw new Error(`Cloud Run ID token via IAM Credentials failed (${response.status}): ${detail}`)
+  }
+  const payload = (await response.json()) as { token?: string }
+  if (!payload.token?.trim()) {
+    throw new Error('Cloud Run ID token via IAM Credentials returned no token')
+  }
+  return payload.token.trim()
+}
+
+/**
+ * OIDC ID token for authenticated Cloud Run invocations (audience = service base URL).
+ * Vercel: WIF access token + IAM Credentials generateIdToken on GCP_SERVICE_ACCOUNT_EMAIL.
+ * Local: Application Default Credentials via google-auth-library IdTokenClient.
+ */
+export async function getCloudRunIdToken(audience: string): Promise<string> {
+  const targetAudience = audience.replace(/\/+$/, '')
+  const wif = readWifConfig()
+  if (wif && process.env.VERCEL) {
+    const accessToken = await getAccessTokenViaWif(wif)
+    return generateIdTokenViaImpersonatedSa(wif.serviceAccountEmail, accessToken, targetAudience)
+  }
+
+  const auth = new GoogleAuth()
+  const client = await auth.getIdTokenClient(targetAudience)
+  const headers = await client.getRequestHeaders()
+  const token = readBearerFromAuthHeaders(headers)
+  if (!token) {
+    throw new Error('Failed to obtain Cloud Run ID token via ADC')
+  }
+  return token
 }

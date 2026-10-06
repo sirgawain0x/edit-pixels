@@ -7,7 +7,11 @@
  */
 // fallow-ignore-file complexity
 
-import { getVertexAccessToken, getVertexProject } from './_vertex-auth.js'
+import {
+  getVertexAccessToken,
+  getVertexProject,
+  rethrowIfServiceAccountImpersonationDenied,
+} from './_vertex-auth.js'
 
 const DEFAULT_DATABASE_ID = 'creative-director-1'
 /** Cap Firestore wait so sessions list cannot burn the full Vercel maxDuration. */
@@ -227,6 +231,7 @@ export async function runFirestoreStructuredQuery(input: {
     return rows.map((row) => row.document).filter((doc): doc is FirestoreRestDocument => Boolean(doc))
   } catch (error) {
     console.error('Director Firestore REST query failed', error)
+    rethrowIfServiceAccountImpersonationDenied(error)
     return []
   }
 }

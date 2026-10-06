@@ -5,7 +5,11 @@
 
 import { getBearerToken, verifyPrivyAccessToken } from './_wallet-auth.js'
 import { isSeedanceGenerateEnabled } from './_seedance-pricing.js'
-import { listMissingWifEnvVars, vertexAuthFailureHint } from './_vertex-auth.js'
+import {
+  listMissingWifEnvVars,
+  vertexAuthFailureHint,
+  vertexAuthFailureMessage,
+} from './_vertex-auth.js'
 import { isVertexGenerativeConfigured, planSeedanceShotBrief } from './_vertex-generative.js'
 
 export async function POST(request: Request): Promise<Response> {
@@ -59,7 +63,7 @@ export async function POST(request: Request): Promise<Response> {
         message,
       )
     if (process.env.VERCEL && (authRelated || listMissingWifEnvVars().length > 0)) {
-      return Response.json({ error: vertexAuthFailureHint() }, { status: 503 })
+      return Response.json({ error: vertexAuthFailureMessage(e) }, { status: 503 })
     }
     return Response.json({ error: message }, { status: 502 })
   }

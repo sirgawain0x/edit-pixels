@@ -1,6 +1,7 @@
 /// <reference types="node" />
 /**
- * Vercel serverless endpoint: proxies Creative Director Agent Engine SSE.
+ * Vercel serverless endpoint: proxies Creative Director (Vertex Agent Engine SSE
+ * or ADK api_server on Cloud Run when DIRECTOR_ADK_BASE_URL is set).
  *
  * Engine (streamQuery SSE — not the unary :query URL):
  *   projects/creative-ai-491118/locations/us-east1/reasoningEngines/7129954674127405056
@@ -29,7 +30,7 @@ import {
   getVertexAccessToken,
   getVertexLocation,
   getVertexProject,
-  vertexAuthFailureHint,
+  vertexAuthFailureMessage,
 } from './_vertex-auth.js'
 import { assertDirectorAuthorized } from './_director-auth.js'
 import {
@@ -42,12 +43,20 @@ import {
 import { probeAudioDurationSeconds } from './_audio-duration.js'
 import {
   finalizeDirectorSession,
-  persistDirectorPayment,
+  persistDirectorPaymentWhenQuoted,
   upsertDirectorSession,
   type DirectorPersistContext,
 } from './_director-firestore.js'
 import { readFirstEngineChunk } from './_director-engine-preamble.js'
 import { DirectorSsePersistAccumulator } from './_director-sse-persist.js'
+import {
+  DirectorAdkError,
+  encodeAdkEventsAsSse,
+  getDirectorAdkAppName,
+  getDirectorAdkBaseUrl,
+  runAdkDirector,
+  withAdkSessionEvent,
+} from './_director-adk.js'
 
 const DEFAULT_ENGINE_ID = '7129954674127405056'
 
@@ -74,6 +83,9 @@ interface ParsedDirectorRequest {
 }
 
 function getEngineId(): string {
+  if (getDirectorAdkBaseUrl()) {
+    return `adk:${getDirectorAdkAppName()}`
+  }
   return process.env.VERTEX_REASONING_ENGINE_ID?.trim() || DEFAULT_ENGINE_ID
 }
 
@@ -249,6 +261,105 @@ async function assertDirectorPayment(data: ParsedDirectorRequest): Promise<
   }
 }
 
+// fallow-ignore-next-line complexity
+async function handleDirectorAdkPost(
+  request: Request,
+  data: ParsedDirectorRequest,
+  adkBase: string,
+  message: string,
+  payment: Awaited<ReturnType<typeof assertDirectorPayment>>,
+  persistCtx: DirectorPersistContext,
+  reservedPaymentTxHash: string | null,
+  releaseReservedPayment: () => Promise<void>,
+): Promise<Response> {
+  const upstreamAbort = new AbortController()
+  const onClientAbort = () => upstreamAbort.abort()
+  request.signal.addEventListener('abort', onClientAbort)
+
+  const sessionId = data.sessionId?.trim() || crypto.randomUUID()
+  const appName = getDirectorAdkAppName()
+
+  let events: unknown[]
+  try {
+    events = await runAdkDirector({
+      baseUrl: adkBase,
+      appName,
+      userId: data.userId,
+      sessionId,
+      message,
+      signal: upstreamAbort.signal,
+    })
+    logDirectorStage('adk_run', {
+      paymentTxHash: reservedPaymentTxHash,
+      sessionId,
+      eventCount: events.length,
+    })
+  } catch (error) {
+    request.signal.removeEventListener('abort', onClientAbort)
+    await releaseReservedPayment()
+    if (upstreamAbort.signal.aborted || request.signal.aborted) {
+      return new Response(null, { status: 499 })
+    }
+    if (error instanceof DirectorAdkError) {
+      console.error('Director ADK error', error.stage, error.status, error.detail)
+      return Response.json(
+        { error: 'Creative Director engine request failed', status: error.status },
+        { status: 502 },
+      )
+    }
+    const authFailed =
+      error instanceof Error &&
+      (error.message.includes('Cloud Run ID token') ||
+        error.message.includes('Workload Identity Federation') ||
+        error.message.includes('Google Cloud access token'))
+    if (authFailed) {
+      console.error('Director ADK auth error', error)
+      return Response.json(
+        { error: `Director auth failed: ${vertexAuthFailureMessage(error)}` },
+        { status: 503 },
+      )
+    }
+    console.error('Director ADK fetch error', error)
+    return Response.json({ error: 'Failed to reach Creative Director engine' }, { status: 502 })
+  }
+
+  const outboundEvents = withAdkSessionEvent(events, sessionId)
+
+  logDirectorStage('sse_open', {
+    paymentTxHash: reservedPaymentTxHash,
+    wallet: data.walletAddress?.toLowerCase() ?? null,
+    projectId: data.projectId ?? null,
+    backend: 'adk',
+  })
+  void persistDirectorPaymentWhenQuoted({
+    paymentTxHash: payment.paymentTxHash,
+    quote: payment.quote,
+    audioSeconds: payment.audioSeconds,
+    walletAddress: data.walletAddress,
+    sessionId,
+    projectId: data.projectId,
+  })
+
+  const sseBytes = encodeAdkEventsAsSse(outboundEvents)
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(sseBytes)
+      controller.close()
+    },
+  })
+  const reader = stream.getReader()
+  const first = await reader.read()
+  if (first.done || !first.value) {
+    request.signal.removeEventListener('abort', onClientAbort)
+    return Response.json({ error: 'Empty response from Director ADK' }, { status: 502 })
+  }
+
+  return proxyEngineSse(request, reader, first.value, upstreamAbort, {
+    ...persistCtx,
+    initialSessionId: sessionId,
+  })
+}
+
 async function fetchEngineStream(
   token: string,
   input: Record<string, string>,
@@ -409,6 +520,24 @@ async function handleDirectorPost(
   }
 
   const message = buildMessage(parsed.data.prompt, parsed.data.audioUri)
+  const adkBase = getDirectorAdkBaseUrl()
+  logDirectorStage('backend', {
+    backend: adkBase ? 'adk' : 'vertex',
+    adkConfigured: Boolean(adkBase),
+  })
+  if (adkBase) {
+    return handleDirectorAdkPost(
+      request,
+      parsed.data,
+      adkBase,
+      message,
+      payment,
+      persistCtx,
+      reservedPaymentTxHash,
+      releaseReservedPayment,
+    )
+  }
+
   const input: Record<string, string> = { user_id: parsed.data.userId, message }
   if (parsed.data.sessionId) input.session_id = parsed.data.sessionId
 
@@ -423,7 +552,7 @@ async function handleDirectorPost(
     await releaseReservedPayment()
     console.error('Director auth error', error)
     const detail = error instanceof Error ? error.message : String(error)
-    const hint = vertexAuthFailureHint()
+    const hint = vertexAuthFailureMessage(error)
     return Response.json(
       {
         error: `Director auth failed: ${hint}`,
@@ -484,23 +613,14 @@ async function handleDirectorPost(
     wallet: parsed.data.walletAddress?.toLowerCase() ?? null,
     projectId: parsed.data.projectId ?? null,
   })
-  if (
-    payment.paymentTxHash &&
-    payment.quote &&
-    payment.audioSeconds != null &&
-    parsed.data.walletAddress
-  ) {
-    void persistDirectorPayment({
-      txHash: payment.paymentTxHash,
-      walletAddress: parsed.data.walletAddress,
-      quote: payment.quote,
-      audioDurationSeconds: payment.audioSeconds,
-      sessionId: parsed.data.sessionId,
-      projectId: parsed.data.projectId,
-    }).catch((error) => {
-      console.error('Director Firestore payment persist failed', error)
-    })
-  }
+  void persistDirectorPaymentWhenQuoted({
+    paymentTxHash: payment.paymentTxHash,
+    quote: payment.quote,
+    audioSeconds: payment.audioSeconds,
+    walletAddress: parsed.data.walletAddress,
+    sessionId: parsed.data.sessionId,
+    projectId: parsed.data.projectId,
+  })
   return proxyEngineSse(request, preamble.reader, preamble.chunk, upstreamAbort, persistCtx)
 }
 
