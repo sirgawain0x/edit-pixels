@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   directorVertexAuthFailureHint,
+  isDirectorUpstreamAuthFailure,
   isServiceAccountImpersonationDenied,
   listMissingWifEnvVars,
   oidcAudienceForProvider,
@@ -113,6 +114,18 @@ describe('WIF service-account impersonation failures', () => {
   it('detects IAM Credentials generateAccessToken denials', () => {
     expect(isServiceAccountImpersonationDenied(impersonationError)).toBe(true)
     expect(isServiceAccountImpersonationDenied(new Error('STS audience mismatch'))).toBe(false)
+  })
+
+  it('classifies Gaxios impersonation denials as ADK upstream auth failures', () => {
+    // Production ADK path throws raw GaxiosError from getAccessTokenViaWif — message
+    // has getAccessToken but not "Cloud Run ID token" / "Workload Identity Federation".
+    expect(isDirectorUpstreamAuthFailure(impersonationError)).toBe(true)
+    expect(
+      isDirectorUpstreamAuthFailure(
+        new Error('Cloud Run ID token via IAM Credentials failed (403): denied'),
+      ),
+    ).toBe(true)
+    expect(isDirectorUpstreamAuthFailure(new Error('ECONNREFUSED 10.0.0.1'))).toBe(false)
   })
 
   it('rethrows impersonation denials and ignores other errors', () => {

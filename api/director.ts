@@ -30,6 +30,7 @@ import {
   getVertexAccessToken,
   getVertexLocation,
   getVertexProject,
+  isDirectorUpstreamAuthFailure,
   vertexAuthFailureMessage,
 } from './_vertex-auth.js'
 import { assertDirectorAuthorized } from './_director-auth.js'
@@ -307,12 +308,9 @@ async function handleDirectorAdkPost(
         { status: 502 },
       )
     }
-    const authFailed =
-      error instanceof Error &&
-      (error.message.includes('Cloud Run ID token') ||
-        error.message.includes('Workload Identity Federation') ||
-        error.message.includes('Google Cloud access token'))
-    if (authFailed) {
+    // Gaxios IAM denials (`iam.serviceAccounts.getAccessToken`) must map to 503 with
+    // the workloadIdentityUser hint — not a generic "Failed to reach engine" 502.
+    if (isDirectorUpstreamAuthFailure(error)) {
       console.error('Director ADK auth error', error)
       return Response.json(
         { error: `Director auth failed: ${vertexAuthFailureMessage(error)}` },
