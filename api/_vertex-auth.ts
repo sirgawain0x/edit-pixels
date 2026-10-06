@@ -103,6 +103,21 @@ export function vertexAuthFailureMessage(error?: unknown): string {
   return (error ? vertexImpersonationFailureDetail(error) : null) ?? vertexAuthFailureHint()
 }
 
+/**
+ * True when Cloud Run ADK / Vertex token minting failed for WIF or IAM reasons.
+ * Gaxios impersonation denials do not use the "Cloud Run ID token" message prefix —
+ * match `iam.serviceAccounts.getAccessToken` via {@link isServiceAccountImpersonationDenied}.
+ */
+export function isDirectorUpstreamAuthFailure(error: unknown): boolean {
+  if (isServiceAccountImpersonationDenied(error)) return true
+  if (!(error instanceof Error)) return false
+  return (
+    error.message.includes('Cloud Run ID token') ||
+    error.message.includes('Workload Identity Federation') ||
+    error.message.includes('Google Cloud access token')
+  )
+}
+
 /** Audience Vercel stamps on the OIDC token. Must match the GCP provider allowlist. */
 export function oidcAudienceForProvider(input: WifProviderIds, configuredAudience?: string): string {
   const configured = configuredAudience?.trim()
