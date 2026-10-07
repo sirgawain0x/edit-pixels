@@ -2,7 +2,8 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useParams } from '@tanstack/react-router'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { Clapperboard, Loader2, Send, Square, Trash2, Wrench } from 'lucide-react'
+import { Clapperboard, Loader2, Mic, MicOff, Send, Square, Trash2, Wrench } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/shared/ui/cn'
 import { useWalletContext } from '@/context/wallet-context'
@@ -19,6 +20,9 @@ import { quoteDirectorBrief } from './director-pricing'
 import { DirectorInvoiceCard, type PendingDirectorInvoice } from './director-invoice-card'
 import { DirectorSessionPacks } from './director-session-packs'
 import { DirectorPastBriefs } from './director-past-briefs'
+import { DirectorMarkdown } from './director-markdown'
+import { DirectorMessageActions } from './director-message-actions'
+import { useSpeechRecognition } from './use-speech-recognition'
 import { useDirectorStore } from './director-store'
 import {
   buildDirectorTimelineAudioContext,
@@ -111,7 +115,19 @@ function DirectorMessage({
     )
   }
 
-  const markVariant = role === 'tool' ? 'tool' : role === 'error' ? 'error' : 'agent'
+  if (role === 'assistant') {
+    return (
+      <div className="flex justify-start gap-2.5">
+        <AgentMark variant="agent" />
+        <div className="max-w-[88%] min-w-0 pt-0.5 text-foreground/95">
+          <DirectorMarkdown content={text} />
+          <DirectorMessageActions text={text} />
+        </div>
+      </div>
+    )
+  }
+
+  const markVariant = role === 'tool' ? 'tool' : 'error'
 
   return (
     <div className="flex justify-start gap-2.5">
@@ -119,7 +135,6 @@ function DirectorMessage({
       <div
         className={cn(
           'max-w-[88%] whitespace-pre-wrap text-[12px] leading-relaxed',
-          role === 'assistant' && 'pt-0.5 text-foreground/95',
           role === 'tool' &&
             'rounded-md border border-border/80 bg-secondary/25 px-2.5 py-1.5 font-mono text-[11px] text-muted-foreground',
           role === 'error' &&
@@ -176,6 +191,30 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
   const storyboardShots = useMemo(() => findStoryboardShotsFromMessages(messages), [messages])
   const batchRenderEnabled = isSeedanceGenerateEnabled()
 
+  const baseInputBeforeSpeechRef = useRef('')
+
+  const handleTranscript = useCallback((transcript: string) => {
+    const base = baseInputBeforeSpeechRef.current
+    const next = base ? `${base.trim()} ${transcript}` : transcript
+    setInput(next)
+  }, [])
+
+  const handleSpeechError = useCallback((errorMsg: string) => {
+    toast.error(errorMsg)
+  }, [])
+
+  const { isListening, toggleListening, stopListening } = useSpeechRecognition({
+    onTranscript: handleTranscript,
+    onError: handleSpeechError,
+  })
+
+  const handleMicClick = useCallback(() => {
+    if (!isListening) {
+      baseInputBeforeSpeechRef.current = input
+    }
+    toggleListening()
+  }, [input, isListening, toggleListening])
+
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
   }, [messages, phase, streamingText, toolCalls, pendingInvoice, paying])
@@ -190,6 +229,7 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
   const queueInvoice = useCallback(
     // fallow-ignore-next-line complexity
     (text: string) => {
+      stopListening()
       const trimmed = text.trim()
       if (!trimmed) return
       if (!hasTimelineAudio || !audioContext.primary) {
@@ -251,6 +291,7 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
       hasTimelineAudio,
       isPremiumMember,
       reportLocalError,
+      stopListening,
       t,
       walletConfigured,
       projectId,
@@ -492,15 +533,8 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
         {phase === 'streaming' && streamingText && (
           <div className="flex justify-start gap-2.5">
             <AgentMark />
-            <div className="max-w-[88%] whitespace-pre-wrap pt-0.5 text-[12px] leading-relaxed text-foreground/95">
-              {streamingText}
-              <span
-                className={cn(
-                  'ml-0.5 inline-block h-3 w-[2px] translate-y-0.5 bg-primary align-middle',
-                  !reduceMotion && 'animate-pulse',
-                )}
-                aria-hidden
-              />
+            <div className="max-w-[88%] min-w-0 pt-0.5 text-foreground/95">
+              <DirectorMarkdown content={streamingText} isStreaming />
             </div>
           </div>
         )}
@@ -549,6 +583,23 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
             }
             className="max-h-28 min-h-[2.5rem] flex-1 resize-none bg-transparent px-2 py-2 text-[12px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/70 disabled:opacity-50"
           />
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className={cn(
+              'h-9 w-9 shrink-0 rounded-lg text-muted-foreground transition-all hover:bg-secondary/60 hover:text-foreground',
+              isListening &&
+                'border border-destructive/50 bg-destructive/15 text-destructive hover:bg-destructive/20 hover:text-destructive animate-pulse',
+            )}
+            onClick={handleMicClick}
+            disabled={Boolean(pendingInvoice) || paying}
+            title={isListening ? 'Stop listening' : 'Talk to Creative Director (Voice dictation)'}
+            aria-label={isListening ? 'Stop voice dictation' : 'Start voice dictation'}
+          >
+            {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+          </Button>
+
           {phase === 'streaming' ? (
             <Button
               size="icon"
