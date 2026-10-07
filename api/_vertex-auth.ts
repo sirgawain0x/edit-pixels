@@ -63,6 +63,19 @@ export function isServiceAccountImpersonationDenied(error: unknown): boolean {
   return googleAuthErrorText(error).includes('iam.serviceAccounts.getAccessToken')
 }
 
+/**
+ * True when IAM Credentials refused `:generateIdToken` (`iam.serviceAccounts.getOpenIdToken`).
+ * Common after WIF access-token impersonation succeeds but the caller SA lacks Token Creator
+ * on itself (required for Cloud Run ADK ID tokens on Vercel).
+ */
+export function isServiceAccountOpenIdTokenDenied(error: unknown): boolean {
+  const text = googleAuthErrorText(error)
+  return (
+    text.includes('iam.serviceAccounts.getOpenIdToken') ||
+    (text.includes('Cloud Run ID token via IAM Credentials failed') && text.includes('403'))
+  )
+}
+
 export function rethrowIfServiceAccountImpersonationDenied(error: unknown): void {
   if (isServiceAccountImpersonationDenied(error)) throw error
 }
@@ -76,6 +89,21 @@ export function vertexImpersonationFailureDetail(error: unknown): string | null 
     `Permission iam.serviceAccounts.getAccessToken denied while impersonating ${serviceAccount}. ` +
     'Grant the Vercel OIDC WIF principal roles/iam.workloadIdentityUser on that service account. ' +
     'Firestore past briefs and Cloud Run ADK chat both need this impersonation binding when DIRECTOR_ADK_BASE_URL is set.'
+  )
+}
+
+/**
+ * Client-safe copy when `:generateIdToken` is denied for Cloud Run ADK.
+ * Prefer over the generic WIF hint — production often fails here after access-token WIF works.
+ */
+export function vertexOpenIdTokenFailureDetail(error: unknown): string | null {
+  if (!isServiceAccountOpenIdTokenDenied(error)) return null
+  const serviceAccount =
+    process.env.GCP_SERVICE_ACCOUNT_EMAIL?.trim() || 'GCP_SERVICE_ACCOUNT_EMAIL'
+  return (
+    `Permission iam.serviceAccounts.getOpenIdToken denied while minting a Cloud Run ID token for ${serviceAccount}. ` +
+    'Grant that service account roles/iam.serviceAccountTokenCreator on itself, and roles/run.invoker on the Cloud Run service. ' +
+    'Required when DIRECTOR_ADK_BASE_URL is set (WIF access token alone is not enough).'
   )
 }
 
@@ -94,13 +122,23 @@ export function vertexAuthFailureHint(): string {
   return (
     'GCP Workload Identity Federation env vars are set but auth failed. ' +
     'Grant the WIF principal roles/iam.workloadIdentityUser on GCP_SERVICE_ACCOUNT_EMAIL. ' +
-    'Also check GCP_AUDIENCE (OIDC aud), Vercel OIDC, and DIRECTOR_ADK_BASE_URL for Cloud Run ADK.'
+    'For Cloud Run ADK, also grant the caller SA roles/iam.serviceAccountTokenCreator on itself ' +
+    '(iam.serviceAccounts.getOpenIdToken) and roles/run.invoker. ' +
+    'Also check GCP_AUDIENCE (OIDC aud), Vercel OIDC, and DIRECTOR_ADK_BASE_URL.'
   )
 }
 
-/** Prefer the impersonation IAM detail when the thrown error names it. */
+/**
+ * Prefer stage-specific IAM detail when the thrown error names it.
+ * Order: getAccessToken impersonation → getOpenIdToken / Cloud Run ID token → generic WIF hint.
+ */
 export function vertexAuthFailureMessage(error?: unknown): string {
-  return (error ? vertexImpersonationFailureDetail(error) : null) ?? vertexAuthFailureHint()
+  if (!error) return vertexAuthFailureHint()
+  return (
+    vertexImpersonationFailureDetail(error) ??
+    vertexOpenIdTokenFailureDetail(error) ??
+    vertexAuthFailureHint()
+  )
 }
 
 /**
@@ -110,6 +148,7 @@ export function vertexAuthFailureMessage(error?: unknown): string {
  */
 export function isDirectorUpstreamAuthFailure(error: unknown): boolean {
   if (isServiceAccountImpersonationDenied(error)) return true
+  if (isServiceAccountOpenIdTokenDenied(error)) return true
   if (!(error instanceof Error)) return false
   return (
     error.message.includes('Cloud Run ID token') ||

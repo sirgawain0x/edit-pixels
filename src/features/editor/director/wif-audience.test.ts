@@ -3,6 +3,7 @@ import {
   directorVertexAuthFailureHint,
   isDirectorUpstreamAuthFailure,
   isServiceAccountImpersonationDenied,
+  isServiceAccountOpenIdTokenDenied,
   listMissingWifEnvVars,
   oidcAudienceForProvider,
   rethrowIfServiceAccountImpersonationDenied,
@@ -10,6 +11,7 @@ import {
   vertexAuthFailureHint,
   vertexAuthFailureMessage,
   vertexImpersonationFailureDetail,
+  vertexOpenIdTokenFailureDetail,
 } from '../../../../api/_vertex-auth'
 
 const provider = {
@@ -87,6 +89,8 @@ describe('missing WIF env messaging', () => {
     vi.stubEnv('GCP_SERVICE_ACCOUNT_EMAIL', 'sa@example.iam.gserviceaccount.com')
     expect(vertexAuthFailureHint()).toContain('GCP_AUDIENCE')
     expect(vertexAuthFailureHint()).toContain('roles/iam.workloadIdentityUser')
+    expect(vertexAuthFailureHint()).toContain('roles/iam.serviceAccountTokenCreator')
+    expect(vertexAuthFailureHint()).toContain('getOpenIdToken')
     expect(vertexAuthFailureHint()).toContain('DIRECTOR_ADK_BASE_URL')
   })
 
@@ -155,6 +159,53 @@ describe('WIF service-account impersonation failures', () => {
     expect(vertexAuthFailureMessage(impersonationError)).toBe(detail)
     expect(vertexAuthFailureMessage(impersonationError)).toMatch(
       /^Permission iam.serviceAccounts.getAccessToken denied/,
+    )
+  })
+})
+
+describe('WIF Cloud Run OpenID token failures', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  const openIdTokenError = new Error(
+    'Cloud Run ID token via IAM Credentials failed (403): {\n' +
+      '  "error": {\n' +
+      '    "code": 403,\n' +
+      '    "message": "Permission \'iam.serviceAccounts.getOpenIdToken\' denied on resource (or it may not exist).",\n' +
+      '    "status": "PERMISSION_DENIED"\n' +
+      '  }\n' +
+      '}',
+  )
+
+  it('detects getOpenIdToken denials from generateIdToken', () => {
+    expect(isServiceAccountOpenIdTokenDenied(openIdTokenError)).toBe(true)
+    expect(isServiceAccountOpenIdTokenDenied(new Error('STS audience mismatch'))).toBe(false)
+    expect(isServiceAccountImpersonationDenied(openIdTokenError)).toBe(false)
+  })
+
+  it('classifies OpenID token denials as ADK upstream auth failures', () => {
+    expect(isDirectorUpstreamAuthFailure(openIdTokenError)).toBe(true)
+  })
+
+  it('names getOpenIdToken and Token Creator self-bind in the client message', () => {
+    vi.stubEnv('VERCEL', '1')
+    vi.stubEnv('GCP_PROJECT_NUMBER', '1037240986506')
+    vi.stubEnv('GCP_WORKLOAD_IDENTITY_POOL_ID', 'vercel')
+    vi.stubEnv('GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID', 'vercel')
+    vi.stubEnv(
+      'GCP_SERVICE_ACCOUNT_EMAIL',
+      'vercel@creative-ai-491118.iam.gserviceaccount.com',
+    )
+    const detail = vertexOpenIdTokenFailureDetail(openIdTokenError)
+    expect(detail).toContain('iam.serviceAccounts.getOpenIdToken')
+    expect(detail).toContain('vercel@creative-ai-491118.iam.gserviceaccount.com')
+    expect(detail).toContain('roles/iam.serviceAccountTokenCreator')
+    expect(detail).toContain('roles/run.invoker')
+    expect(detail).toContain('DIRECTOR_ADK_BASE_URL')
+    expect(vertexAuthFailureMessage(openIdTokenError)).toBe(detail)
+    expect(vertexAuthFailureMessage(openIdTokenError)).toMatch(
+      /^Permission iam.serviceAccounts.getOpenIdToken denied/,
     )
   })
 })
