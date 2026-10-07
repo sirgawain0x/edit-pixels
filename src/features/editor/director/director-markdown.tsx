@@ -1,8 +1,56 @@
-import { memo } from 'react'
+import { memo, useMemo, type ReactNode } from 'react'
+import type { Element } from 'hast'
+import type { Root } from 'mdast'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import type { Plugin } from 'unified'
 import { useReducedMotion } from 'motion/react'
 import { cn } from '@/shared/ui/cn'
+
+const DIRECTOR_STREAMING_CARET_PROP = 'dataDirectorCaret'
+
+function remarkMarkStreamingCaretHost(): Plugin<[], Root> {
+  return (tree) => {
+    let caretHost: { data?: { hProperties?: Record<string, unknown> } } | null = null
+
+    const walk = (node: { type?: string; children?: unknown[] }, parent: unknown) => {
+      if (node.type === 'text') {
+        caretHost = parent as typeof caretHost
+      }
+      if (Array.isArray(node.children)) {
+        for (const child of node.children) {
+          walk(child as { type?: string; children?: unknown[] }, node)
+        }
+      }
+    }
+
+    walk(tree, null)
+
+    if (!caretHost) return
+
+    caretHost.data = caretHost.data ?? {}
+    caretHost.data.hProperties = {
+      ...caretHost.data.hProperties,
+      [DIRECTOR_STREAMING_CARET_PROP]: true,
+    }
+  }
+}
+
+function isStreamingCaretHost(node: Element | undefined): boolean {
+  return node?.properties?.[DIRECTOR_STREAMING_CARET_PROP] === true
+}
+
+function StreamingCaret({ reduceMotion }: { reduceMotion: boolean | null }) {
+  return (
+    <span
+      className={cn(
+        'ml-0.5 inline-block h-3 w-[2px] translate-y-0.5 bg-primary align-middle',
+        !reduceMotion && 'animate-pulse',
+      )}
+      aria-hidden
+    />
+  )
+}
 
 interface DirectorMarkdownProps {
   content: string
@@ -10,31 +58,50 @@ interface DirectorMarkdownProps {
   isStreaming?: boolean
 }
 
-const markdownComponents: Components = {
-  h1: ({ children }) => (
-    <h1 className="mt-3 mb-1.5 text-[14px] font-semibold tracking-tight text-foreground">
+function createMarkdownComponents(
+  isStreaming: boolean,
+  reduceMotion: boolean | null,
+): Components {
+  const caret = (node: Element | undefined, children: ReactNode) => (
+    <>
       {children}
+      {isStreaming && isStreamingCaretHost(node) && (
+        <StreamingCaret reduceMotion={reduceMotion} />
+      )}
+    </>
+  )
+
+  return {
+  h1: ({ children, node }) => (
+    <h1 className="mt-3 mb-1.5 text-[14px] font-semibold tracking-tight text-foreground">
+      {caret(node, children)}
     </h1>
   ),
-  h2: ({ children }) => (
+  h2: ({ children, node }) => (
     <h2 className="mt-2.5 mb-1.5 text-[13px] font-semibold tracking-tight text-foreground">
-      {children}
+      {caret(node, children)}
     </h2>
   ),
-  h3: ({ children }) => (
+  h3: ({ children, node }) => (
     <h3 className="mt-2 mb-1 text-[12px] font-semibold tracking-tight text-foreground">
-      {children}
+      {caret(node, children)}
     </h3>
   ),
-  h4: ({ children }) => (
-    <h4 className="mt-1.5 mb-0.5 text-[11.5px] font-semibold text-foreground">{children}</h4>
+  h4: ({ children, node }) => (
+    <h4 className="mt-1.5 mb-0.5 text-[11.5px] font-semibold text-foreground">
+      {caret(node, children)}
+    </h4>
   ),
-  p: ({ children }) => (
-    <p className="mb-2 last:mb-0 leading-relaxed text-foreground/95">{children}</p>
+  p: ({ children, node }) => (
+    <p className="mb-2 last:mb-0 leading-relaxed text-foreground/95">{caret(node, children)}</p>
   ),
-  strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
-  em: ({ children }) => <em className="italic text-foreground/90">{children}</em>,
-  del: ({ children }) => <del className="line-through text-muted-foreground">{children}</del>,
+  strong: ({ children, node }) => (
+    <strong className="font-semibold text-foreground">{caret(node, children)}</strong>
+  ),
+  em: ({ children, node }) => <em className="italic text-foreground/90">{caret(node, children)}</em>,
+  del: ({ children, node }) => (
+    <del className="line-through text-muted-foreground">{caret(node, children)}</del>
+  ),
   ul: ({ children }) => (
     <ul className="my-1.5 list-disc list-outside pl-4 space-y-1 marker:text-muted-foreground">
       {children}
@@ -45,21 +112,23 @@ const markdownComponents: Components = {
       {children}
     </ol>
   ),
-  li: ({ children }) => <li className="leading-relaxed text-foreground/95">{children}</li>,
+  li: ({ children, node }) => (
+    <li className="leading-relaxed text-foreground/95">{caret(node, children)}</li>
+  ),
   blockquote: ({ children }) => (
     <blockquote className="my-2 border-l-2 border-primary/60 pl-2.5 italic text-muted-foreground">
       {children}
     </blockquote>
   ),
   hr: () => <hr className="my-3 border-border/60" />,
-  a: ({ href, children }) => (
+  a: ({ href, children, node }) => (
     <a
       href={href}
       target="_blank"
       rel="noopener noreferrer"
       className="font-medium text-primary underline underline-offset-2 hover:text-primary/80 transition-colors"
     >
-      {children}
+      {caret(node, children)}
     </a>
   ),
   pre: ({ children }) => (
@@ -67,7 +136,7 @@ const markdownComponents: Components = {
       {children}
     </pre>
   ),
-  code: ({ className, children, ...props }) => {
+  code: ({ className, children, node, ...props }) => {
     const isMultiline = typeof children === 'string' && children.includes('\n')
     if (!className && !isMultiline) {
       return (
@@ -75,13 +144,13 @@ const markdownComponents: Components = {
           className="rounded border border-border/60 bg-secondary/60 px-1 py-0.5 font-mono text-[11px] text-foreground/90"
           {...props}
         >
-          {children}
+          {caret(node, children)}
         </code>
       )
     }
     return (
       <code className={cn('font-mono text-[11px]', className)} {...props}>
-        {children}
+        {caret(node, children)}
       </code>
     )
   },
@@ -102,11 +171,12 @@ const markdownComponents: Components = {
       {children}
     </th>
   ),
-  td: ({ children }) => (
+  td: ({ children, node }) => (
     <td className="border-r border-border/30 px-2.5 py-1.5 align-top text-foreground/90 last:border-r-0">
-      {children}
+      {caret(node, children)}
     </td>
   ),
+  }
 }
 
 export const DirectorMarkdown = memo(function DirectorMarkdown({
@@ -115,21 +185,19 @@ export const DirectorMarkdown = memo(function DirectorMarkdown({
   isStreaming = false,
 }: DirectorMarkdownProps) {
   const reduceMotion = useReducedMotion()
+  const components = useMemo(
+    () => createMarkdownComponents(isStreaming, reduceMotion),
+    [isStreaming, reduceMotion],
+  )
 
   return (
-    <div className={cn('relative min-w-0 break-words text-[12px] leading-relaxed', className)}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+    <div className={cn('min-w-0 break-words text-[12px] leading-relaxed', className)}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkMarkStreamingCaretHost]}
+        components={components}
+      >
         {content}
       </ReactMarkdown>
-      {isStreaming && (
-        <span
-          className={cn(
-            'ml-0.5 inline-block h-3 w-[2px] translate-y-0.5 bg-primary align-middle',
-            !reduceMotion && 'animate-pulse',
-          )}
-          aria-hidden
-        />
-      )}
     </div>
   )
 })
