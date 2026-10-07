@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useState } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { Check, Copy, Volume2, VolumeX } from 'lucide-react'
 import { toast } from 'sonner'
 import { speakText, stopSpeech, isSpeechSynthesisSupported } from './director-tts'
@@ -15,14 +15,20 @@ export const DirectorMessageActions = memo(function DirectorMessageActions({
 }: DirectorMessageActionsProps) {
   const [copied, setCopied] = useState(false)
   const [speaking, setSpeaking] = useState(false)
+  const speakingRef = useRef(speaking)
+  speakingRef.current = speaking
 
+  // Only stop speech when THIS component unmounts while still speaking.
+  // Using a ref (instead of `speaking` in the deps) avoids running the global
+  // `stopSpeech()` on every true->false transition, which would otherwise
+  // cancel another message's in-progress narration.
   useEffect(() => {
     return () => {
-      if (speaking) {
+      if (speakingRef.current) {
         stopSpeech()
       }
     }
-  }, [speaking])
+  }, [])
 
   const handleCopy = useCallback(async () => {
     try {
