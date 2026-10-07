@@ -53,6 +53,12 @@ function extractTranscriptFromEvent(event: SpeechRecognitionEventLike): string {
   return transcript
 }
 
+function clearRecognitionHandlers(recognition: SpeechRecognitionInstance): void {
+  recognition.onresult = null
+  recognition.onerror = null
+  recognition.onend = null
+}
+
 interface UseSpeechRecognitionOptions {
   onTranscript: (transcript: string) => void
   onError?: (error: string) => void
@@ -63,6 +69,8 @@ export function useSpeechRecognition({ onTranscript, onError }: UseSpeechRecogni
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null)
   const onTranscriptRef = useRef(onTranscript)
   const onErrorRef = useRef(onError)
+  const listeningIntentRef = useRef(false)
+  const sessionIdRef = useRef(0)
 
   useEffect(() => {
     onTranscriptRef.current = onTranscript
@@ -71,10 +79,23 @@ export function useSpeechRecognition({ onTranscript, onError }: UseSpeechRecogni
 
   const isSupported = Boolean(getSpeechRecognitionConstructor())
 
+  const disposeRecognition = useCallback((recognition: SpeechRecognitionInstance) => {
+    clearRecognitionHandlers(recognition)
+    try {
+      recognition.abort()
+    } catch {
+      // ignore abort errors
+    }
+  }, [])
+
   const stopListening = useCallback(() => {
+    listeningIntentRef.current = false
+    sessionIdRef.current += 1
     if (recognitionRef.current) {
+      const recognition = recognitionRef.current
+      clearRecognitionHandlers(recognition)
       try {
-        recognitionRef.current.stop()
+        recognition.stop()
       } catch {
         // ignore stop errors
       }
@@ -91,13 +112,16 @@ export function useSpeechRecognition({ onTranscript, onError }: UseSpeechRecogni
       return
     }
 
+    listeningIntentRef.current = true
+
     if (recognitionRef.current) {
-      try {
-        recognitionRef.current.abort()
-      } catch {
-        // ignore
-      }
+      sessionIdRef.current += 1
+      disposeRecognition(recognitionRef.current)
+      recognitionRef.current = null
     }
+
+    const sessionId = sessionIdRef.current + 1
+    sessionIdRef.current = sessionId
 
     try {
       const recognition = new Ctor()
@@ -106,6 +130,7 @@ export function useSpeechRecognition({ onTranscript, onError }: UseSpeechRecogni
       recognition.lang = typeof navigator !== 'undefined' ? navigator.language || 'en-US' : 'en-US'
 
       recognition.onresult = (event: SpeechRecognitionEventLike) => {
+        if (sessionId !== sessionIdRef.current) return
         const transcript = extractTranscriptFromEvent(event)
         if (transcript) {
           onTranscriptRef.current(transcript)
@@ -113,16 +138,36 @@ export function useSpeechRecognition({ onTranscript, onError }: UseSpeechRecogni
       }
 
       recognition.onerror = (event: SpeechRecognitionErrorEventLike) => {
+        if (sessionId !== sessionIdRef.current) return
         if (event.error === 'not-allowed') {
           onErrorRef.current?.('Microphone access was denied. Please allow microphone access.')
+          listeningIntentRef.current = false
+          setIsListening(false)
         } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
           onErrorRef.current?.(`Speech recognition error: ${event.error}`)
+          listeningIntentRef.current = false
+          setIsListening(false)
         }
-        setIsListening(false)
       }
 
       recognition.onend = () => {
-        setIsListening(false)
+        if (sessionId !== sessionIdRef.current) return
+        if (!listeningIntentRef.current) {
+          setIsListening(false)
+          if (recognitionRef.current === recognition) {
+            recognitionRef.current = null
+          }
+          return
+        }
+        try {
+          recognition.start()
+        } catch {
+          if (sessionId !== sessionIdRef.current || !listeningIntentRef.current) return
+          onErrorRef.current?.('Speech recognition ended unexpectedly.')
+          listeningIntentRef.current = false
+          setIsListening(false)
+          recognitionRef.current = null
+        }
       }
 
       recognition.start()
@@ -131,9 +176,10 @@ export function useSpeechRecognition({ onTranscript, onError }: UseSpeechRecogni
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to start speech recognition'
       onErrorRef.current?.(message)
+      listeningIntentRef.current = false
       setIsListening(false)
     }
-  }, [])
+  }, [disposeRecognition])
 
   const toggleListening = useCallback(() => {
     if (isListening) {
@@ -145,15 +191,14 @@ export function useSpeechRecognition({ onTranscript, onError }: UseSpeechRecogni
 
   useEffect(() => {
     return () => {
+      listeningIntentRef.current = false
+      sessionIdRef.current += 1
       if (recognitionRef.current) {
-        try {
-          recognitionRef.current.abort()
-        } catch {
-          // ignore
-        }
+        disposeRecognition(recognitionRef.current)
+        recognitionRef.current = null
       }
     }
-  }, [])
+  }, [disposeRecognition])
 
   return {
     isSupported,

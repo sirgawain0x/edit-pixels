@@ -192,9 +192,11 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
   const batchRenderEnabled = isSeedanceGenerateEnabled()
 
   const baseInputBeforeSpeechRef = useRef('')
+  const lastSpeechTranscriptRef = useRef('')
 
   const handleTranscript = useCallback((transcript: string) => {
     const base = baseInputBeforeSpeechRef.current
+    lastSpeechTranscriptRef.current = transcript
     const next = base ? `${base.trim()} ${transcript}` : transcript
     setInput(next)
   }, [])
@@ -208,9 +210,26 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
     onError: handleSpeechError,
   })
 
+  const handleComposerInputChange = useCallback(
+    (value: string) => {
+      if (isListening) {
+        const spoken = lastSpeechTranscriptRef.current
+        if (spoken && value.endsWith(spoken)) {
+          baseInputBeforeSpeechRef.current = value.slice(0, value.length - spoken.length).trimEnd()
+        } else {
+          baseInputBeforeSpeechRef.current = value
+          lastSpeechTranscriptRef.current = ''
+        }
+      }
+      setInput(value)
+    },
+    [isListening],
+  )
+
   const handleMicClick = useCallback(() => {
     if (!isListening) {
       baseInputBeforeSpeechRef.current = input
+      lastSpeechTranscriptRef.current = ''
     }
     toggleListening()
   }, [input, isListening, toggleListening])
@@ -570,7 +589,7 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
             id="director-prompt"
             ref={textareaRef}
             value={input}
-            onChange={(event) => setInput(event.target.value)}
+            onChange={(event) => handleComposerInputChange(event.target.value)}
             onKeyDown={handleKeyDown}
             rows={1}
             disabled={Boolean(pendingInvoice) || paying}
