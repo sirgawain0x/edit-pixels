@@ -15,8 +15,8 @@ type CaretHost = {
   }
 }
 
-function remarkMarkStreamingCaretHost(): Plugin<[], Root> {
-  const plugin: Plugin<[], Root> = (tree: Root) => {
+const remarkMarkStreamingCaretHost: Plugin<[], Root> = () => {
+  return (tree: Root) => {
     let caretHost: CaretHost | null = null
 
     const walk = (node: { type?: string; children?: unknown[] }, parent: unknown) => {
@@ -41,8 +41,6 @@ function remarkMarkStreamingCaretHost(): Plugin<[], Root> {
       [DIRECTOR_STREAMING_CARET_PROP]: true,
     }
   }
-
-  return plugin
 }
 
 function isStreamingCaretHost(node: Element | undefined): boolean {
