@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   directorVertexAuthFailureHint,
+  getVertexProject,
   isDirectorUpstreamAuthFailure,
   isServiceAccountImpersonationDenied,
   isServiceAccountOpenIdTokenDenied,
@@ -33,7 +34,10 @@ describe('workload identity audiences', () => {
       'https://iam.googleapis.com/projects/1037240986506/locations/global/workloadIdentityPools/vercel/providers/vercel',
     )
     expect(
-      oidcAudienceForProvider(provider, ' https://iam.googleapis.com/projects/1037240986506/custom '),
+      oidcAudienceForProvider(
+        provider,
+        ' https://iam.googleapis.com/projects/1037240986506/custom ',
+      ),
     ).toBe('https://iam.googleapis.com/projects/1037240986506/custom')
   })
 
@@ -106,7 +110,8 @@ describe('WIF service-account impersonation failures', () => {
   })
 
   const impersonationError = {
-    message: "Permission 'iam.serviceAccounts.getAccessToken' denied on resource (or it may not exist).",
+    message:
+      "Permission 'iam.serviceAccounts.getAccessToken' denied on resource (or it may not exist).",
     cause: {
       message:
         "Permission 'iam.serviceAccounts.getAccessToken' denied on resource (or it may not exist).",
@@ -147,10 +152,7 @@ describe('WIF service-account impersonation failures', () => {
     vi.stubEnv('GCP_PROJECT_NUMBER', '1037240986506')
     vi.stubEnv('GCP_WORKLOAD_IDENTITY_POOL_ID', 'vercel')
     vi.stubEnv('GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID', 'vercel')
-    vi.stubEnv(
-      'GCP_SERVICE_ACCOUNT_EMAIL',
-      'vercel@creative-ai-491118.iam.gserviceaccount.com',
-    )
+    vi.stubEnv('GCP_SERVICE_ACCOUNT_EMAIL', 'vercel@creative-ai-491118.iam.gserviceaccount.com')
     const detail = vertexImpersonationFailureDetail(impersonationError)
     expect(detail).toContain('iam.serviceAccounts.getAccessToken')
     expect(detail).toContain('vercel@creative-ai-491118.iam.gserviceaccount.com')
@@ -193,10 +195,7 @@ describe('WIF Cloud Run OpenID token failures', () => {
     vi.stubEnv('GCP_PROJECT_NUMBER', '1037240986506')
     vi.stubEnv('GCP_WORKLOAD_IDENTITY_POOL_ID', 'vercel')
     vi.stubEnv('GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID', 'vercel')
-    vi.stubEnv(
-      'GCP_SERVICE_ACCOUNT_EMAIL',
-      'vercel@creative-ai-491118.iam.gserviceaccount.com',
-    )
+    vi.stubEnv('GCP_SERVICE_ACCOUNT_EMAIL', 'vercel@creative-ai-491118.iam.gserviceaccount.com')
     const detail = vertexOpenIdTokenFailureDetail(openIdTokenError)
     expect(detail).toContain('iam.serviceAccounts.getOpenIdToken')
     expect(detail).toContain('vercel@creative-ai-491118.iam.gserviceaccount.com')
@@ -207,5 +206,18 @@ describe('WIF Cloud Run OpenID token failures', () => {
     expect(vertexAuthFailureMessage(openIdTokenError)).toMatch(
       /^Permission iam.serviceAccounts.getOpenIdToken denied/,
     )
+  })
+
+  it('filters out purely numeric project numbers and uses real project ID or default', () => {
+    vi.stubEnv('GOOGLE_CLOUD_PROJECT', '1037240986506')
+    vi.stubEnv('GCP_PROJECT_ID', '')
+    expect(getVertexProject()).toBe('creative-ai-491118')
+
+    vi.stubEnv('GOOGLE_CLOUD_PROJECT', '1037240986506')
+    vi.stubEnv('GCP_PROJECT_ID', 'my-custom-project')
+    expect(getVertexProject()).toBe('my-custom-project')
+
+    vi.stubEnv('GOOGLE_CLOUD_PROJECT', 'my-gcp-project')
+    expect(getVertexProject()).toBe('my-gcp-project')
   })
 })

@@ -49,6 +49,9 @@ coverage
 # DevTools performance trace exports
 Trace-*.json
 
+# context-mode local session telemetry
+.github/context-mode/
+
 # TanStack Router auto-generated files
 # Note: Some teams commit this, uncomment if you prefer to commit
 # src/routeTree.gen.ts
