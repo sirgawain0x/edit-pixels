@@ -158,7 +158,10 @@ export function isDirectorUpstreamAuthFailure(error: unknown): boolean {
 }
 
 /** Audience Vercel stamps on the OIDC token. Must match the GCP provider allowlist. */
-export function oidcAudienceForProvider(input: WifProviderIds, configuredAudience?: string): string {
+export function oidcAudienceForProvider(
+  input: WifProviderIds,
+  configuredAudience?: string,
+): string {
   const configured = configuredAudience?.trim()
   if (configured) return configured
   return `https://iam.googleapis.com/projects/${input.projectNumber}/locations/global/workloadIdentityPools/${input.poolId}/providers/${input.providerId}`
@@ -170,11 +173,12 @@ export function stsAudienceForProvider(input: WifProviderIds): string {
 }
 
 export function getVertexProject(): string {
-  return (
-    process.env.GOOGLE_CLOUD_PROJECT?.trim() ||
-    process.env.GCP_PROJECT_ID?.trim() ||
-    DEFAULT_PROJECT
-  )
+  const candidates = [
+    process.env.GOOGLE_CLOUD_PROJECT?.trim(),
+    process.env.GCP_PROJECT_ID?.trim(),
+  ].filter((p): p is string => Boolean(p && !/^\d+$/.test(p)))
+
+  return candidates[0] || DEFAULT_PROJECT
 }
 
 export function getVertexLocation(): string {
