@@ -16,7 +16,7 @@ type CaretHost = {
 }
 
 function remarkMarkStreamingCaretHost(): Plugin<[], Root> {
-  return (tree: Root): void => {
+  return (tree: Root) => {
     let caretHost: CaretHost | null = null
 
     const walk = (node: { type?: string; children?: unknown[] }, parent: unknown) => {
