@@ -19,6 +19,7 @@ import { quoteDirectorBrief } from './director-pricing'
 import { DirectorInvoiceCard, type PendingDirectorInvoice } from './director-invoice-card'
 import { DirectorSessionPacks } from './director-session-packs'
 import { DirectorPastBriefs } from './director-past-briefs'
+import { DirectorMarkdown } from './director-markdown'
 import { useDirectorStore } from './director-store'
 import {
   buildDirectorTimelineAudioContext,
@@ -111,7 +112,18 @@ function DirectorMessage({
     )
   }
 
-  const markVariant = role === 'tool' ? 'tool' : role === 'error' ? 'error' : 'agent'
+  if (role === 'assistant') {
+    return (
+      <div className="flex justify-start gap-2.5">
+        <AgentMark variant="agent" />
+        <div className="max-w-[88%] min-w-0 pt-0.5 text-foreground/95">
+          <DirectorMarkdown content={text} />
+        </div>
+      </div>
+    )
+  }
+
+  const markVariant = role === 'tool' ? 'tool' : 'error'
 
   return (
     <div className="flex justify-start gap-2.5">
@@ -119,7 +131,6 @@ function DirectorMessage({
       <div
         className={cn(
           'max-w-[88%] whitespace-pre-wrap text-[12px] leading-relaxed',
-          role === 'assistant' && 'pt-0.5 text-foreground/95',
           role === 'tool' &&
             'rounded-md border border-border/80 bg-secondary/25 px-2.5 py-1.5 font-mono text-[11px] text-muted-foreground',
           role === 'error' &&
@@ -492,15 +503,8 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
         {phase === 'streaming' && streamingText && (
           <div className="flex justify-start gap-2.5">
             <AgentMark />
-            <div className="max-w-[88%] whitespace-pre-wrap pt-0.5 text-[12px] leading-relaxed text-foreground/95">
-              {streamingText}
-              <span
-                className={cn(
-                  'ml-0.5 inline-block h-3 w-[2px] translate-y-0.5 bg-primary align-middle',
-                  !reduceMotion && 'animate-pulse',
-                )}
-                aria-hidden
-              />
+            <div className="max-w-[88%] min-w-0 pt-0.5 text-foreground/95">
+              <DirectorMarkdown content={streamingText} isStreaming />
             </div>
           </div>
         )}
