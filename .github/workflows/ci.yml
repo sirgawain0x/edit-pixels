@@ -17,6 +17,10 @@ jobs:
     # skip the full quality suite (already run on every PR and push to main).
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
+    # onnxruntime-node postinstall pulls optional CUDA EP binaries from NuGet on
+    # linux/x64; CI does not use them and the download flakes (ETIMEDOUT).
+    env:
+      ONNXRUNTIME_NODE_INSTALL: skip
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -116,6 +120,8 @@ jobs:
   preview-sync-stress:
     name: Preview Sync Stress
     runs-on: ubuntu-latest
+    env:
+      ONNXRUNTIME_NODE_INSTALL: skip
     # ~27s/run × 10 nightly runs ≈ 5min of work; cap well above that so a
     # hung fast-scrub deadlock is killed fast instead of holding the runner
     # for the 6h GitHub default.
