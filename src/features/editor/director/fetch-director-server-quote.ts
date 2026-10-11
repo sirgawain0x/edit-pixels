@@ -1,15 +1,11 @@
 import type { DirectorQuote } from './director-pricing'
-import {
-  estimateDirectorUsdc6,
-  formatAudioDurationLabel,
-  billableAudioMinutes,
-} from './director-pricing'
+import { formatAudioDurationLabel, billableAudioMinutes } from './director-pricing'
 import {
   DIRECTOR_USDC6_PER_AUDIO_MINUTE_PREMIUM,
   DIRECTOR_USDC6_PER_AUDIO_MINUTE_RETAIL,
 } from '@/config/billing'
 
-export interface DirectorServerQuoteResponse {
+interface DirectorServerQuoteResponse {
   quoteId: string
   signature: string
   expiresAtMs: number
@@ -56,25 +52,5 @@ export async function fetchDirectorServerQuote(input: {
     signature: data.signature,
     expiresAtMs: data.expiresAtMs,
     slippageBps: data.slippageBps,
-  }
-}
-
-/** USD-only estimate for UI hints before the server quote returns. */
-export function estimateDirectorUsdQuote(
-  audioDurationSeconds: number,
-  isPremium: boolean,
-): Pick<DirectorQuote, 'estimatedUsdc6' | 'formattedUsd' | 'formattedDuration' | 'tier'> | null {
-  const minutes = billableAudioMinutes(audioDurationSeconds)
-  if (minutes <= 0) return null
-  const usdc6PerMinute = isPremium
-    ? DIRECTOR_USDC6_PER_AUDIO_MINUTE_PREMIUM
-    : DIRECTOR_USDC6_PER_AUDIO_MINUTE_RETAIL
-  const estimatedUsdc6 = estimateDirectorUsdc6(audioDurationSeconds, usdc6PerMinute)
-  if (estimatedUsdc6 <= 0) return null
-  return {
-    estimatedUsdc6,
-    formattedUsd: `$${(estimatedUsdc6 / 1_000_000).toFixed(2)}`,
-    formattedDuration: formatAudioDurationLabel(audioDurationSeconds),
-    tier: isPremium ? 'premium' : 'retail',
   }
 }

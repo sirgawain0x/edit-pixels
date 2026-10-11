@@ -5,18 +5,12 @@
 
 import { quoteDirectorForWallet } from './director-billing.js'
 import { MetokenQuoteError } from './_metoken-curve-quote.js'
+import { parseJsonObjectBody } from './_pixels-generate-api-auth.js'
 
 export async function POST(request: Request): Promise<Response> {
-  let body: Record<string, unknown>
-  try {
-    const parsed = await request.json()
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      return Response.json({ error: 'invalid body' }, { status: 400 })
-    }
-    body = parsed as Record<string, unknown>
-  } catch {
-    return Response.json({ error: 'invalid body' }, { status: 400 })
-  }
+  const parsedBody = await parseJsonObjectBody(request)
+  if (!parsedBody.ok) return parsedBody.response
+  const body = parsedBody.body
 
   const audioDurationSeconds =
     typeof body.audioDurationSeconds === 'number' ? body.audioDurationSeconds : NaN

@@ -85,14 +85,6 @@ export function intervalCostUsdc6ToFlowRate(_intervalCostUsdc6: number): bigint 
   return 0n
 }
 
-/**
- * Client checkout must use server quote APIs — never assume a fixed USD→meToken rate.
- * @deprecated
- */
-export function usdc6ToMetokenWei(_usdc6: bigint | number): bigint {
-  return 0n
-}
-
 /** Hourly USDC-equivalent cost from interval pricing (for UI). */
 export function hourlyUsdcFromInterval(intervalCostUsdc6: number): number {
   return (intervalCostUsdc6 * 12) / 1_000_000

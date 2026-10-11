@@ -60,7 +60,7 @@ export function estimateDirectorUsdc6(
 }
 
 /** USD list price only — use `fetchDirectorServerQuote` before checkout. */
-export function quoteDirectorBriefUsd(input: DirectorQuoteInput): Omit<
+function quoteDirectorBriefUsd(input: DirectorQuoteInput): Omit<
   DirectorQuote,
   'crtvaiWei' | 'crtvaiDisplay'
 > | null {

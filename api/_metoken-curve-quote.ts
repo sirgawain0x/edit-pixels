@@ -14,23 +14,14 @@ import {
 } from './_metoken-curve-config.js'
 import {
   type CurveState,
-  crtvaiWeiForUsdcListPrice,
   isWithinSlippageBand,
   settlementMinCrtvaiWei,
-  usdc6ToMintTargetMetokenWei,
 } from './_metoken-curve-math.js'
 
 export {
   METOKEN_QUOTE_EXPIRY_SECONDS,
   METOKEN_QUOTE_SLIPPAGE_BPS,
 } from './_metoken-curve-config.js'
-export type { CurveState } from './_metoken-curve-math.js'
-export {
-  calculateMeTokensMintedPure,
-  crtvaiWeiForUsdcListPrice,
-  isWithinSlippageBand,
-  settlementMinCrtvaiWei,
-} from './_metoken-curve-math.js'
 
 const DIAMOND_ABI = parseAbi([
   'function calculateMeTokensMinted(address meToken, uint256 assetsDeposited) view returns (uint256 meTokensMinted)',

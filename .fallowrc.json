@@ -138,6 +138,10 @@
       "exports": ["*"]
     },
     {
+      "file": "api/director-quote.ts",
+      "exports": ["*"]
+    },
+    {
       "file": "api/earn/vault.ts",
       "exports": ["*"]
     },

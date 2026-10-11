@@ -55,38 +55,7 @@ function powBigIntApprox(inner: bigint, num: bigint, den: bigint): bigint {
   return BigInt(Math.floor(out * 1e18))
 }
 
-/**
- * Minimum USDC6 deposit to mint at least `targetMetokenWei` (binary search).
- */
-export function usdc6ToMintTargetMetokenWei(
-  targetMetokenWei: bigint,
-  state: CurveState,
-  maxDepositUsdc6 = 1_000_000_000_000n,
-): bigint | null {
-  if (targetMetokenWei <= 0n) return 0n
-  let lo = 0n
-  let hi = 1_000_000n
-  while (calculateMeTokensMintedPure(hi, state) < targetMetokenWei && hi < maxDepositUsdc6) {
-    hi *= 2n
-  }
-  if (calculateMeTokensMintedPure(hi, state) < targetMetokenWei) return null
-
-  while (lo < hi) {
-    const mid = (lo + hi) / 2n
-    const minted = calculateMeTokensMintedPure(mid, state)
-    if (minted >= targetMetokenWei) hi = mid
-    else lo = mid + 1n
-  }
-  return lo
-}
-
-/** CRTVAI wei required to settle a USD list price (deposit $X → mint that many tokens). */
-export function crtvaiWeiForUsdcListPrice(usdc6: number | bigint, state: CurveState): bigint {
-  const deposit = BigInt(usdc6)
-  return calculateMeTokensMintedPure(deposit, state)
-}
-
-export function applySlippageUpperBound(quotedWei: bigint, slippageBps: number): bigint {
+function applySlippageUpperBound(quotedWei: bigint, slippageBps: number): bigint {
   return (quotedWei * BigInt(10_000 + slippageBps)) / 10_000n
 }
 
