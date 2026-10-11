@@ -21,7 +21,10 @@ export class LiveLooksEngine {
   private readonly compositeCanvas = document.createElement('canvas')
   private readonly compositeCtx = this.compositeCanvas.getContext('2d', { alpha: false })
   private readonly maskCanvas = document.createElement('canvas')
-  private readonly maskCtx = this.maskCanvas.getContext('2d', { alpha: false })
+  private readonly maskCtx = this.maskCanvas.getContext('2d', { alpha: true })
+  private readonly maskScratchCanvas = document.createElement('canvas')
+  private maskImageData: ImageData | null = null
+  private startGeneration = 0
   private readonly personCanvas = document.createElement('canvas')
   private readonly personCtx = this.personCanvas.getContext('2d', { alpha: true })
   private readonly backgroundCanvas = document.createElement('canvas')
@@ -74,30 +77,54 @@ export class LiveLooksEngine {
       throw new Error('Canvas contexts unavailable')
     }
 
+    const generation = ++this.startGeneration
+
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({
+      const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: false,
       })
+      if (generation !== this.startGeneration) {
+        stream.getTracks().forEach((track) => track.stop())
+        return
+      }
+
+      this.stream = stream
       this.video = document.createElement('video')
       this.video.srcObject = this.stream
       this.video.muted = true
       this.video.playsInline = true
       await this.video.play()
+      if (generation !== this.startGeneration) {
+        await this.stop()
+        return
+      }
 
       this.segmenter = await loadImageSegmenter()
+      if (generation !== this.startGeneration) {
+        await this.stop()
+        return
+      }
+
       this.stylePipeline = await createStyleFilterPipeline(PREVIEW_WIDTH, PREVIEW_HEIGHT)
+      if (generation !== this.startGeneration) {
+        await this.stop()
+        return
+      }
+
       this.emit({ backend: this.stylePipeline.backend, error: null })
       this.loop()
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Camera failed to start'
-      this.emit({ error: message })
-      await this.stop()
+      if (generation === this.startGeneration) {
+        await this.stop({ keepError: message })
+      }
       throw error
     }
   }
 
-  async stop(): Promise<void> {
+  async stop(options?: { keepError?: string }): Promise<void> {
+    this.startGeneration++
     if (this.rafId !== null) {
       cancelAnimationFrame(this.rafId)
       this.rafId = null
@@ -111,7 +138,11 @@ export class LiveLooksEngine {
     this.stylePipeline?.dispose()
     this.stylePipeline = null
     this.segmenter = null
-    this.emit({ active: false, backend: 'none' })
+    this.emit({
+      active: false,
+      backend: 'none',
+      error: options?.keepError ?? null,
+    })
   }
 
   setCustomBackgroundFromFile(file: File): void {
@@ -242,13 +273,51 @@ export class LiveLooksEngine {
     pCtx.clearRect(0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT)
     pCtx.drawImage(video, 0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT)
 
-    mCtx.clearRect(0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT)
-    if (mask.canvas) {
-      mCtx.drawImage(mask.canvas, 0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT)
-    }
+    this.paintConfidenceMask(mask)
 
     pCtx.globalCompositeOperation = 'destination-in'
     pCtx.drawImage(this.maskCanvas, 0, 0)
     pCtx.globalCompositeOperation = 'source-over'
+  }
+
+  private paintConfidenceMask(mask: MPMask): void {
+    const mCtx = this.maskCtx
+    if (!mCtx) return
+
+    const mw = mask.width
+    const mh = mask.height
+    if (!this.maskImageData || this.maskImageData.width !== mw || this.maskImageData.height !== mh) {
+      this.maskImageData = new ImageData(mw, mh)
+    }
+
+    const pixels = this.maskImageData.data
+    if (mask.hasFloat32Array()) {
+      const confidence = mask.getAsFloat32Array()
+      for (let i = 0, p = 0; i < confidence.length; i++, p += 4) {
+        const value = confidence[i] ?? 0
+        pixels[p] = 255
+        pixels[p + 1] = 255
+        pixels[p + 2] = 255
+        pixels[p + 3] = Math.min(255, Math.max(0, Math.round(value * 255)))
+      }
+    } else {
+      const confidence = mask.getAsUint8Array()
+      for (let i = 0, p = 0; i < confidence.length; i++, p += 4) {
+        const value = confidence[i] ?? 0
+        pixels[p] = 255
+        pixels[p + 1] = 255
+        pixels[p + 2] = 255
+        pixels[p + 3] = value
+      }
+    }
+
+    this.maskScratchCanvas.width = mw
+    this.maskScratchCanvas.height = mh
+    const scratchCtx = this.maskScratchCanvas.getContext('2d', { alpha: true })
+    if (!scratchCtx) return
+    scratchCtx.putImageData(this.maskImageData, 0, 0)
+
+    mCtx.clearRect(0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT)
+    mCtx.drawImage(this.maskScratchCanvas, 0, 0, mw, mh, 0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT)
   }
 }
