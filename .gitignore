@@ -35,6 +35,9 @@ dist-ssr
 build
 out
 
+# Live Looks: WASM copied from @mediapipe/tasks-vision on postinstall/prebuild (~38MB)
+public/live-looks/mediapipe-wasm/
+
 # Testing
 coverage
 

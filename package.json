@@ -52,6 +52,9 @@
     "headless:mcp:billing": "node headless/mcp-server-billing.mjs",
     "changelog:append": "node scripts/changelog-append.mjs",
     "changelog:rollup": "node scripts/changelog-rollup.mjs",
+    "sync:live-looks-assets": "node scripts/sync-live-looks-mediapipe-assets.mjs",
+    "prebuild": "npm run sync:live-looks-assets",
+    "postinstall": "node scripts/sync-live-looks-mediapipe-assets.mjs",
     "prepare": "vp config"
   },
   "dependencies": {
