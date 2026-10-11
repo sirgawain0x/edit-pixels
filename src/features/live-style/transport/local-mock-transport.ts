@@ -7,7 +7,10 @@ export class LocalMockEchoTransport implements LiveStyleTransportAdapter {
   readonly kind = 'websocket' as const
   private handler: ((bytes: ArrayBuffer) => void) | null = null
 
-  async connect(_info: LiveStyleTransportConnectInfo): Promise<void> {}
+  async connect(info: LiveStyleTransportConnectInfo): Promise<void> {
+    void info.kind
+    void this.kind
+  }
 
   async sendFrame(bytes: ArrayBuffer): Promise<void> {
     const out = bytes.slice(0)

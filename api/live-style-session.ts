@@ -1,8 +1,9 @@
 /**
  * POST /api/live-style-session — create, heartbeat, stop Live Style sessions.
  */
-// fallow-ignore-file complexity
+// fallow-ignore-file complexity,duplicate-export
 
+import { authorizePixelsGeneratePost } from './_pixels-generate-api-auth.js'
 import { isPremiumWallet } from './_premium-membership.js'
 import {
   getLiveStylePaymentSpender,
@@ -12,13 +13,13 @@ import {
   parseProviderId,
 } from './_live-style-config.js'
 import { getLiveStylePaymentLedger } from './_live-style-payment-server.js'
+import { runLiveStyleSessionSweep } from './_live-style-sweep.js'
 import {
   deleteLiveStyleSession,
   getActiveSessionForWallet,
   getLiveStyleSession,
   putLiveStyleSession,
 } from './_live-style-session-store.js'
-import { getBearerToken, verifyPrivyAccessToken } from './_wallet-auth.js'
 import {
   capPresetToUsdc6,
   LIVE_STYLE_HEARTBEAT_INTERVAL_MS,
@@ -40,43 +41,32 @@ function parseAuthMethod(value: unknown): LiveStyleSpendAuthMethod {
   return 'erc20-approve'
 }
 
+function parseAction(value: unknown): Action | null {
+  if (value === 'create' || value === 'heartbeat' || value === 'stop' || value === 'meter_start') {
+    return value
+  }
+  return null
+}
+
 export async function POST(request: Request): Promise<Response> {
   if (!isLiveStyleEnabled()) {
     return Response.json({ error: 'feature_disabled' }, { status: 404 })
   }
 
-  let body: Record<string, unknown>
-  try {
-    const parsed = await request.json()
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      return Response.json({ error: 'invalid body' }, { status: 400 })
-    }
-    body = parsed as Record<string, unknown>
-  } catch {
-    return Response.json({ error: 'invalid body' }, { status: 400 })
-  }
+  const authorized = await authorizePixelsGeneratePost(request)
+  if (!authorized.ok) return authorized.response
 
-  const action = body.action as Action
-  if (action !== 'create' && action !== 'heartbeat' && action !== 'stop' && action !== 'meter_start') {
+  const { auth, body } = authorized
+  const action = parseAction(body.action)
+  if (!action) {
     return Response.json({ error: 'invalid action' }, { status: 400 })
-  }
-
-  const token = getBearerToken(request) || (typeof body.token === 'string' ? body.token : null)
-  if (!token) {
-    return Response.json({ error: 'missing authorization' }, { status: 401 })
-  }
-
-  const auth = await verifyPrivyAccessToken(
-    token,
-    typeof body.walletAddress === 'string' ? body.walletAddress : undefined,
-  )
-  if (!auth) {
-    return Response.json({ error: 'invalid authorization' }, { status: 401 })
   }
 
   const ledger = getLiveStylePaymentLedger()
   const env = { providerUrl: getLiveStyleProviderUrl() }
   const nowMs = Date.now()
+
+  await runLiveStyleSessionSweep(nowMs)
 
   if (action === 'create') {
     const capPreset = parseCapPresetUsd(body.capPresetUsd)
@@ -146,10 +136,17 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   if (action === 'heartbeat') {
-    const result = await heartbeatLiveStyleSession(session, ledger, nowMs)
+    const result = await heartbeatLiveStyleSession(session, ledger, nowMs, env)
     putLiveStyleSession(result.session)
     if (result.shouldStop) {
-      await stopLiveStyleSession(result.session, ledger, result.session.metering.stopReason ?? 'stop', env)
+      if (result.session.metering.stopReason !== 'heartbeat_missed') {
+        await stopLiveStyleSession(
+          result.session,
+          ledger,
+          result.session.metering.stopReason ?? 'stop',
+          env,
+        )
+      }
       deleteLiveStyleSession(sessionId)
     }
     return Response.json({

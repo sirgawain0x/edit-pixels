@@ -27,3 +27,7 @@ export function getActiveSessionForWallet(wallet: string): LiveStyleSessionRecor
   if (!id) return undefined
   return sessions.get(id)
 }
+
+export function listLiveStyleSessions(): LiveStyleSessionRecord[] {
+  return [...sessions.values()]
+}

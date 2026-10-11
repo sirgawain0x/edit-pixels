@@ -13,7 +13,6 @@ export const LIVE_STYLE_HEARTBEAT_INTERVAL_MS = 10_000
 export const LIVE_STYLE_HEARTBEAT_MISS_MS = 30_000
 export const LIVE_STYLE_PAYMENT_PULL_INTERVAL_MS = 60_000
 export const LIVE_STYLE_CAP_WARN_REMAINING_SECONDS = 120
-export const LIVE_STYLE_MIN_BILLABLE_SESSION_SECONDS = 60
 export const LIVE_STYLE_MAX_SESSION_SECONDS = 60 * 60
 
 export const LIVE_STYLE_PROVIDER_IDS = ['mock', 'local-echo', 'streamdiffusion'] as const
@@ -30,11 +29,4 @@ export function usdc6PerMinuteForPremium(isPremium: boolean): number {
 
 export function capPresetToUsdc6(usd: LiveStyleCapPresetUsd): number {
   return usd * 1_000_000
-}
-
-export function secondsAffordableAtRate(capUsdc6: number, usdc6PerMinute: number): number {
-  if (usdc6PerMinute <= 0) return 0
-  // floor(cap / rate_per_second)
-  const perSecond = usdc6PerMinute / 60
-  return Math.floor(capUsdc6 / perSecond)
 }

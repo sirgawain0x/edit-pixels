@@ -190,6 +190,14 @@
       "exports": ["*"]
     },
     {
+      "file": "api/live-style-session.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/live-style-sweep.ts",
+      "exports": ["*"]
+    },
+    {
       "file": "api/pixels-render-quote.ts",
       "exports": ["*"]
     },

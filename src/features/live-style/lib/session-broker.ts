@@ -67,8 +67,65 @@ export interface HeartbeatResult {
   shouldStop: boolean
 }
 
+export interface SweepStaleSessionsResult {
+  stoppedSessions: LiveStyleSessionRecord[]
+}
+
 function newSessionId(): string {
   return `ls_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
+}
+
+/** Bill only through the last confirmed heartbeat, not wall clock at stop/sweep time. */
+function freezeBillableSecondsAtLastHeartbeat(metering: MeteringState): MeteringState {
+  if (metering.meterStartedAtMs === null) return metering
+  return tickBillableSeconds(metering, metering.lastHeartbeatAtMs)
+}
+
+export async function stopForMissedHeartbeat(
+  session: LiveStyleSessionRecord,
+  ledger: LiveStylePaymentLedger,
+  _nowMs: number,
+  env?: { providerUrl?: string },
+): Promise<HeartbeatResult> {
+  const events: LiveStyleSessionEvent[] = [{ type: 'heartbeat_missed' }]
+  let metering = freezeBillableSecondsAtLastHeartbeat(session.metering)
+  metering = stopSession(metering, 'heartbeat_missed')
+
+  const finalPull = settleFinalPullUsdc6(metering)
+  if (finalPull > 0) {
+    const pull = await ledger.pullArrears(session.sessionId, finalPull)
+    if (pull.ok) {
+      metering = applyPull(metering, pull.amountUsdc6, metering.billedSeconds)
+    }
+  }
+
+  const provider = getLiveStyleProvider(session.providerId, env ?? {})
+  await provider.end(session.providerSession.providerSessionId)
+
+  const stopped: LiveStyleSessionRecord = {
+    ...session,
+    metering,
+    events: [...session.events, ...events, { type: 'stopped', reason: 'heartbeat_missed' }],
+  }
+  return { session: stopped, events, shouldStop: true }
+}
+
+export async function sweepStaleLiveStyleSessions(
+  sessions: LiveStyleSessionRecord[],
+  ledger: LiveStylePaymentLedger,
+  nowMs: number,
+  env?: { providerUrl?: string },
+): Promise<SweepStaleSessionsResult> {
+  const stoppedSessions: LiveStyleSessionRecord[] = []
+  for (const session of sessions) {
+    if (session.metering.stopped) continue
+    if (!shouldStopMissedHeartbeat(session.metering, nowMs, LIVE_STYLE_HEARTBEAT_MISS_MS)) {
+      continue
+    }
+    const result = await stopForMissedHeartbeat(session, ledger, nowMs, env)
+    stoppedSessions.push(result.session)
+  }
+  return { stoppedSessions }
 }
 
 export async function createLiveStyleSession(
@@ -115,10 +172,84 @@ export function markMeterStarted(
   session: LiveStyleSessionRecord,
   nowMs: number,
 ): LiveStyleSessionRecord {
+  const metering = startMeter(session.metering, nowMs)
   return {
     ...session,
     meterActive: true,
-    metering: startMeter(session.metering, nowMs),
+    metering: recordHeartbeat(metering, nowMs),
+  }
+}
+
+function appendCapWarningIfNeeded(
+  session: LiveStyleSessionRecord,
+  metering: MeteringState,
+  events: LiveStyleSessionEvent[],
+): void {
+  if (!session.meterActive || !shouldWarnLowCap(metering)) return
+  if (session.events.some((e) => e.type === 'cap_warning')) return
+  events.push({ type: 'cap_warning', remainingSeconds: 120 })
+}
+
+function stopForCapOrMaxDuration(
+  session: LiveStyleSessionRecord,
+  metering: MeteringState,
+  nowMs: number,
+  events: LiveStyleSessionEvent[],
+): HeartbeatResult | null {
+  if (session.meterActive && shouldStopCapReached(metering)) {
+    events.push({ type: 'cap_reached' })
+    const stopped = stopSession(metering, 'cap_reached')
+    return {
+      session: { ...session, metering: stopped, events: [...session.events, ...events] },
+      events,
+      shouldStop: true,
+    }
+  }
+
+  const elapsedSessionSec = Math.floor((nowMs - session.createdAtMs) / 1000)
+  if (elapsedSessionSec >= LIVE_STYLE_MAX_SESSION_SECONDS) {
+    const stopped = stopSession(metering, 'max_duration')
+    events.push({ type: 'stopped', reason: 'max_duration' })
+    return {
+      session: { ...session, metering: stopped, events: [...session.events, ...events] },
+      events,
+      shouldStop: true,
+    }
+  }
+
+  return null
+}
+
+async function runArrearsPullIfDue(
+  session: LiveStyleSessionRecord,
+  metering: MeteringState,
+  ledger: LiveStylePaymentLedger,
+  nowMs: number,
+  events: LiveStyleSessionEvent[],
+): Promise<HeartbeatResult | { metering: MeteringState; lastPullAtMs: number }> {
+  if (!session.meterActive || nowMs - session.lastPullAtMs < LIVE_STYLE_PAYMENT_PULL_INTERVAL_MS) {
+    return { metering, lastPullAtMs: session.lastPullAtMs }
+  }
+
+  const delta = computePullDeltaUsdc6(metering)
+  if (delta <= 0) {
+    return { metering, lastPullAtMs: nowMs }
+  }
+
+  const pull = await ledger.pullArrears(session.sessionId, delta)
+  if (!pull.ok) {
+    events.push({ type: 'pull_failed', error: pull.error ?? 'pull_failed' })
+    const stopped = stopSession(metering, 'pull_failed')
+    return {
+      session: { ...session, metering: stopped, events: [...session.events, ...events] },
+      events,
+      shouldStop: true,
+    }
+  }
+
+  return {
+    metering: applyPull(metering, pull.amountUsdc6, metering.billedSeconds),
+    lastPullAtMs: nowMs,
   }
 }
 
@@ -126,72 +257,38 @@ export async function heartbeatLiveStyleSession(
   session: LiveStyleSessionRecord,
   ledger: LiveStylePaymentLedger,
   nowMs: number,
+  env?: { providerUrl?: string },
 ): Promise<HeartbeatResult> {
-  const events: LiveStyleSessionEvent[] = []
-  let metering = recordHeartbeat(tickBillableSeconds(session.metering, nowMs), nowMs)
-  let current: LiveStyleSessionRecord = { ...session, metering }
+  if (session.metering.stopped) {
+    return { session, events: [], shouldStop: true }
+  }
 
+  if (shouldStopMissedHeartbeat(session.metering, nowMs, LIVE_STYLE_HEARTBEAT_MISS_MS)) {
+    return stopForMissedHeartbeat(session, ledger, nowMs, env)
+  }
+
+  const events: LiveStyleSessionEvent[] = []
+  let metering = session.metering
   if (session.meterActive) {
     metering = tickBillableSeconds(metering, nowMs)
-    current = { ...current, metering }
   }
+  metering = recordHeartbeat(metering, nowMs)
 
-  if (shouldStopMissedHeartbeat(metering, nowMs, LIVE_STYLE_HEARTBEAT_MISS_MS)) {
-    events.push({ type: 'heartbeat_missed' })
-    metering = stopSession(metering, 'heartbeat_missed')
-    current = { ...current, metering, events: [...current.events, ...events] }
-    return { session: current, events, shouldStop: true }
-  }
+  appendCapWarningIfNeeded(session, metering, events)
 
-  if (session.meterActive && shouldWarnLowCap(metering)) {
-    const warn = { type: 'cap_warning' as const, remainingSeconds: 120 }
-    if (!session.events.some((e) => e.type === 'cap_warning')) {
-      events.push(warn)
-    }
-  }
+  const limitStop = stopForCapOrMaxDuration(session, metering, nowMs, events)
+  if (limitStop) return limitStop
 
-  if (session.meterActive && shouldStopCapReached(metering)) {
-    events.push({ type: 'cap_reached' })
-    metering = stopSession(metering, 'cap_reached')
-    current = { ...current, metering }
-    return { session: { ...current, events: [...current.events, ...events] }, events, shouldStop: true }
-  }
-
-  const elapsedSessionSec = Math.floor((nowMs - session.createdAtMs) / 1000)
-  if (elapsedSessionSec >= LIVE_STYLE_MAX_SESSION_SECONDS) {
-    metering = stopSession(metering, 'max_duration')
-    events.push({ type: 'stopped', reason: 'max_duration' })
-    current = { ...current, metering }
-    return { session: { ...current, events: [...current.events, ...events] }, events, shouldStop: true }
-  }
-
-  if (
-    session.meterActive &&
-    nowMs - session.lastPullAtMs >= LIVE_STYLE_PAYMENT_PULL_INTERVAL_MS
-  ) {
-    const delta = computePullDeltaUsdc6(metering)
-    if (delta > 0) {
-      const pull = await ledger.pullArrears(session.sessionId, delta)
-      if (pull.ok) {
-        metering = applyPull(metering, pull.amountUsdc6, metering.billedSeconds)
-        current = { ...current, metering, lastPullAtMs: nowMs }
-      } else {
-        events.push({ type: 'pull_failed', error: pull.error ?? 'pull_failed' })
-        metering = stopSession(metering, 'pull_failed')
-        current = { ...current, metering }
-        return {
-          session: { ...current, events: [...current.events, ...events] },
-          events,
-          shouldStop: true,
-        }
-      }
-    } else {
-      current = { ...current, lastPullAtMs: nowMs }
-    }
-  }
+  const pullResult = await runArrearsPullIfDue(session, metering, ledger, nowMs, events)
+  if ('shouldStop' in pullResult) return pullResult
 
   return {
-    session: { ...current, events: [...current.events, ...events] },
+    session: {
+      ...session,
+      metering: pullResult.metering,
+      lastPullAtMs: pullResult.lastPullAtMs,
+      events: [...session.events, ...events],
+    },
     events,
     shouldStop: false,
   }
@@ -203,7 +300,9 @@ export async function stopLiveStyleSession(
   reason: string,
   env?: { providerUrl?: string },
 ): Promise<LiveStyleSessionRecord> {
-  let metering = stopSession(tickBillableSeconds(session.metering, Date.now()), reason)
+  const nowMs = Date.now()
+  let metering = tickBillableSeconds(session.metering, nowMs)
+  metering = stopSession(metering, reason)
   const finalPull = settleFinalPullUsdc6(metering)
   if (finalPull > 0) {
     const pull = await ledger.pullArrears(session.sessionId, finalPull)

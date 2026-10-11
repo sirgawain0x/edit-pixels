@@ -12,6 +12,7 @@
 | `LIVE_STYLE_PROVIDER_URL` | StreamDiffusion / GPU host WebSocket base URL |
 | `LIVE_STYLE_PROVIDER_KEY` | Provider API auth |
 | `LIVE_STYLE_PAYMENT_SPENDER` | USDC `transferFrom` spender for arrears pulls |
+| `LIVE_STYLE_SWEEP_SECRET` | Bearer token for `POST /api/live-style-sweep` (cron) |
 
 ## Transport
 

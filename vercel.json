@@ -53,6 +53,9 @@
     },
     "api/live-style-session.ts": {
       "maxDuration": 30
+    },
+    "api/live-style-sweep.ts": {
+      "maxDuration": 30
     }
   },
   "rewrites": [

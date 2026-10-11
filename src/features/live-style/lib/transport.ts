@@ -24,6 +24,3 @@ export interface LiveStyleTransportAdapter {
   close(): Promise<void>
 }
 
-export interface LiveStyleFrameTransportFactory {
-  create(kind: LiveStyleTransportKind): LiveStyleTransportAdapter
-}

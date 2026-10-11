@@ -3,18 +3,12 @@
  */
 
 import {
-  LIVE_STYLE_CAP_PRESETS_USD,
   type LiveStyleCapPresetUsd,
   type LiveStyleProviderId,
   LIVE_STYLE_PROVIDER_IDS,
 } from '../src/features/live-style/lib/config.ts'
 
-export {
-  LIVE_STYLE_CAP_PRESETS_USD,
-  LIVE_STYLE_PROVIDER_IDS,
-  type LiveStyleCapPresetUsd,
-  type LiveStyleProviderId,
-}
+export type { LiveStyleCapPresetUsd, LiveStyleProviderId }
 
 export function isLiveStyleEnabled(): boolean {
   const flag = process.env.LIVE_STYLE_ENABLED ?? process.env.VITE_ENABLE_LIVE_STYLE
@@ -23,10 +17,6 @@ export function isLiveStyleEnabled(): boolean {
 
 export function getLiveStyleProviderUrl(): string | undefined {
   return process.env.LIVE_STYLE_PROVIDER_URL?.trim() || undefined
-}
-
-export function getLiveStyleProviderKey(): string | undefined {
-  return process.env.LIVE_STYLE_PROVIDER_KEY?.trim() || undefined
 }
 
 /** Treasury / pull spender — placeholder until G2 configures on-chain pull. */

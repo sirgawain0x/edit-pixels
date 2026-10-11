@@ -2,12 +2,7 @@
  * Server-measured Live Style metering (warm-up is free; billable seconds only after meter start).
  */
 
-import {
-  LIVE_STYLE_CAP_WARN_REMAINING_SECONDS,
-  LIVE_STYLE_USDC6_PER_MINUTE_PREMIUM,
-  LIVE_STYLE_USDC6_PER_MINUTE_RETAIL,
-  usdc6PerMinuteForPremium,
-} from './config'
+import { LIVE_STYLE_CAP_WARN_REMAINING_SECONDS, usdc6PerMinuteForPremium } from './config'
 
 export interface MeteringState {
   /** Wall-clock when the session record was created. */
@@ -48,7 +43,7 @@ export function createMeteringState(input: {
   }
 }
 
-export function usdc6PerMinute(state: MeteringState): number {
+function usdc6PerMinute(state: MeteringState): number {
   return usdc6PerMinuteForPremium(state.isPremium)
 }
 
@@ -70,15 +65,15 @@ export function tickBillableSeconds(state: MeteringState, nowMs: number): Meteri
   return { ...state, billedSeconds: elapsedSec }
 }
 
-export function totalOwedUsdc6(state: MeteringState): number {
+function totalOwedUsdc6(state: MeteringState): number {
   return usdc6ForSeconds(state.billedSeconds, usdc6PerMinute(state))
 }
 
-export function remainingCapUsdc6(state: MeteringState): number {
+function remainingCapUsdc6(state: MeteringState): number {
   return Math.max(0, state.capUsdc6 - state.pulledUsdc6)
 }
 
-export function capRemainingSeconds(state: MeteringState): number {
+function capRemainingSeconds(state: MeteringState): number {
   const perMin = usdc6PerMinute(state)
   const remaining = remainingCapUsdc6(state)
   const owed = totalOwedUsdc6(state)
@@ -141,9 +136,3 @@ export function trueUpPullBalances(
   return Math.max(0, pulledUsdc6 - overpullUsdc6 + underpullUsdc6)
 }
 
-export function retailAndPremiumRatesMatchConstants(): boolean {
-  return (
-    LIVE_STYLE_USDC6_PER_MINUTE_RETAIL === 100_000 &&
-    LIVE_STYLE_USDC6_PER_MINUTE_PREMIUM === 80_000
-  )
-}

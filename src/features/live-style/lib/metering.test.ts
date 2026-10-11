@@ -1,6 +1,10 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vite-plus/test'
 import {
+  LIVE_STYLE_USDC6_PER_MINUTE_PREMIUM,
+  LIVE_STYLE_USDC6_PER_MINUTE_RETAIL,
+} from './config'
+import {
   applyPull,
   computePullDeltaUsdc6,
   createMeteringState,
@@ -24,8 +28,9 @@ describe('live-style metering', () => {
   })
 
   it('charges retail rate per second ceiling', () => {
-    expect(usdc6ForSeconds(60, 100_000)).toBe(100_000)
-    expect(usdc6ForSeconds(30, 100_000)).toBe(50_000)
+    expect(usdc6ForSeconds(60, LIVE_STYLE_USDC6_PER_MINUTE_RETAIL)).toBe(100_000)
+    expect(usdc6ForSeconds(30, LIVE_STYLE_USDC6_PER_MINUTE_RETAIL)).toBe(50_000)
+    expect(LIVE_STYLE_USDC6_PER_MINUTE_PREMIUM).toBe(80_000)
   })
 
   it('stops at cap', () => {
