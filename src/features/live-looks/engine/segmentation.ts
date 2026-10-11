@@ -19,7 +19,10 @@ export function loadImageSegmenter(): Promise<ImageSegmenter> {
         outputConfidenceMasks: true,
         outputCategoryMask: false,
       })
-    })()
+    })().catch((error) => {
+      segmenterPromise = null
+      throw error
+    })
   }
   return segmenterPromise
 }

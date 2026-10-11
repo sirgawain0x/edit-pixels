@@ -118,66 +118,70 @@ export class WebGpuStyleFilterRenderer {
   }
 
   static async tryCreate(width: number, height: number): Promise<WebGpuStyleFilterRenderer | null> {
-    if (typeof navigator === 'undefined' || !navigator.gpu) return null
-    const adapter = await navigator.gpu.requestAdapter()
-    if (!adapter) return null
-    const device = await adapter.requestDevice()
-    if (!device) return null
+    try {
+      if (typeof navigator === 'undefined' || !navigator.gpu) return null
+      const adapter = await navigator.gpu.requestAdapter()
+      if (!adapter) return null
+      const device = await adapter.requestDevice()
+      if (!device) return null
 
-    const canvas = document.createElement('canvas')
-    canvas.width = width
-    canvas.height = height
-    const context = canvas.getContext('webgpu')
-    if (!context) return null
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const context = canvas.getContext('webgpu')
+      if (!context) return null
 
-    const format = navigator.gpu.getPreferredCanvasFormat()
-    context.configure({ device, format, alphaMode: 'opaque' })
+      const format = navigator.gpu.getPreferredCanvasFormat()
+      context.configure({ device, format, alphaMode: 'opaque' })
 
-    const shaderModule = device.createShaderModule({ code: WGSL })
-    const bindGroupLayout = device.createBindGroupLayout({
-      entries: [
-        { binding: 0, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
-        { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: {} },
-        {
-          binding: 2,
-          visibility: GPUShaderStage.FRAGMENT,
-          buffer: { type: 'uniform' },
+      const shaderModule = device.createShaderModule({ code: WGSL })
+      const bindGroupLayout = device.createBindGroupLayout({
+        entries: [
+          { binding: 0, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
+          { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: {} },
+          {
+            binding: 2,
+            visibility: GPUShaderStage.FRAGMENT,
+            buffer: { type: 'uniform' },
+          },
+        ],
+      })
+
+      const pipeline = device.createRenderPipeline({
+        layout: device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] }),
+        vertex: {
+          module: shaderModule,
+          entryPoint: 'vs_main',
+          buffers: [],
         },
-      ],
-    })
+        fragment: {
+          module: shaderModule,
+          entryPoint: 'fs_main',
+          targets: [{ format }],
+        },
+        primitive: { topology: 'triangle-list' },
+      })
 
-    const pipeline = device.createRenderPipeline({
-      layout: device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] }),
-      vertex: {
-        module: shaderModule,
-        entryPoint: 'vs_main',
-        buffers: [],
-      },
-      fragment: {
-        module: shaderModule,
-        entryPoint: 'fs_main',
-        targets: [{ format }],
-      },
-      primitive: { topology: 'triangle-list' },
-    })
+      const sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' })
+      const uniformBuffer = device.createBuffer({
+        size: 16,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+      })
 
-    const sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' })
-    const uniformBuffer = device.createBuffer({
-      size: 16,
-      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    })
-
-    const renderer = new WebGpuStyleFilterRenderer(
-      device,
-      context,
-      canvas,
-      pipeline,
-      sampler,
-      uniformBuffer,
-      bindGroupLayout,
-    )
-    renderer.resize(width, height)
-    return renderer
+      const renderer = new WebGpuStyleFilterRenderer(
+        device,
+        context,
+        canvas,
+        pipeline,
+        sampler,
+        uniformBuffer,
+        bindGroupLayout,
+      )
+      renderer.resize(width, height)
+      return renderer
+    } catch {
+      return null
+    }
   }
 
   resize(width: number, height: number): void {
@@ -255,7 +259,9 @@ export class WebGpuStyleFilterRenderer {
   dispose(): void {
     this.sourceTexture?.destroy()
     this.sourceTexture = null
+    this.bindGroup = null
     this.uniformBuffer.destroy()
+    this.device.destroy()
   }
 
   private toGpuUploadSource(
