@@ -1,0 +1,44 @@
+{
+  "liveLooks": {
+    "title": "Live Looks",
+    "subtitle": "Effets d’arrière-plan et de style, traités sur votre appareil.",
+    "toolbarAria": "Live Looks",
+    "toolbarTooltip": "Live Looks",
+    "previewIdle": "Démarrez la caméra pour prévisualiser les effets.",
+    "privacy": "Sur l’appareil uniquement. Les images de votre caméra ne sont pas envoyées.",
+    "startCamera": "Démarrer la caméra",
+    "stopCamera": "Arrêter la caméra",
+    "starting": "Démarrage…",
+    "background": {
+      "label": "Arrière-plan",
+      "blurAmount": "Force du flou",
+      "solidColor": "Couleur d’arrière-plan",
+      "pickImage": "Choisir une image",
+      "modes": {
+        "none": "Original",
+        "blur": "Flou",
+        "solid": "Couleur unie",
+        "preset": "Scène fournie",
+        "custom": "Votre image"
+      },
+      "presets": {
+        "studio": "Studio",
+        "sunset": "Coucher de soleil",
+        "forest": "Forêt"
+      }
+    },
+    "style": {
+      "label": "Style",
+      "backend": "Moteur de style : {{backend}}",
+      "filters": {
+        "none": "Aucun",
+        "mono": "Mono",
+        "warm": "Chaud",
+        "cool": "Froid",
+        "highContrast": "Contraste élevé",
+        "comic": "BD",
+        "vhs": "VHS"
+      }
+    }
+  }
+}
