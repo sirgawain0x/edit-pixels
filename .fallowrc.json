@@ -190,6 +190,10 @@
       "exports": ["*"]
     },
     {
+      "file": "api/_live-style-config.ts",
+      "exports": ["*"]
+    },
+    {
       "file": "api/live-style-session.ts",
       "exports": ["*"]
     },

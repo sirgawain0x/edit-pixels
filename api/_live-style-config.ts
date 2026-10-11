@@ -8,8 +8,6 @@ import {
   LIVE_STYLE_PROVIDER_IDS,
 } from '../src/features/live-style/lib/config.ts'
 
-export type { LiveStyleCapPresetUsd, LiveStyleProviderId }
-
 export function isLiveStyleEnabled(): boolean {
   const flag = process.env.LIVE_STYLE_ENABLED ?? process.env.VITE_ENABLE_LIVE_STYLE
   return flag === '1' || flag === 'true'
