@@ -32,6 +32,8 @@ import { GET as pixelsGenerateTaskGet } from './api/pixels-generate-task'
 import { POST as pixelsGenerateCancelPost } from './api/pixels-generate-cancel'
 import { POST as pixelsDirectorBatchQuotePost } from './api/pixels-director-batch-quote'
 import { POST as pixelsDirectorBatchConfirmPost } from './api/pixels-director-batch-confirm'
+import { POST as liveStyleSessionPost } from './api/live-style-session'
+import { POST as liveStyleSweepPost } from './api/live-style-sweep'
 import { isMipdStoreModule } from './src/vendor/mipd-store-id.ts'
 
 // Stamps public/sw.js with the hashed entry-chunk filename at build time so the service
@@ -262,6 +264,28 @@ function directorApiDevPlugin(): Plugin {
               res.statusCode = 500
               res.setHeader('Content-Type', 'application/json')
               res.end(JSON.stringify({ error: 'Seedance plan proxy failed' }))
+            }
+          })
+          return
+        }
+        if (path === '/api/live-style-session' && req.method === 'POST') {
+          void proxyEarnDevRequest(req, res, liveStyleSessionPost).catch((error) => {
+            console.error('Live Style session API middleware error', error)
+            if (!res.headersSent) {
+              res.statusCode = 500
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Live Style session proxy failed' }))
+            }
+          })
+          return
+        }
+        if (path === '/api/live-style-sweep' && req.method === 'POST') {
+          void proxyEarnDevRequest(req, res, liveStyleSweepPost).catch((error) => {
+            console.error('Live Style sweep API middleware error', error)
+            if (!res.headersSent) {
+              res.statusCode = 500
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Live Style sweep proxy failed' }))
             }
           })
           return

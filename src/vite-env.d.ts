@@ -16,6 +16,8 @@ interface ImportMetaEnv {
   readonly VITE_ONRAMP_SANDBOX?: string
   /** Enable Creative Pixels Seedance generate tab (server must also enable). */
   readonly VITE_ENABLE_SEEDANCE_GENERATE?: string
+  /** Enable paid Live Style (server LIVE_STYLE_ENABLED must also be on). */
+  readonly VITE_ENABLE_LIVE_STYLE?: string
   /** Override Director batch Seedance (Higgsfield) concurrency (default 20). */
   readonly VITE_DIRECTOR_BATCH_SEEDANCE_CONCURRENCY?: string
   /** Alias for VITE_DIRECTOR_BATCH_SEEDANCE_CONCURRENCY. */
