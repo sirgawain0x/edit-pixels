@@ -24,11 +24,7 @@ export function getLiveStylePaymentSpender(): string | undefined {
   return process.env.LIVE_STYLE_PAYMENT_SPENDER?.trim() || undefined
 }
 
-export function parseCapPresetUsd(value: unknown): LiveStyleCapPresetUsd | null {
-  const n = typeof value === 'number' ? value : Number(value)
-  if (n === 1 || n === 3 || n === 6) return n
-  return null
-}
+export { parseCapPresetUsd } from '../src/features/live-style/lib/config.ts'
 
 export function parseProviderId(value: unknown): LiveStyleProviderId {
   if (typeof value === 'string' && (LIVE_STYLE_PROVIDER_IDS as readonly string[]).includes(value)) {

@@ -198,6 +198,42 @@
       "exports": ["*"]
     },
     {
+      "file": "src/features/editor/deps/live-style-contract.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "src/features/editor/deps/live-style.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "src/features/live-style/index.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "src/features/live-style/api/live-style-client.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "src/features/live-style/components/live-style-panel.tsx",
+      "exports": ["*"]
+    },
+    {
+      "file": "src/features/live-style/transport/ws-transport.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "src/features/live-style/transport/webrtc-transport-stub.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "src/features/live-style/wallet/spend-authorization.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "src/features/live-style/wallet/build-erc20-approve-op.ts",
+      "exports": ["*"]
+    },
+    {
       "file": "api/pixels-render-quote.ts",
       "exports": ["*"]
     },

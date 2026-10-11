@@ -3,7 +3,7 @@
  */
 // fallow-ignore-file complexity,duplicate-export
 
-import { authorizePixelsGeneratePost } from './_pixels-generate-api-auth.js'
+import { authorizeFeatureGatedPrivyPost } from './_feature-gated-privy-post.js'
 import { isPremiumWallet } from './_premium-membership.js'
 import {
   getLiveStylePaymentSpender,
@@ -49,11 +49,7 @@ function parseAction(value: unknown): Action | null {
 }
 
 export async function POST(request: Request): Promise<Response> {
-  if (!isLiveStyleEnabled()) {
-    return Response.json({ error: 'feature_disabled' }, { status: 404 })
-  }
-
-  const authorized = await authorizePixelsGeneratePost(request)
+  const authorized = await authorizeFeatureGatedPrivyPost(request, isLiveStyleEnabled)
   if (!authorized.ok) return authorized.response
 
   const { auth, body } = authorized

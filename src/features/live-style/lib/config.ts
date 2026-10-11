@@ -30,3 +30,10 @@ export function usdc6PerMinuteForPremium(isPremium: boolean): number {
 export function capPresetToUsdc6(usd: LiveStyleCapPresetUsd): number {
   return usd * 1_000_000
 }
+
+export function parseCapPresetUsd(value: unknown): LiveStyleCapPresetUsd | null {
+  const n = typeof value === 'number' ? value : Number(value)
+  return (LIVE_STYLE_CAP_PRESETS_USD as readonly number[]).includes(n)
+    ? (n as LiveStyleCapPresetUsd)
+    : null
+}
