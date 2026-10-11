@@ -10,8 +10,9 @@ import type { LiveStyleSpendAuthMethod } from './payment/types'
 
 export const PERMIT2_ADDRESS = '0x000000000022D473030F116dDEE9F6B43aC78BA3' as const
 
-const permit2AllowanceAbi = parseAbi([
+const permit2Abi = parseAbi([
   'function allowance(address user, address token, address spender) view returns (uint160 amount, uint48 expiration, uint48 nonce)',
+  'event Approval(address indexed owner, address indexed token, address indexed spender, uint160 amount, uint48 expiration)',
 ])
 
 export type SpendAuthVerifyResult = { ok: true } | { ok: false; reason: string }
@@ -55,13 +56,44 @@ function hasApprovalLog(
   return false
 }
 
-function txTouchesPermit2(
-  logs: { address: string }[],
-  txTo: string | null | undefined,
+function hasPermit2ApprovalLog(
+  logs: { address: string; topics: readonly Hex[]; data: Hex }[],
+  owner: string,
+  token: string,
+  spender: string,
+  minAmount: bigint,
+  nowMs: number,
 ): boolean {
   const permit2 = normalizeAddr(PERMIT2_ADDRESS)
-  if (txTo && normalizeAddr(txTo) === permit2) return true
-  return logs.some((log) => normalizeAddr(log.address) === permit2)
+  const tokenL = normalizeAddr(token)
+
+  for (const log of logs) {
+    if (normalizeAddr(log.address) !== permit2) continue
+    try {
+      const decoded = decodeEventLog({
+        abi: permit2Abi,
+        data: log.data,
+        topics: log.topics as [Hex, ...Hex[]],
+      })
+      if (decoded.eventName !== 'Approval') continue
+      const args = decoded.args as {
+        owner: string
+        token: string
+        spender: string
+        amount: bigint
+        expiration: number
+      }
+      if (normalizeAddr(args.owner) !== owner) continue
+      if (normalizeAddr(args.token) !== tokenL) continue
+      if (normalizeAddr(args.spender) !== spender) continue
+      if (args.amount < minAmount) continue
+      if (args.expiration * 1000 <= nowMs) continue
+      return true
+    } catch {
+      // not a Permit2 Approval log
+    }
+  }
+  return false
 }
 
 export async function verifyLiveStyleSpendAuth(options: {
@@ -98,7 +130,6 @@ export async function verifyLiveStyleSpendAuth(options: {
     return { ok: false, reason: 'spend_auth_tx_failed' }
   }
 
-  const blockNumber = receipt.blockNumber
   const logs = receipt.logs
 
   if (options.method === 'erc20-approve') {
@@ -108,15 +139,23 @@ export async function verifyLiveStyleSpendAuth(options: {
       return { ok: false, reason: 'usdc_approval_not_found' }
     }
   } else if (options.method === 'permit2') {
-    if (!txTouchesPermit2(logs, receipt.to)) {
-      return { ok: false, reason: 'permit2_tx_required' }
+    if (
+      !hasPermit2ApprovalLog(
+        logs,
+        owner,
+        token,
+        spender,
+        options.minCapUsdc6,
+        options.nowMs,
+      )
+    ) {
+      return { ok: false, reason: 'permit2_approval_not_found' }
     }
     const permit2Allowance = await options.client.readContract({
       address: PERMIT2_ADDRESS,
-      abi: permit2AllowanceAbi,
+      abi: permit2Abi,
       functionName: 'allowance',
       args: [owner as `0x${string}`, options.usdcToken, spender as `0x${string}`],
-      blockNumber,
     })
     const amount = BigInt(permit2Allowance[0])
     const expiration = Number(permit2Allowance[1])
@@ -127,11 +166,16 @@ export async function verifyLiveStyleSpendAuth(options: {
       return { ok: false, reason: 'permit2_expired' }
     }
   } else if (options.method === 'coinbase-spend-permission') {
-    const meta = parseCoinbaseSpendProofMeta(options.proof)
-    if (meta?.endTimeMs !== undefined && meta.endTimeMs <= options.nowMs) {
-      return { ok: false, reason: 'coinbase_spend_permission_expired' }
-    }
-    if (!txTouchesPermit2(logs, receipt.to) && !hasApprovalLog(logs, token, owner, spender, 1n)) {
+    const permit2Ok = hasPermit2ApprovalLog(
+      logs,
+      owner,
+      token,
+      spender,
+      options.minCapUsdc6,
+      options.nowMs,
+    )
+    const erc20Ok = hasApprovalLog(logs, token, owner, spender, options.minCapUsdc6)
+    if (!permit2Ok && !erc20Ok) {
       return { ok: false, reason: 'coinbase_spend_permission_tx_invalid' }
     }
   } else {
@@ -144,7 +188,6 @@ export async function verifyLiveStyleSpendAuth(options: {
     abi: erc20Abi,
     functionName: 'allowance',
     args: [owner as `0x${string}`, spender as `0x${string}`],
-    blockNumber,
   })
 
   if (allowance < options.minCapUsdc6) {
@@ -154,19 +197,7 @@ export async function verifyLiveStyleSpendAuth(options: {
   return { ok: true }
 }
 
-/** Optional `proof|{"endTimeMs":...}` suffix for Coinbase spend permission expiry. */
-function parseCoinbaseSpendProofMeta(proof: string): { endTimeMs?: number } | null {
-  const pipe = proof.indexOf('|')
-  if (pipe === -1) return null
-  try {
-    const json = JSON.parse(proof.slice(pipe + 1)) as { endTimeMs?: number }
-    return json
-  } catch {
-    return null
-  }
-}
-
-/** Strip Coinbase metadata suffix before on-chain tx lookup. */
+/** Strip optional `proof|{...}` metadata suffix before on-chain tx lookup. */
 export function spendAuthProofTxHash(proof: string): string {
   const pipe = proof.indexOf('|')
   return (pipe === -1 ? proof : proof.slice(0, pipe)).trim()

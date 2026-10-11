@@ -13,6 +13,20 @@ const OWNER = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 const SPENDER = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
 const OTHER = '0xcccccccccccccccccccccccccccccccccccccccc'
 
+const permit2EventsAbi = [
+  {
+    type: 'event',
+    name: 'Approval',
+    inputs: [
+      { name: 'owner', type: 'address', indexed: true },
+      { name: 'token', type: 'address', indexed: true },
+      { name: 'spender', type: 'address', indexed: true },
+      { name: 'amount', type: 'uint160', indexed: false },
+      { name: 'expiration', type: 'uint48', indexed: false },
+    ],
+  },
+] as const
+
 function approvalLog(owner: string, spender: string, value: bigint): {
   address: string
   topics: readonly Hex[]
@@ -29,6 +43,29 @@ function approvalLog(owner: string, spender: string, value: bigint): {
     topics,
     data,
   }
+}
+
+function permit2ApprovalLog(
+  owner: string,
+  token: string,
+  spender: string,
+  amount: bigint,
+  expirationSec: number,
+): { address: string; topics: readonly Hex[]; data: Hex } {
+  const topics = encodeEventTopics({
+    abi: permit2EventsAbi,
+    eventName: 'Approval',
+    args: {
+      owner: owner as `0x${string}`,
+      token: token as `0x${string}`,
+      spender: spender as `0x${string}`,
+    },
+  }) as [Hex, ...Hex[]]
+  const data = encodeAbiParameters(parseAbiParameters('uint160 amount, uint48 expiration'), [
+    amount,
+    expirationSec,
+  ])
+  return { address: PERMIT2_ADDRESS, topics, data }
 }
 
 function mockClient(overrides: {
@@ -151,7 +188,7 @@ describe('verifyLiveStyleSpendAuth', () => {
     if (!result.ok) expect(result.reason).toBe('invalid_spend_auth_proof')
   })
 
-  it('rejects expired permit2 allowance', async () => {
+  it('rejects permit2 tx that only touches Permit2 without Approval event', async () => {
     const client = mockClient({
       receipt: {
         status: 'success',
@@ -160,15 +197,76 @@ describe('verifyLiveStyleSpendAuth', () => {
         to: PERMIT2_ADDRESS,
       },
       allowance: 3_000_000n,
-      permit2: { amount: 3_000_000n, expiration: 1 },
     })
     const result = await verifyLiveStyleSpendAuth({
       ...base,
       method: 'permit2',
-      nowMs: Date.now(),
       client: client as never,
     })
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.reason).toBe('permit2_expired')
+    if (!result.ok) expect(result.reason).toBe('permit2_approval_not_found')
+  })
+
+  it('rejects expired permit2 allowance in proof tx event', async () => {
+    const client = mockClient({
+      receipt: {
+        status: 'success',
+        blockNumber: 1n,
+        logs: [permit2ApprovalLog(OWNER, USDC, SPENDER, 3_000_000n, 1)],
+        to: PERMIT2_ADDRESS,
+      },
+      allowance: 3_000_000n,
+      permit2: { amount: 3_000_000n, expiration: Math.floor(Date.now() / 1000) + 3600 },
+    })
+    const nowMs = Date.now()
+    const result = await verifyLiveStyleSpendAuth({
+      ...base,
+      method: 'permit2',
+      nowMs,
+      client: client as never,
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.reason).toBe('permit2_approval_not_found')
+  })
+
+  it('rejects permit2 when on-chain allowance was revoked after proof tx', async () => {
+    const exp = Math.floor(Date.now() / 1000) + 3600
+    const client = mockClient({
+      receipt: {
+        status: 'success',
+        blockNumber: 1n,
+        logs: [permit2ApprovalLog(OWNER, USDC, SPENDER, 3_000_000n, exp)],
+        to: PERMIT2_ADDRESS,
+      },
+      allowance: 3_000_000n,
+      permit2: { amount: 0n, expiration: exp },
+    })
+    const result = await verifyLiveStyleSpendAuth({
+      ...base,
+      method: 'permit2',
+      client: client as never,
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.reason).toBe('permit2_allowance_too_low')
+  })
+
+  it('rejects coinbase-spend-permission with 1-unit erc20 approval only', async () => {
+    const client = mockClient({
+      receipt: {
+        status: 'success',
+        blockNumber: 1n,
+        logs: [approvalLog(OWNER, SPENDER, 1n)],
+        to: OWNER,
+      },
+      allowance: 3_000_000n,
+    })
+    const result = await verifyLiveStyleSpendAuth({
+      ...base,
+      method: 'coinbase-spend-permission',
+      proof: `0x${'ab'.repeat(32)}|{"endTimeMs":${Date.now() + 86_400_000}}`,
+      client: client as never,
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.reason).toBe('coinbase_spend_permission_tx_invalid')
   })
 })
