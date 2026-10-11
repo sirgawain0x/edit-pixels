@@ -194,6 +194,66 @@
       "exports": ["*"]
     },
     {
+      "file": "api/_live-style-config.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/_live-style-spend-auth-verify.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/_live-style-payment-server.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/_live-style-session-store.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/live-style-session.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/live-style-sweep.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "src/features/editor/deps/live-style-contract.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "src/features/editor/deps/live-style.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "src/features/live-style/index.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "src/features/live-style/api/live-style-client.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "src/features/live-style/components/live-style-panel.tsx",
+      "exports": ["*"]
+    },
+    {
+      "file": "src/features/live-style/transport/ws-transport.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "src/features/live-style/transport/webrtc-transport-stub.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "src/features/live-style/wallet/spend-authorization.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "src/features/live-style/wallet/build-erc20-approve-op.ts",
+      "exports": ["*"]
+    },
+    {
       "file": "api/pixels-render-quote.ts",
       "exports": ["*"]
     },
