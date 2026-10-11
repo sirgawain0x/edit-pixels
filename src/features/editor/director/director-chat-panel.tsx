@@ -17,7 +17,7 @@ import { isLiveStyleEnabledClient } from '@/features/editor/deps/live-style'
 import { useSmartWalletOps } from '@/hooks/use-smart-wallet-ops'
 import { getDirectorTreasuryAddress } from './build-director-payment'
 import { confirmDirectorInvoice } from './confirm-director-invoice'
-import { quoteDirectorBrief } from './director-pricing'
+import { fetchDirectorServerQuote } from './fetch-director-server-quote'
 import { DirectorInvoiceCard, type PendingDirectorInvoice } from './director-invoice-card'
 import { DirectorSessionPacks } from './director-session-packs'
 import { DirectorPastBriefs } from './director-past-briefs'
@@ -249,7 +249,7 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
 
   const queueInvoice = useCallback(
     // fallow-ignore-next-line complexity
-    (text: string) => {
+    async (text: string) => {
       stopListening()
       const trimmed = text.trim()
       if (!trimmed) return
@@ -282,9 +282,9 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
         return
       }
 
-      const quote = quoteDirectorBrief({
+      const quote = await fetchDirectorServerQuote({
         audioDurationSeconds: audioContext.primary.durationSeconds,
-        isPremium: isPremiumMember,
+        walletAddress: account,
       })
       if (!quote) {
         reportLocalError(
@@ -316,6 +316,7 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
       t,
       walletConfigured,
       projectId,
+      account,
     ],
   )
 

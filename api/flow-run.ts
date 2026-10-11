@@ -128,7 +128,7 @@ export async function POST(request: Request): Promise<Response> {
     stillCount,
     stillQuality,
   })
-  const quote = quoteFlowCreditsUsdc6(totalCredits)
+  const quote = await quoteFlowCreditsUsdc6(totalCredits)
   if (!quote) {
     return Response.json({ error: 'invalid quote' }, { status: 400 })
   }

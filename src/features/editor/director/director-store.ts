@@ -42,6 +42,13 @@ interface DirectorState {
       apiPrompt?: string
       audioDurationSeconds?: number
       paymentTxHash?: string
+      quoteId?: string
+      quoteSignature?: string
+      quoteExpiresAtMs?: number
+      quoteSlippageBps?: number
+      quoteEstimatedUsdc6?: number
+      quoteCrtvaiRequired?: string
+      quoteTier?: 'retail' | 'premium'
       walletAddress?: string
     },
   ) => Promise<void>
@@ -238,6 +245,13 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
           audioDurationSeconds: options?.audioDurationSeconds,
           paymentTxHash: options?.paymentTxHash,
           walletAddress: options?.walletAddress,
+          quoteId: options?.quoteId,
+          quoteSignature: options?.quoteSignature,
+          quoteExpiresAtMs: options?.quoteExpiresAtMs,
+          quoteSlippageBps: options?.quoteSlippageBps,
+          quoteEstimatedUsdc6: options?.quoteEstimatedUsdc6,
+          quoteCrtvaiRequired: options?.quoteCrtvaiRequired,
+          quoteTier: options?.quoteTier,
         }),
         signal: controller.signal,
       })

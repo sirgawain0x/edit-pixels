@@ -6,22 +6,16 @@
 import { getBearerToken, verifyPrivyAccessToken } from './_wallet-auth.js'
 import { quoteSeedanceSpend } from './_seedance-billing.js'
 import { isSeedanceGenerateEnabled, type SeedanceResolution } from './_seedance-pricing.js'
+import { parseJsonObjectBody } from './_pixels-generate-api-auth.js'
 
 export async function POST(request: Request): Promise<Response> {
   if (!isSeedanceGenerateEnabled()) {
     return Response.json({ error: 'feature_disabled' }, { status: 404 })
   }
 
-  let body: Record<string, unknown>
-  try {
-    const parsed = await request.json()
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      return Response.json({ error: 'invalid body' }, { status: 400 })
-    }
-    body = parsed as Record<string, unknown>
-  } catch {
-    return Response.json({ error: 'invalid body' }, { status: 400 })
-  }
+  const parsedBody = await parseJsonObjectBody(request)
+  if (!parsedBody.ok) return parsedBody.response
+  const body = parsedBody.body
 
   const token = getBearerToken(request) || (typeof body.token === 'string' ? body.token : null)
   if (!token) {
@@ -43,6 +37,9 @@ export async function POST(request: Request): Promise<Response> {
 
   return Response.json({
     quoteId: quote.quoteId,
+    signature: quote.signature,
+    expiresAtMs: quote.expiresAtMs,
+    slippageBps: quote.slippageBps,
     duration: quote.duration,
     resolution: quote.resolution,
     estimatedUsdc6: quote.estimatedUsdc6,

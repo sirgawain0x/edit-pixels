@@ -87,7 +87,7 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const credits = quoteVideoCredits(body)
-  const quote = quoteFlowCreditsUsdc6(credits)
+  const quote = await quoteFlowCreditsUsdc6(credits)
   if (!quote) {
     return Response.json({ error: 'invalid quote' }, { status: 400 })
   }

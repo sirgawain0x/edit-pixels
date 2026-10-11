@@ -1,11 +1,10 @@
 /**
- * Creative Pixels render providers — dual CRTVAI quotes before spend.
+ * Creative Pixels render providers — dual USD quotes; meToken from server APIs.
  */
 // fallow-ignore-file unused-export
 
 import { clampFlowDuration, type FlowQuality, type FlowTier } from '@/config/flow'
 import { quoteNanobananaCredits, quoteVeoCredits, normalizeVeoQuality } from '@/config/credits'
-import { usdc6ToMetokenWei } from '@/config/metoken'
 import {
   quoteSeedanceGeneration,
   type SeedanceQuote,
@@ -50,16 +49,14 @@ export function quotePixelsVeoRender(duration: number): PixelsVeoRenderQuote {
   const stillCredits = quoteNanobananaCredits('2K')
   const totalCredits = videoCredits + stillCredits
   const estimatedUsdc6 = totalCredits * FLOW_USDC6_PER_CREDIT
-  const crtvaiWei = usdc6ToMetokenWei(estimatedUsdc6)
-  const crtvaiDisplay = Number(crtvaiWei) / 1e18
 
   return {
     provider: 'veo',
     duration: clampedDuration,
     stillCount: 1,
     estimatedUsdc6,
-    crtvaiWei,
-    crtvaiDisplay,
+    crtvaiWei: 0n,
+    crtvaiDisplay: 0,
     formattedUsd: `$${(estimatedUsdc6 / 1_000_000).toFixed(2)}`,
     label: 'Google Veo 3.1',
     detail: 'Gemini still + Veo image-to-video',
@@ -86,7 +83,7 @@ export function quotePixelsRenderOptions(
   return [quotePixelsVeoRender(duration), quotePixelsSeedanceRender(duration, resolution)]
 }
 
-export function quoteForProvider(
+export function quotePixelsRender(
   provider: PixelsRenderProvider,
   duration: number,
   resolution: SeedanceResolution,

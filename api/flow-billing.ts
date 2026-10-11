@@ -11,23 +11,42 @@ import {
   type DirectorBillingQuote,
   type PaymentVerifyResult,
 } from './director-billing.js'
+import { MetokenQuoteError, quoteCrtvaiForUsdc6 } from './_metoken-curve-quote.js'
 
 export { isDirectorBillingEnforced as isFlowBillingEnforced, type PaymentVerifyResult }
 
-/** Convert legacy Flow credits ($0.10/credit) to usdc6 + min CRTVAI wei. */
-export function quoteFlowCreditsUsdc6(credits: number): {
+export interface FlowCreditsQuote {
+  quoteId: string
+  signature: string
+  expiresAtMs: number
+  slippageBps: number
   estimatedUsdc6: number
   minCrtvaiWei: bigint
-} | null {
+}
+
+/** Convert legacy Flow credits ($0.10/credit) to usdc6 + live-curve CRTVAI wei. */
+export async function quoteFlowCreditsUsdc6(credits: number): Promise<FlowCreditsQuote | null> {
   if (!Number.isFinite(credits) || credits <= 0) return null
   const estimatedUsdc6 = Math.max(1, Math.ceil(credits)) * 100_000
-  return {
-    estimatedUsdc6,
-    minCrtvaiWei: BigInt(estimatedUsdc6) * 10n ** 12n,
+  try {
+    const curve = await quoteCrtvaiForUsdc6(estimatedUsdc6)
+    return {
+      quoteId: curve.quoteId,
+      signature: curve.signature,
+      expiresAtMs: curve.expiresAtMs,
+      slippageBps: curve.slippageBps,
+      estimatedUsdc6,
+      minCrtvaiWei: curve.minCrtvaiWei,
+    }
+  } catch (error) {
+    if (error instanceof MetokenQuoteError) return null
+    throw error
   }
 }
 
-export function quoteDirectorForReuse(audioDurationSeconds: number): DirectorBillingQuote | null {
+export async function quoteDirectorForReuse(
+  audioDurationSeconds: number,
+): Promise<DirectorBillingQuote | null> {
   return quoteDirectorRetail(audioDurationSeconds)
 }
 

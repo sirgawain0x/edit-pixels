@@ -13,19 +13,28 @@ export type AuthorizePixelsGenerateResult =
   | { ok: true; auth: PixelsGenerateAuthContext; body: Record<string, unknown> }
   | { ok: false; response: Response }
 
-export async function authorizePixelsGeneratePost(
-  request: Request,
-): Promise<AuthorizePixelsGenerateResult> {
-  let body: Record<string, unknown>
+export type ParseJsonObjectBodyResult =
+  | { ok: true; body: Record<string, unknown> }
+  | { ok: false; response: Response }
+
+export async function parseJsonObjectBody(request: Request): Promise<ParseJsonObjectBodyResult> {
   try {
     const parsed = await request.json()
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
       return { ok: false, response: Response.json({ error: 'invalid body' }, { status: 400 }) }
     }
-    body = parsed as Record<string, unknown>
+    return { ok: true, body: parsed as Record<string, unknown> }
   } catch {
     return { ok: false, response: Response.json({ error: 'invalid body' }, { status: 400 }) }
   }
+}
+
+export async function authorizePixelsGeneratePost(
+  request: Request,
+): Promise<AuthorizePixelsGenerateResult> {
+  const parsedBody = await parseJsonObjectBody(request)
+  if (!parsedBody.ok) return parsedBody
+  const body = parsedBody.body
 
   const token = getBearerToken(request) || (typeof body.token === 'string' ? body.token : null)
   if (!token) {

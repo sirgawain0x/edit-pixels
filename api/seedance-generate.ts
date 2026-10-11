@@ -9,10 +9,12 @@ import { bindSeedanceQuote } from './_pixels-generate-billing-core.js'
 import {
   getSeedanceQuote,
   isSeedanceBillingEnforced,
+  resolveSeedanceSettlementMinWei,
   reserveSeedanceSpend,
   settleSeedanceSpend,
   verifySeedancePayment,
 } from './_seedance-billing.js'
+import { MetokenQuoteError } from './_metoken-curve-quote.js'
 import { generateSeedanceVideo, isHiggsfieldConfigured } from './_higgsfield-seedance.js'
 import { registerPixelsGenerateJob, updatePixelsGenerateJob } from './_pixels-generate-jobs.js'
 import { failPixelsGenerateJob } from './_pixels-generate-payment.js'
@@ -166,10 +168,29 @@ export async function POST(request: Request): Promise<Response> {
         )
         return Response.json({ error: 'payment_required' }, { status: 402 })
       }
+      let minAmountWei: bigint
+      try {
+        minAmountWei = await resolveSeedanceSettlementMinWei(quote)
+      } catch (error) {
+        const message =
+          error instanceof MetokenQuoteError
+            ? error.message
+            : 'Quote validation failed'
+        await failPixelsGenerateJob(
+          requestId,
+          {
+            code: 'quote_invalid',
+            message,
+            type: 'billing',
+          },
+          { releasePayment: false },
+        )
+        return Response.json({ error: message }, { status: 402 })
+      }
       const verified = await verifySeedancePayment({
         txHash: paymentTxHash,
         from: auth.address,
-        minAmountWei: quote.minCrtvaiWei,
+        minAmountWei,
       })
       if (!verified.ok) {
         await failPixelsGenerateJob(
