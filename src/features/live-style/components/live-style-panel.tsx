@@ -15,12 +15,12 @@ import { useSmartWalletOps } from '@/hooks/use-smart-wallet-ops'
 
 export function LiveStylePanel() {
   const enabled = isLiveStyleEnabledClient()
-  const { getAccessToken, account, chain, signerAddress } = useWalletContext()
+  const { getAccessToken, account, chain } = useWalletContext()
   const { sendOps, ready } = useSmartWalletOps()
   const [status, setStatus] = useState<string>('idle')
 
   const startMockSession = useCallback(async () => {
-    if (!enabled || !account || !signerAddress) return
+    if (!enabled || !account) return
     setStatus('authorizing')
     const cap = LIVE_STYLE_CAP_PRESETS_USD[0]
     const ops = buildLiveStyleCapApprovalOps({ chainId: chain.id, capPresetUsd: cap })
@@ -31,7 +31,7 @@ export function LiveStylePanel() {
     setStatus('creating session')
     const created = await createLiveStyleSessionClient({
       accessToken: token,
-      walletAddress: signerAddress,
+      walletAddress: account,
       capPresetUsd: cap,
       spendAuthProof: proof,
       spendAuthMethod: preferredLiveStyleSpendAuthMethod(),
@@ -41,7 +41,7 @@ export function LiveStylePanel() {
     await transport.connect(created.connect)
     setStatus(`session ${created.sessionId} (mock transport ready)`)
     await transport.close()
-  }, [enabled, account, signerAddress, chain.id, sendOps, getAccessToken])
+  }, [enabled, account, chain.id, sendOps, getAccessToken])
 
   if (!enabled) return null
 

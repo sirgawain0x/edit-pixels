@@ -24,6 +24,7 @@ import {
   capPresetToUsdc6,
   LIVE_STYLE_HEARTBEAT_INTERVAL_MS,
 } from '../src/features/live-style/lib/config.ts'
+import { sessionAfterStoppingHeartbeat } from '../src/features/live-style/lib/heartbeat-stop.ts'
 import {
   createLiveStyleSession,
   heartbeatLiveStyleSession,
@@ -134,22 +135,19 @@ export async function POST(request: Request): Promise<Response> {
   if (action === 'heartbeat') {
     const result = await heartbeatLiveStyleSession(session, ledger, nowMs, env)
     putLiveStyleSession(result.session)
+    let responseSession = result.session
     if (result.shouldStop) {
-      if (result.session.metering.stopReason !== 'heartbeat_missed') {
-        await stopLiveStyleSession(
-          result.session,
-          ledger,
-          result.session.metering.stopReason ?? 'stop',
-          env,
-        )
+      try {
+        responseSession = await sessionAfterStoppingHeartbeat(result, ledger, env)
+      } finally {
+        deleteLiveStyleSession(sessionId)
       }
-      deleteLiveStyleSession(sessionId)
     }
     return Response.json({
       ok: true,
       events: result.events,
-      billedSeconds: result.session.metering.billedSeconds,
-      pulledUsdc6: result.session.metering.pulledUsdc6,
+      billedSeconds: responseSession.metering.billedSeconds,
+      pulledUsdc6: responseSession.metering.pulledUsdc6,
       shouldStop: result.shouldStop,
     })
   }
