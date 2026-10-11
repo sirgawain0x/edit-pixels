@@ -14,7 +14,11 @@
 | `LIVE_STYLE_WS_TOKEN_SECRET` | HMAC secret for short-lived WebSocket connect tokens (preferred over reusing provider key) |
 | `LIVE_STYLE_PAYMENT_SPENDER` | USDC `transferFrom` spender for arrears pulls |
 | `LIVE_STYLE_SWEEP_SECRET` | Bearer token for `POST /api/live-style-sweep` (cron) |
-| `LIVE_STYLE_SPEND_AUTH_SOFT` | `1` skips on-chain spend-auth verification (local dev only) |
+| `LIVE_STYLE_SPEND_AUTH_SOFT` | `1` skips on-chain spend-auth verification (**local dev only**; refused in production) |
+
+### Production guard
+
+When `VERCEL_ENV=production` or `NODE_ENV=production` and Live Style is enabled, `create` returns **503** `live_style_production_misconfigured` (and logs the reason) if `LIVE_STYLE_PAYMENT_SPENDER` is missing or `LIVE_STYLE_SPEND_AUTH_SOFT=1`. The soft bypass is never honored in production.
 
 `create` requires a verified on-chain spend proof (USDC approve, Permit2, or Coinbase spend permission) before authorization is recorded. WebSocket URLs include a signed `token` query param; GPU hosts should call `verifyLiveStyleWsSessionToken` on connect. Tokens are revoked when the session stops, hits cap, or is swept.
 

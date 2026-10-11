@@ -30,6 +30,7 @@ import {
   LIVE_STYLE_HEARTBEAT_INTERVAL_MS,
   LIVE_STYLE_MAX_SESSION_SECONDS,
 } from '../src/features/live-style/lib/config.ts'
+import { checkLiveStyleProductionPaymentConfig } from '../src/features/live-style/lib/live-style-production-guard.ts'
 import { signLiveStyleWsToken } from '../src/features/live-style/lib/ws-session-token.ts'
 import { sessionAfterStoppingHeartbeat } from '../src/features/live-style/lib/heartbeat-stop.ts'
 import {
@@ -84,6 +85,15 @@ export async function POST(request: Request): Promise<Response> {
     const proof = typeof body.spendAuthProof === 'string' ? body.spendAuthProof : ''
     if (!proof) {
       return Response.json({ error: 'spend_auth_required' }, { status: 400 })
+    }
+
+    const productionConfig = checkLiveStyleProductionPaymentConfig()
+    if (!productionConfig.ok) {
+      console.error('[live-style] production payment config refused:', productionConfig.reason)
+      return Response.json(
+        { error: productionConfig.error, reason: productionConfig.reason },
+        { status: 503 },
+      )
     }
 
     const capUsdc6 = capPresetToUsdc6(capPreset)

@@ -15,7 +15,8 @@ import {
   consumePaymentTxHash,
   isPaymentLedgerReady,
 } from './_payment-ledger.js'
-import { getLiveStylePaymentSpender, isLiveStyleEnabled } from './_live-style-config.js'
+import { getLiveStylePaymentSpender } from './_live-style-config.js'
+import { isLiveStyleSpendAuthEnforcedFromEnv } from '../src/features/live-style/lib/live-style-spend-auth-policy.ts'
 import type { PaymentVerifyResult } from './director-billing.js'
 
 function alchemyRpcUrl(): string {
@@ -24,9 +25,7 @@ function alchemyRpcUrl(): string {
 }
 
 export function isLiveStyleSpendAuthEnforced(): boolean {
-  if (process.env.LIVE_STYLE_SPEND_AUTH_SOFT === '1') return false
-  if (!isLiveStyleEnabled()) return false
-  return Boolean(getLiveStylePaymentSpender())
+  return isLiveStyleSpendAuthEnforcedFromEnv()
 }
 
 async function verifyLiveStyleSpendAuthOnChain(options: {
