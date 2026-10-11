@@ -13,6 +13,12 @@ import {
   isPaymentLedgerReady,
   releasePaymentTxHash,
 } from './_payment-ledger.js'
+import {
+  MetokenQuoteError,
+  quoteCrtvaiForUsdc6,
+  validateSettlementAgainstQuote,
+  verifyQuoteSignature,
+} from './_metoken-curve-quote.js'
 
 /** Mirrors `DIRECTOR_USDC6_PER_AUDIO_MINUTE_RETAIL` in src/config/billing.ts */
 const DIRECTOR_USDC6_PER_AUDIO_MINUTE_RETAIL = 50_000
@@ -22,9 +28,13 @@ const DIRECTOR_USDC6_PER_AUDIO_MINUTE_PREMIUM = 25_000
 const CRTVAI_DIAMOND = '0xecb695544a3d2a64d579b3828f3f60f6932f4846'
 
 export interface DirectorBillingQuote {
+  quoteId: string
+  signature: string
+  expiresAtMs: number
+  slippageBps: number
   billableMinutes: number
   estimatedUsdc6: number
-  /** Minimum CRTVAI wei expected (usdc6 × 1e12). */
+  /** Minimum CRTVAI wei at live curve for this USD list price. */
   minCrtvaiWei: bigint
   tier: 'retail' | 'premium'
 }
@@ -34,10 +44,10 @@ function billableAudioMinutes(audioDurationSeconds: number): number {
   return audioDurationSeconds / 60
 }
 
-export function quoteDirectorRate(
+export async function quoteDirectorRate(
   audioDurationSeconds: number,
   isPremium: boolean,
-): DirectorBillingQuote | null {
+): Promise<DirectorBillingQuote | null> {
   const minutes = billableAudioMinutes(audioDurationSeconds)
   if (minutes <= 0) return null
   const rate = isPremium
@@ -45,16 +55,31 @@ export function quoteDirectorRate(
     : DIRECTOR_USDC6_PER_AUDIO_MINUTE_RETAIL
   const estimatedUsdc6 = Math.round((audioDurationSeconds * rate) / 60)
   if (estimatedUsdc6 <= 0) return null
-  return {
-    billableMinutes: minutes,
-    estimatedUsdc6,
-    minCrtvaiWei: BigInt(estimatedUsdc6) * 10n ** 12n,
-    tier: isPremium ? 'premium' : 'retail',
+
+  try {
+    const curveQuote = await quoteCrtvaiForUsdc6(estimatedUsdc6, {
+      tier: isPremium ? 'premium' : 'retail',
+    })
+    return {
+      quoteId: curveQuote.quoteId,
+      signature: curveQuote.signature,
+      expiresAtMs: curveQuote.expiresAtMs,
+      slippageBps: curveQuote.slippageBps,
+      billableMinutes: minutes,
+      estimatedUsdc6,
+      minCrtvaiWei: curveQuote.minCrtvaiWei,
+      tier: isPremium ? 'premium' : 'retail',
+    }
+  } catch (error) {
+    if (error instanceof MetokenQuoteError) return null
+    throw error
   }
 }
 
 /** Always retail — use when membership is unknown. */
-export function quoteDirectorRetail(audioDurationSeconds: number): DirectorBillingQuote | null {
+export async function quoteDirectorRetail(
+  audioDurationSeconds: number,
+): Promise<DirectorBillingQuote | null> {
   return quoteDirectorRate(audioDurationSeconds, false)
 }
 
@@ -65,6 +90,31 @@ export async function quoteDirectorForWallet(
 ): Promise<DirectorBillingQuote | null> {
   const premium = walletAddress ? await isPremiumWallet(walletAddress) : false
   return quoteDirectorRate(audioDurationSeconds, premium)
+}
+
+export async function resolveDirectorSettlementMinWei(
+  quote: DirectorBillingQuote,
+): Promise<bigint> {
+  if (
+    !verifyQuoteSignature({
+      quoteId: quote.quoteId,
+      signature: quote.signature,
+      estimatedUsdc6: quote.estimatedUsdc6,
+      minCrtvaiWei: quote.minCrtvaiWei,
+      expiresAtMs: quote.expiresAtMs,
+      slippageBps: quote.slippageBps,
+      tier: quote.tier,
+    })
+  ) {
+    throw new MetokenQuoteError('quote_invalid', 'Invalid quote signature')
+  }
+  const { minAmountWei } = await validateSettlementAgainstQuote({
+    estimatedUsdc6: quote.estimatedUsdc6,
+    minCrtvaiWei: quote.minCrtvaiWei,
+    expiresAtMs: quote.expiresAtMs,
+    slippageBps: quote.slippageBps,
+  })
+  return minAmountWei
 }
 
 // fallow-ignore-next-line complexity

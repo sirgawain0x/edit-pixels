@@ -1,16 +1,12 @@
 /**
- * Creative Director pricing — per minute of timeline audio, settled in CRTVAI.
- *
- * Charges are prorated by exact audio seconds (seconds/60 × rate). Ledger /
- * quote amounts stay in usdc6 (USDC × 1e6). Display converts to CRTVAI via the
- * same usdc6→wei helper used by Live AI (`usdc6ToMetokenWei`).
+ * Creative Director pricing — per minute of timeline audio (USD list price).
+ * meToken settlement amounts come from server curve quotes only.
  */
 
 import {
   DIRECTOR_USDC6_PER_AUDIO_MINUTE_PREMIUM,
   DIRECTOR_USDC6_PER_AUDIO_MINUTE_RETAIL,
 } from '@/config/billing'
-import { usdc6ToMetokenWei } from '@/config/metoken'
 
 export interface DirectorQuoteInput {
   /** Primary timeline audio duration in seconds. */
@@ -24,14 +20,17 @@ export interface DirectorQuote {
   billableMinutes: number
   usdc6PerMinute: number
   estimatedUsdc6: number
-  /** CRTVAI amount to transfer (meToken wei, 18 decimals). */
+  /** meToken wei from server quote (never computed client-side). */
   crtvaiWei: bigint
-  /** Human CRTVAI amount for invoice UI (approx; 1 CRTVAI ≈ $1 at curve peg helpers). */
   crtvaiDisplay: number
   formattedUsd: string
   /** Human duration label, e.g. "4m 10s". */
   formattedDuration: string
   tier: 'premium' | 'retail'
+  quoteId?: string
+  signature?: string
+  expiresAtMs?: number
+  slippageBps?: number
 }
 
 /** Exact billable minutes from audio length. Returns 0 when duration is non-positive. */
@@ -60,7 +59,11 @@ export function estimateDirectorUsdc6(
   return Math.round((audioDurationSeconds * usdc6PerMinute) / 60)
 }
 
-export function quoteDirectorBrief(input: DirectorQuoteInput): DirectorQuote | null {
+/** USD list price only — use `fetchDirectorServerQuote` before checkout. */
+export function quoteDirectorBriefUsd(input: DirectorQuoteInput): Omit<
+  DirectorQuote,
+  'crtvaiWei' | 'crtvaiDisplay'
+> | null {
   const minutes = billableAudioMinutes(input.audioDurationSeconds)
   if (minutes <= 0) return null
 
@@ -71,23 +74,29 @@ export function quoteDirectorBrief(input: DirectorQuoteInput): DirectorQuote | n
   const estimatedUsdc6 = estimateDirectorUsdc6(input.audioDurationSeconds, usdc6PerMinute)
   if (estimatedUsdc6 <= 0) return null
 
-  const crtvaiWei = usdc6ToMetokenWei(estimatedUsdc6)
-  const crtvaiDisplay = Number(crtvaiWei) / 1e18
-
   return {
     audioDurationSeconds: input.audioDurationSeconds,
     billableMinutes: minutes,
     usdc6PerMinute,
     estimatedUsdc6,
-    crtvaiWei,
-    crtvaiDisplay,
     formattedUsd: `$${(estimatedUsdc6 / 1_000_000).toFixed(2)}`,
     formattedDuration: formatAudioDurationLabel(input.audioDurationSeconds),
     tier: isPremium ? 'premium' : 'retail',
   }
 }
 
-/** Recompute server-side minimum charge (always retail — no client membership trust). */
+/** @deprecated Use `fetchDirectorServerQuote` for checkout amounts. */
+export function quoteDirectorBrief(input: DirectorQuoteInput): DirectorQuote | null {
+  const usd = quoteDirectorBriefUsd(input)
+  if (!usd) return null
+  return {
+    ...usd,
+    crtvaiWei: 0n,
+    crtvaiDisplay: 0,
+  }
+}
+
+/** @deprecated Use `fetchDirectorServerQuote` for checkout amounts. */
 export function quoteDirectorBriefRetail(audioDurationSeconds: number): DirectorQuote | null {
   return quoteDirectorBrief({ audioDurationSeconds, isPremium: false })
 }

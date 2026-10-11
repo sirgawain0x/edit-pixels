@@ -70,30 +70,27 @@ export const SUPERFLUID_CHAIN_ID = base.id
 /** Seconds per billing interval (matches 5-minute interval pricing). */
 export const BILLING_INTERVAL_SECONDS = 300
 
-/** Minimum CRTVAI (in meToken wei, 18 decimals) required to start Live AI (one billing interval). */
-export function minStartMetokenWei(intervalCostUsdc6: number): bigint {
-  // Convert USDC6 cost to meToken wei using 12-decimal multiplier (18 - 6 = 12)
-  return BigInt(intervalCostUsdc6) * 10n ** 12n
+/** @deprecated Live AI checkout is hidden; use server curve quotes for spend paths. */
+export function minStartMetokenWei(_intervalCostUsdc6: number): bigint {
+  return 0n
 }
 
-/** CRTVAI meToken wei (18 decimals) wrapped for one hour of streaming. */
-export function wrapMetokenWeiForOneHour(intervalCostUsdc6: number): bigint {
-  return BigInt(intervalCostUsdc6) * 10n ** 12n * 12n
+/** @deprecated Live AI checkout is hidden; use server curve quotes for spend paths. */
+export function wrapMetokenWeiForOneHour(_intervalCostUsdc6: number): bigint {
+  return 0n
+}
+
+/** @deprecated Live AI checkout is hidden; use server curve quotes for spend paths. */
+export function intervalCostUsdc6ToFlowRate(_intervalCostUsdc6: number): bigint {
+  return 0n
 }
 
 /**
- * Superfluid flow rate (super-token wei per second, 18 decimals).
- * Derived from USDC6-equivalent per billing interval.
+ * Client checkout must use server quote APIs — never assume a fixed USD→meToken rate.
+ * @deprecated
  */
-export function intervalCostUsdc6ToFlowRate(intervalCostUsdc6: number): bigint {
-  const numerator = BigInt(intervalCostUsdc6) * 10n ** 12n
-  const interval = BigInt(BILLING_INTERVAL_SECONDS)
-  return (numerator + interval - 1n) / interval
-}
-
-/** Convert USDC6 amount to meToken wei (18 decimals). */
-export function usdc6ToMetokenWei(usdc6: bigint | number): bigint {
-  return BigInt(usdc6) * 10n ** 12n
+export function usdc6ToMetokenWei(_usdc6: bigint | number): bigint {
+  return 0n
 }
 
 /** Hourly USDC-equivalent cost from interval pricing (for UI). */

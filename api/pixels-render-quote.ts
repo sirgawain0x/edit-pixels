@@ -58,7 +58,7 @@ export async function POST(request: Request): Promise<Response> {
     stillCount: 1,
     stillQuality: PIXELS_STILL_QUALITY,
   })
-  const veoQuote = quoteFlowCreditsUsdc6(veoCredits)
+  const veoQuote = await quoteFlowCreditsUsdc6(veoCredits)
   if (!veoQuote) {
     return Response.json({ error: 'invalid veo quote' }, { status: 400 })
   }

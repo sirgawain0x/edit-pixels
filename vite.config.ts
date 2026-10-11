@@ -6,6 +6,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { POST as directorPost } from './api/director'
+import { POST as directorQuotePost } from './api/director-quote'
 import { GET as directorSessionsGet } from './api/director-sessions'
 import { GET as generateTaskGet } from './api/generate-task'
 import { POST as flowFramePost } from './api/flow-frame'
@@ -262,6 +263,17 @@ function directorApiDevPlugin(): Plugin {
               res.statusCode = 500
               res.setHeader('Content-Type', 'application/json')
               res.end(JSON.stringify({ error: 'Seedance plan proxy failed' }))
+            }
+          })
+          return
+        }
+        if (path === '/api/director-quote' && req.method === 'POST') {
+          void proxyEarnDevRequest(req, res, directorQuotePost).catch((error) => {
+            console.error('Director quote API middleware error', error)
+            if (!res.headersSent) {
+              res.statusCode = 500
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Director quote proxy failed' }))
             }
           })
           return

@@ -43,6 +43,9 @@ export async function POST(request: Request): Promise<Response> {
 
   return Response.json({
     quoteId: quote.quoteId,
+    signature: quote.signature,
+    expiresAtMs: quote.expiresAtMs,
+    slippageBps: quote.slippageBps,
     duration: quote.duration,
     resolution: quote.resolution,
     estimatedUsdc6: quote.estimatedUsdc6,

@@ -88,10 +88,10 @@ export interface DirectorBatchQuoteResult {
   }
 }
 
-function quoteVeoForShot(veoDuration: number): {
+async function quoteVeoForShot(veoDuration: number): Promise<{
   estimatedUsdc6: number
   crtvaiWei: bigint
-} | null {
+} | null> {
   const duration = clampFlowDuration(veoDuration)
   const credits = quoteFlowTotalCredits({
     duration,
@@ -100,7 +100,7 @@ function quoteVeoForShot(veoDuration: number): {
     stillCount: 1,
     stillQuality: PIXELS_STILL_QUALITY,
   })
-  const quote = quoteFlowCreditsUsdc6(credits)
+  const quote = await quoteFlowCreditsUsdc6(credits)
   if (!quote) return null
   return { estimatedUsdc6: quote.estimatedUsdc6, crtvaiWei: quote.minCrtvaiWei }
 }
@@ -153,7 +153,7 @@ export async function quoteDirectorStoryboardBatch(input: {
     }
     seenShotIds.add(mapped.shotId)
 
-    const veoQuote = quoteVeoForShot(mapped.veoDuration)
+    const veoQuote = await quoteVeoForShot(mapped.veoDuration)
     if (!veoQuote) {
       return { ok: false, error: `veo quote failed for shot ${mapped.shotId}` }
     }

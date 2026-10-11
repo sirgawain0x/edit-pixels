@@ -38,9 +38,11 @@ import {
   isDirectorBillingEnforced,
   quoteDirectorForWallet,
   releaseDirectorPayment,
+  resolveDirectorSettlementMinWei,
   verifyAndConsumeDirectorPayment,
   type DirectorBillingQuote,
 } from './director-billing.js'
+import { MetokenQuoteError } from './_metoken-curve-quote.js'
 import { probeAudioDurationSeconds } from './_audio-duration.js'
 import {
   finalizeDirectorSession,
@@ -70,6 +72,13 @@ interface DirectorRequestBody {
   audioDurationSeconds?: number
   paymentTxHash?: string
   walletAddress?: string
+  quoteId?: string
+  quoteSignature?: string
+  quoteExpiresAtMs?: number
+  quoteSlippageBps?: number
+  quoteEstimatedUsdc6?: number
+  quoteCrtvaiRequired?: string
+  quoteTier?: 'retail' | 'premium'
 }
 
 interface ParsedDirectorRequest {
@@ -81,6 +90,7 @@ interface ParsedDirectorRequest {
   audioDurationSeconds?: number
   paymentTxHash?: string
   walletAddress?: string
+  billingQuote?: DirectorBillingQuote
 }
 
 function getEngineId(): string {
@@ -130,6 +140,28 @@ async function parseDirectorRequest(
       ? body.audioDurationSeconds
       : undefined
 
+  let billingQuote: DirectorBillingQuote | undefined
+  if (
+    typeof body.quoteId === 'string' &&
+    typeof body.quoteSignature === 'string' &&
+    typeof body.quoteExpiresAtMs === 'number' &&
+    typeof body.quoteSlippageBps === 'number' &&
+    typeof body.quoteEstimatedUsdc6 === 'number' &&
+    typeof body.quoteCrtvaiRequired === 'string' &&
+    (body.quoteTier === 'retail' || body.quoteTier === 'premium')
+  ) {
+    billingQuote = {
+      quoteId: body.quoteId.trim(),
+      signature: body.quoteSignature.trim(),
+      expiresAtMs: body.quoteExpiresAtMs,
+      slippageBps: body.quoteSlippageBps,
+      billableMinutes: audioDurationSeconds ? audioDurationSeconds / 60 : 0,
+      estimatedUsdc6: body.quoteEstimatedUsdc6,
+      minCrtvaiWei: BigInt(body.quoteCrtvaiRequired),
+      tier: body.quoteTier,
+    }
+  }
+
   return {
     ok: true,
     data: {
@@ -141,6 +173,7 @@ async function parseDirectorRequest(
       audioDurationSeconds,
       paymentTxHash: body.paymentTxHash?.trim(),
       walletAddress: body.walletAddress?.trim(),
+      billingQuote,
     },
   }
 }
@@ -220,9 +253,20 @@ async function assertDirectorPayment(data: ParsedDirectorRequest): Promise<
   const billable = await resolveBillableAudioSeconds(data)
   if (!billable.ok) return { error: billable.response }
 
-  const quote = await quoteDirectorForWallet(billable.seconds, data.walletAddress)
-  if (!quote) {
+  const canonical = await quoteDirectorForWallet(billable.seconds, data.walletAddress)
+  if (!canonical) {
     return { error: Response.json({ error: 'Unable to quote Director brief' }, { status: 402 }) }
+  }
+
+  const quote = data.billingQuote ?? canonical
+  if (
+    data.billingQuote &&
+    (data.billingQuote.estimatedUsdc6 !== canonical.estimatedUsdc6 ||
+      data.billingQuote.tier !== canonical.tier)
+  ) {
+    return {
+      error: Response.json({ error: 'Director quote mismatch — refresh and try again.' }, { status: 402 }),
+    }
   }
 
   if (!data.paymentTxHash || !data.walletAddress) {
@@ -239,10 +283,23 @@ async function assertDirectorPayment(data: ParsedDirectorRequest): Promise<
     }
   }
 
+  let minAmountWei: bigint
+  try {
+    minAmountWei = await resolveDirectorSettlementMinWei(quote)
+  } catch (error) {
+    const message =
+      error instanceof MetokenQuoteError
+        ? error.message
+        : 'Director quote validation failed'
+    return {
+      error: Response.json({ error: message }, { status: 402 }),
+    }
+  }
+
   const verified = await verifyAndConsumeDirectorPayment({
     txHash: data.paymentTxHash,
     from: data.walletAddress,
-    minAmountWei: quote.minCrtvaiWei,
+    minAmountWei,
     purpose: 'director',
   })
 

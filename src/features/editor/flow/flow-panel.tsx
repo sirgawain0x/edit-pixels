@@ -123,7 +123,7 @@ export const FlowPanel = memo(function FlowPanel() {
     [duration, effectiveQuality, tier, stillCount],
   )
 
-  const insufficient = balance < quote.crtvaiDisplay
+  const insufficient = balance <= 0
 
   const onTierChange = useCallback((next: FlowTier) => {
     setTier(next)

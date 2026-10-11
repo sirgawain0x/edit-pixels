@@ -22,6 +22,13 @@ export interface ConfirmDirectorInvoiceArgs {
       paymentTxHash?: string
       walletAddress?: string
       projectId?: string
+      quoteId?: string
+      quoteSignature?: string
+      quoteExpiresAtMs?: number
+      quoteSlippageBps?: number
+      quoteEstimatedUsdc6?: number
+      quoteCrtvaiRequired?: string
+      quoteTier?: 'retail' | 'premium'
     },
   ) => Promise<void>
 }
@@ -49,5 +56,16 @@ export async function confirmDirectorInvoice(args: ConfirmDirectorInvoiceArgs): 
     ...(paymentTxHash ? { paymentTxHash } : {}),
     ...(account ? { walletAddress: account, userId: account } : {}),
     ...(invoice.projectId ? { projectId: invoice.projectId } : {}),
+    ...(quote.quoteId
+      ? {
+          quoteId: quote.quoteId,
+          quoteSignature: quote.signature,
+          quoteExpiresAtMs: quote.expiresAtMs,
+          quoteSlippageBps: quote.slippageBps,
+          quoteEstimatedUsdc6: quote.estimatedUsdc6,
+          quoteCrtvaiRequired: quote.crtvaiWei.toString(),
+          quoteTier: quote.tier,
+        }
+      : {}),
   })
 }

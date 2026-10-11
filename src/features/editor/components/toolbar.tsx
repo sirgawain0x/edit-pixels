@@ -352,7 +352,7 @@ export const Toolbar = memo(function Toolbar({
 
         <WalletConnectButton size="sm" compact className="h-7 min-h-0" />
 
-        <LiveAiPopover />
+        {import.meta.env.VITE_SHOW_LIVE_AI === '1' ? <LiveAiPopover /> : null}
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
