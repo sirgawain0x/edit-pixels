@@ -1,0 +1,44 @@
+{
+  "liveLooks": {
+    "title": "Live Looks",
+    "subtitle": "Efeitos de fundo e estilo, processados no seu dispositivo.",
+    "toolbarAria": "Live Looks",
+    "toolbarTooltip": "Live Looks",
+    "previewIdle": "Inicie a câmera para visualizar os efeitos.",
+    "privacy": "Somente no dispositivo. As imagens da sua câmera não são enviadas.",
+    "startCamera": "Iniciar câmera",
+    "stopCamera": "Parar câmera",
+    "starting": "Iniciando…",
+    "background": {
+      "label": "Fundo",
+      "blurAmount": "Intensidade do desfoque",
+      "solidColor": "Cor de fundo",
+      "pickImage": "Escolher imagem",
+      "modes": {
+        "none": "Original",
+        "blur": "Desfoque",
+        "solid": "Cor sólida",
+        "preset": "Cena incluída",
+        "custom": "Sua imagem"
+      },
+      "presets": {
+        "studio": "Estúdio",
+        "sunset": "Pôr do sol",
+        "forest": "Floresta"
+      }
+    },
+    "style": {
+      "label": "Estilo",
+      "backend": "Motor de estilo: {{backend}}",
+      "filters": {
+        "none": "Nenhum",
+        "mono": "Mono",
+        "warm": "Quente",
+        "cool": "Frio",
+        "highContrast": "Alto contraste",
+        "comic": "Quadrinhos",
+        "vhs": "VHS"
+      }
+    }
+  }
+}

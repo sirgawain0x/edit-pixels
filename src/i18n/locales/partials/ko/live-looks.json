@@ -1,0 +1,44 @@
+{
+  "liveLooks": {
+    "title": "Live Looks",
+    "subtitle": "배경 및 스타일 효과를 기기에서 처리합니다.",
+    "toolbarAria": "Live Looks",
+    "toolbarTooltip": "Live Looks",
+    "previewIdle": "효과를 미리 보려면 카메라를 시작하세요.",
+    "privacy": "기기에서만 처리됩니다. 카메라 영상은 업로드되지 않습니다.",
+    "startCamera": "카메라 시작",
+    "stopCamera": "카메라 중지",
+    "starting": "시작 중…",
+    "background": {
+      "label": "배경",
+      "blurAmount": "블러 강도",
+      "solidColor": "배경색",
+      "pickImage": "이미지 선택",
+      "modes": {
+        "none": "원본",
+        "blur": "블러",
+        "solid": "단색",
+        "preset": "포함된 장면",
+        "custom": "내 이미지"
+      },
+      "presets": {
+        "studio": "스튜디오",
+        "sunset": "노을",
+        "forest": "숲"
+      }
+    },
+    "style": {
+      "label": "스타일",
+      "backend": "스타일 엔진: {{backend}}",
+      "filters": {
+        "none": "없음",
+        "mono": "모노",
+        "warm": "웜",
+        "cool": "쿨",
+        "highContrast": "고대비",
+        "comic": "만화",
+        "vhs": "VHS"
+      }
+    }
+  }
+}

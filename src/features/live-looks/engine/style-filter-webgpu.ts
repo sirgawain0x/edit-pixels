@@ -86,202 +86,188 @@ fn fs_main(@location(0) uv: vec2f) -> @location(0) vec4f {
 }
 `
 
-export class WebGpuStyleFilterRenderer {
-  private readonly device: GPUDevice
-  private readonly context: GPUCanvasContext
-  private readonly canvas: HTMLCanvasElement
-  private readonly pipeline: GPURenderPipeline
-  private readonly sampler: GPUSampler
-  private readonly uniformBuffer: GPUBuffer
-  private readonly bindGroupLayout: GPUBindGroupLayout
-  private sourceTexture: GPUTexture | null = null
-  private bindGroup: GPUBindGroup | null = null
-  private width = 0
-  private height = 0
+export interface WebGpuStyleFilterRenderer {
+  resize(width: number, height: number): void
+  apply(source: CanvasImageSource, filter: LiveLooksStyleFilter): HTMLCanvasElement
+  dispose(): void
+}
 
-  private constructor(
-    device: GPUDevice,
-    context: GPUCanvasContext,
-    canvas: HTMLCanvasElement,
-    pipeline: GPURenderPipeline,
-    sampler: GPUSampler,
-    uniformBuffer: GPUBuffer,
-    bindGroupLayout: GPUBindGroupLayout,
+interface WebGpuStyleFilterState {
+  device: GPUDevice
+  context: GPUCanvasContext
+  canvas: HTMLCanvasElement
+  pipeline: GPURenderPipeline
+  sampler: GPUSampler
+  uniformBuffer: GPUBuffer
+  bindGroupLayout: GPUBindGroupLayout
+  sourceTexture: GPUTexture | null
+  bindGroup: GPUBindGroup | null
+  width: number
+  height: number
+}
+
+function createGpuResources(device: GPUDevice, format: GPUTextureFormat) {
+  const shaderModule = device.createShaderModule({ code: WGSL })
+  const bindGroupLayout = device.createBindGroupLayout({
+    entries: [
+      { binding: 0, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
+      { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: {} },
+      {
+        binding: 2,
+        visibility: GPUShaderStage.FRAGMENT,
+        buffer: { type: 'uniform' },
+      },
+    ],
+  })
+  const pipeline = device.createRenderPipeline({
+    layout: device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] }),
+    vertex: { module: shaderModule, entryPoint: 'vs_main', buffers: [] },
+    fragment: { module: shaderModule, entryPoint: 'fs_main', targets: [{ format }] },
+    primitive: { topology: 'triangle-list' },
+  })
+  const sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' })
+  const uniformBuffer = device.createBuffer({
+    size: 16,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+  })
+  return { pipeline, sampler, uniformBuffer, bindGroupLayout }
+}
+
+function toGpuUploadSource(
+  source: CanvasImageSource,
+  width: number,
+  height: number,
+): HTMLCanvasElement | OffscreenCanvas | ImageBitmap {
+  if (
+    source instanceof HTMLCanvasElement ||
+    source instanceof OffscreenCanvas ||
+    source instanceof ImageBitmap
   ) {
-    this.device = device
-    this.context = context
-    this.canvas = canvas
-    this.pipeline = pipeline
-    this.sampler = sampler
-    this.uniformBuffer = uniformBuffer
-    this.bindGroupLayout = bindGroupLayout
+    return source
   }
+  const scratch = document.createElement('canvas')
+  scratch.width = width
+  scratch.height = height
+  const ctx = scratch.getContext('2d')
+  if (!ctx) throw new Error('Failed to prepare WebGPU upload surface')
+  ctx.drawImage(source, 0, 0, width, height)
+  return scratch
+}
 
-  static async tryCreate(width: number, height: number): Promise<WebGpuStyleFilterRenderer | null> {
-    try {
-      if (typeof navigator === 'undefined' || !navigator.gpu) return null
-      const adapter = await navigator.gpu.requestAdapter()
-      if (!adapter) return null
-      const device = await adapter.requestDevice()
-      if (!device) return null
+function resizeWebGpuStyleFilter(state: WebGpuStyleFilterState, width: number, height: number) {
+  state.width = width
+  state.height = height
+  state.canvas.width = width
+  state.canvas.height = height
+  state.context.configure({
+    device: state.device,
+    format: navigator.gpu.getPreferredCanvasFormat(),
+    alphaMode: 'opaque',
+  })
+  state.sourceTexture?.destroy()
+  state.sourceTexture = state.device.createTexture({
+    size: [width, height],
+    format: 'rgba8unorm',
+    usage:
+      GPUTextureUsage.TEXTURE_BINDING |
+      GPUTextureUsage.COPY_DST |
+      GPUTextureUsage.RENDER_ATTACHMENT,
+  })
+  state.bindGroup = state.device.createBindGroup({
+    layout: state.bindGroupLayout,
+    entries: [
+      { binding: 0, resource: state.sampler },
+      { binding: 1, resource: state.sourceTexture.createView() },
+      { binding: 2, resource: { buffer: state.uniformBuffer } },
+    ],
+  })
+}
 
-      const canvas = document.createElement('canvas')
-      canvas.width = width
-      canvas.height = height
-      const context = canvas.getContext('webgpu')
-      if (!context) return null
+function applyWebGpuStyleFilter(
+  state: WebGpuStyleFilterState,
+  source: CanvasImageSource,
+  filter: LiveLooksStyleFilter,
+): HTMLCanvasElement {
+  if (!state.sourceTexture || !state.bindGroup) {
+    resizeWebGpuStyleFilter(state, state.width || 1, state.height || 1)
+  }
+  const texture = state.sourceTexture!
+  const bindGroup = state.bindGroup!
+  const uploadSource = toGpuUploadSource(source, state.width, state.height)
+  state.device.queue.copyExternalImageToTexture(
+    { source: uploadSource },
+    { texture },
+    [state.width, state.height],
+  )
+  const uniformData = new ArrayBuffer(16)
+  const view = new DataView(uniformData)
+  view.setUint32(0, FILTER_INDEX[filter], true)
+  view.setFloat32(4, state.width, true)
+  view.setFloat32(8, state.height, true)
+  state.device.queue.writeBuffer(state.uniformBuffer, 0, uniformData)
+  const encoder = state.device.createCommandEncoder()
+  const pass = encoder.beginRenderPass({
+    colorAttachments: [
+      {
+        view: state.context.getCurrentTexture().createView(),
+        clearValue: { r: 0, g: 0, b: 0, a: 1 },
+        loadOp: 'clear',
+        storeOp: 'store',
+      },
+    ],
+  })
+  pass.setPipeline(state.pipeline)
+  pass.setBindGroup(0, bindGroup)
+  pass.draw(3)
+  pass.end()
+  state.device.queue.submit([encoder.finish()])
+  return state.canvas
+}
 
-      const format = navigator.gpu.getPreferredCanvasFormat()
-      context.configure({ device, format, alphaMode: 'opaque' })
+function disposeWebGpuStyleFilter(state: WebGpuStyleFilterState): void {
+  state.sourceTexture?.destroy()
+  state.sourceTexture = null
+  state.bindGroup = null
+  state.uniformBuffer.destroy()
+  state.device.destroy()
+}
 
-      const shaderModule = device.createShaderModule({ code: WGSL })
-      const bindGroupLayout = device.createBindGroupLayout({
-        entries: [
-          { binding: 0, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
-          { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: {} },
-          {
-            binding: 2,
-            visibility: GPUShaderStage.FRAGMENT,
-            buffer: { type: 'uniform' },
-          },
-        ],
-      })
-
-      const pipeline = device.createRenderPipeline({
-        layout: device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] }),
-        vertex: {
-          module: shaderModule,
-          entryPoint: 'vs_main',
-          buffers: [],
-        },
-        fragment: {
-          module: shaderModule,
-          entryPoint: 'fs_main',
-          targets: [{ format }],
-        },
-        primitive: { topology: 'triangle-list' },
-      })
-
-      const sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' })
-      const uniformBuffer = device.createBuffer({
-        size: 16,
-        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-      })
-
-      const renderer = new WebGpuStyleFilterRenderer(
-        device,
-        context,
-        canvas,
-        pipeline,
-        sampler,
-        uniformBuffer,
-        bindGroupLayout,
-      )
-      renderer.resize(width, height)
-      return renderer
-    } catch {
-      return null
+export async function createWebGpuStyleFilterRenderer(
+  width: number,
+  height: number,
+): Promise<WebGpuStyleFilterRenderer | null> {
+  try {
+    if (typeof navigator === 'undefined' || !navigator.gpu) return null
+    const adapter = await navigator.gpu.requestAdapter()
+    if (!adapter) return null
+    const device = await adapter.requestDevice()
+    if (!device) return null
+    const canvas = document.createElement('canvas')
+    const context = canvas.getContext('webgpu')
+    if (!context) return null
+    const format = navigator.gpu.getPreferredCanvasFormat()
+    context.configure({ device, format, alphaMode: 'opaque' })
+    const gpu = createGpuResources(device, format)
+    const state: WebGpuStyleFilterState = {
+      device,
+      context,
+      canvas,
+      pipeline: gpu.pipeline,
+      sampler: gpu.sampler,
+      uniformBuffer: gpu.uniformBuffer,
+      bindGroupLayout: gpu.bindGroupLayout,
+      sourceTexture: null,
+      bindGroup: null,
+      width: 0,
+      height: 0,
     }
-  }
-
-  resize(width: number, height: number): void {
-    this.width = width
-    this.height = height
-    this.canvas.width = width
-    this.canvas.height = height
-    this.context.configure({
-      device: this.device,
-      format: navigator.gpu.getPreferredCanvasFormat(),
-      alphaMode: 'opaque',
-    })
-    this.sourceTexture?.destroy()
-    this.sourceTexture = this.device.createTexture({
-      size: [width, height],
-      format: 'rgba8unorm',
-      usage:
-        GPUTextureUsage.TEXTURE_BINDING |
-        GPUTextureUsage.COPY_DST |
-        GPUTextureUsage.RENDER_ATTACHMENT,
-    })
-    this.bindGroup = this.device.createBindGroup({
-      layout: this.bindGroupLayout,
-      entries: [
-        { binding: 0, resource: this.sampler },
-        { binding: 1, resource: this.sourceTexture.createView() },
-        { binding: 2, resource: { buffer: this.uniformBuffer } },
-      ],
-    })
-  }
-
-  apply(source: CanvasImageSource, filter: LiveLooksStyleFilter): HTMLCanvasElement {
-    if (!this.sourceTexture || !this.bindGroup) {
-      this.resize(this.width || 1, this.height || 1)
+    resizeWebGpuStyleFilter(state, width, height)
+    return {
+      resize: (w, h) => resizeWebGpuStyleFilter(state, w, h),
+      apply: (source, filter) => applyWebGpuStyleFilter(state, source, filter),
+      dispose: () => disposeWebGpuStyleFilter(state),
     }
-
-    const texture = this.sourceTexture!
-    const bindGroup = this.bindGroup!
-
-    const uploadSource = this.toGpuUploadSource(source)
-    this.device.queue.copyExternalImageToTexture(
-      { source: uploadSource },
-      { texture },
-      [this.width, this.height],
-    )
-
-    const filterMode = FILTER_INDEX[filter]
-    const uniformData = new ArrayBuffer(16)
-    const view = new DataView(uniformData)
-    view.setUint32(0, filterMode, true)
-    view.setFloat32(4, this.width, true)
-    view.setFloat32(8, this.height, true)
-    this.device.queue.writeBuffer(this.uniformBuffer, 0, uniformData)
-
-    const encoder = this.device.createCommandEncoder()
-    const pass = encoder.beginRenderPass({
-      colorAttachments: [
-        {
-          view: this.context.getCurrentTexture().createView(),
-          clearValue: { r: 0, g: 0, b: 0, a: 1 },
-          loadOp: 'clear',
-          storeOp: 'store',
-        },
-      ],
-    })
-    pass.setPipeline(this.pipeline)
-    pass.setBindGroup(0, bindGroup)
-    pass.draw(3)
-    pass.end()
-    this.device.queue.submit([encoder.finish()])
-
-    return this.canvas
-  }
-
-  dispose(): void {
-    this.sourceTexture?.destroy()
-    this.sourceTexture = null
-    this.bindGroup = null
-    this.uniformBuffer.destroy()
-    this.device.destroy()
-  }
-
-  private toGpuUploadSource(
-    source: CanvasImageSource,
-  ): HTMLCanvasElement | OffscreenCanvas | ImageBitmap {
-    if (
-      source instanceof HTMLCanvasElement ||
-      source instanceof OffscreenCanvas ||
-      source instanceof ImageBitmap
-    ) {
-      return source
-    }
-    const scratch = document.createElement('canvas')
-    scratch.width = this.width
-    scratch.height = this.height
-    const ctx = scratch.getContext('2d')
-    if (!ctx) {
-      throw new Error('Failed to prepare WebGPU upload surface')
-    }
-    ctx.drawImage(source, 0, 0, this.width, this.height)
-    return scratch
+  } catch {
+    return null
   }
 }

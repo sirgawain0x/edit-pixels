@@ -1,6 +1,6 @@
 import type { ImageSegmenter, MPMask } from '@mediapipe/tasks-vision'
 import type { LiveLooksRendererBackend, LiveLooksSettings } from './types'
-import { loadImageSegmenter } from './segmentation'
+import { disposeImageSegmenter, loadImageSegmenter } from './segmentation'
 import { createStyleFilterPipeline, type StyleFilterPipeline } from './style-filter-pipeline'
 import { BUNDLED_BACKGROUND_PRESETS } from './types'
 
@@ -30,9 +30,9 @@ export class LiveLooksEngine {
   private readonly backgroundCanvas = document.createElement('canvas')
   private readonly backgroundCtx = this.backgroundCanvas.getContext('2d', { alpha: false })
   private readonly presetImages = new Map<string, HTMLImageElement>()
-  private customBackground: HTMLImageElement | null = null
+  customBackground: HTMLImageElement | null = null
   private rafId: number | null = null
-  private settings: LiveLooksSettings
+  settings: LiveLooksSettings
   private outputCanvas: HTMLCanvasElement | null = null
   private onStateChange: ((state: LiveLooksEngineState) => void) | null = null
 
@@ -67,10 +67,6 @@ export class LiveLooksEngine {
     canvas.height = PREVIEW_HEIGHT
   }
 
-  updateSettings(settings: LiveLooksSettings): void {
-    this.settings = settings
-  }
-
   async start(): Promise<void> {
     if (this.stream) return
     if (!this.compositeCtx || !this.maskCtx || !this.personCtx || !this.backgroundCtx) {
@@ -80,40 +76,7 @@ export class LiveLooksEngine {
     const generation = ++this.startGeneration
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false,
-      })
-      if (generation !== this.startGeneration) {
-        stream.getTracks().forEach((track) => track.stop())
-        return
-      }
-
-      this.stream = stream
-      this.video = document.createElement('video')
-      this.video.srcObject = this.stream
-      this.video.muted = true
-      this.video.playsInline = true
-      await this.video.play()
-      if (generation !== this.startGeneration) {
-        await this.stop()
-        return
-      }
-
-      this.segmenter = await loadImageSegmenter()
-      if (generation !== this.startGeneration) {
-        await this.stop()
-        return
-      }
-
-      this.stylePipeline = await createStyleFilterPipeline(PREVIEW_WIDTH, PREVIEW_HEIGHT)
-      if (generation !== this.startGeneration) {
-        await this.stop()
-        return
-      }
-
-      this.emit({ backend: this.stylePipeline.backend, error: null })
-      this.loop()
+      await this.runStartPipeline(generation)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Camera failed to start'
       if (generation === this.startGeneration) {
@@ -121,6 +84,42 @@ export class LiveLooksEngine {
       }
       throw error
     }
+  }
+
+  private async runStartPipeline(generation: number): Promise<void> {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false,
+    })
+    if (await this.abortStartIfStale(generation, stream)) return
+
+    await this.attachVideoStream(stream)
+    if (await this.abortStartIfStale(generation)) return
+
+    this.segmenter = await loadImageSegmenter()
+    if (await this.abortStartIfStale(generation)) return
+
+    this.stylePipeline = await createStyleFilterPipeline(PREVIEW_WIDTH, PREVIEW_HEIGHT)
+    if (await this.abortStartIfStale(generation)) return
+
+    this.emit({ backend: this.stylePipeline.backend, error: null })
+    this.loop()
+  }
+
+  private async abortStartIfStale(generation: number, stream?: MediaStream): Promise<boolean> {
+    if (generation === this.startGeneration) return false
+    stream?.getTracks().forEach((track) => track.stop())
+    await this.stop()
+    return true
+  }
+
+  private async attachVideoStream(stream: MediaStream): Promise<void> {
+    this.stream = stream
+    this.video = document.createElement('video')
+    this.video.srcObject = this.stream
+    this.video.muted = true
+    this.video.playsInline = true
+    await this.video.play()
   }
 
   async stop(options?: { keepError?: string }): Promise<void> {
@@ -138,23 +137,12 @@ export class LiveLooksEngine {
     this.stylePipeline?.dispose()
     this.stylePipeline = null
     this.segmenter = null
+    await disposeImageSegmenter()
     this.emit({
       active: false,
       backend: 'none',
       error: options?.keepError ?? null,
     })
-  }
-
-  setCustomBackgroundFromFile(file: File): void {
-    const url = URL.createObjectURL(file)
-    if (this.customBackground?.src.startsWith('blob:')) {
-      URL.revokeObjectURL(this.customBackground.src)
-    }
-    const image = new Image()
-    image.onload = () => {
-      this.customBackground = image
-    }
-    image.src = url
   }
 
   private loop = (): void => {
@@ -169,31 +157,39 @@ export class LiveLooksEngine {
     const output = this.outputCanvas
     if (!video || !segmenter || !stylePipeline || !output || !this.compositeCtx) return
 
-    const needsSegmentation = this.settings.background.mode !== 'none'
+    this.compositeVideoFrame(video, segmenter)
+    this.presentFilteredFrame(stylePipeline, output)
+  }
 
-    if (needsSegmentation) {
-      const result = segmenter.segmentForVideo(video, performance.now())
-      const mask = result.confidenceMasks?.[0]
-      if (mask) {
-        this.drawBackground(video)
-        this.drawPersonWithMask(video, mask)
-        this.compositeCtx.clearRect(0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT)
-        this.compositeCtx.drawImage(this.backgroundCanvas, 0, 0)
-        this.compositeCtx.drawImage(this.personCanvas, 0, 0)
-        mask.close()
-      } else {
-        this.compositeCtx.drawImage(video, 0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT)
-      }
-    } else {
-      this.compositeCtx.drawImage(video, 0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT)
+  private compositeVideoFrame(video: HTMLVideoElement, segmenter: ImageSegmenter): void {
+    const ctx = this.compositeCtx
+    if (!ctx) return
+
+    if (this.settings.background.mode === 'none') {
+      ctx.drawImage(video, 0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT)
+      return
     }
 
+    const mask = segmenter.segmentForVideo(video, performance.now()).confidenceMasks?.[0]
+    if (!mask) {
+      ctx.drawImage(video, 0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT)
+      return
+    }
+
+    this.drawBackground(video)
+    this.drawPersonWithMask(video, mask)
+    ctx.clearRect(0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT)
+    ctx.drawImage(this.backgroundCanvas, 0, 0)
+    ctx.drawImage(this.personCanvas, 0, 0)
+    mask.close()
+  }
+
+  private presentFilteredFrame(stylePipeline: StyleFilterPipeline, output: HTMLCanvasElement): void {
     const filtered = stylePipeline.apply(this.compositeCanvas, this.settings.styleFilter)
     const outCtx = output.getContext('2d')
-    if (outCtx) {
-      outCtx.clearRect(0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT)
-      outCtx.drawImage(filtered, 0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT)
-    }
+    if (!outCtx) return
+    outCtx.clearRect(0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT)
+    outCtx.drawImage(filtered, 0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT)
   }
 
   private drawBackground(video: HTMLVideoElement): void {
@@ -220,7 +216,7 @@ export class LiveLooksEngine {
         break
       case 'custom':
         if (this.customBackground?.complete) {
-          this.drawCoverImage(ctx, this.customBackground)
+          this.drawCoverImage(ctx, this.customBackground as HTMLImageElement)
         } else {
           ctx.fillStyle = '#0f172a'
           ctx.fillRect(0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT)
@@ -290,25 +286,10 @@ export class LiveLooksEngine {
       this.maskImageData = new ImageData(mw, mh)
     }
 
-    const pixels = this.maskImageData.data
     if (mask.hasFloat32Array()) {
-      const confidence = mask.getAsFloat32Array()
-      for (let i = 0, p = 0; i < confidence.length; i++, p += 4) {
-        const value = confidence[i] ?? 0
-        pixels[p] = 255
-        pixels[p + 1] = 255
-        pixels[p + 2] = 255
-        pixels[p + 3] = Math.min(255, Math.max(0, Math.round(value * 255)))
-      }
+      fillMaskPixelsFromFloat(this.maskImageData.data, mask.getAsFloat32Array())
     } else {
-      const confidence = mask.getAsUint8Array()
-      for (let i = 0, p = 0; i < confidence.length; i++, p += 4) {
-        const value = confidence[i] ?? 0
-        pixels[p] = 255
-        pixels[p + 1] = 255
-        pixels[p + 2] = 255
-        pixels[p + 3] = value
-      }
+      fillMaskPixelsFromUint8(this.maskImageData.data, mask.getAsUint8Array())
     }
 
     this.maskScratchCanvas.width = mw
@@ -320,4 +301,36 @@ export class LiveLooksEngine {
     mCtx.clearRect(0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT)
     mCtx.drawImage(this.maskScratchCanvas, 0, 0, mw, mh, 0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT)
   }
+}
+
+function fillMaskPixelsFromFloat(pixels: Uint8ClampedArray, confidence: Float32Array): void {
+  for (let i = 0, p = 0; i < confidence.length; i++, p += 4) {
+    const value = confidence[i] ?? 0
+    pixels[p] = 255
+    pixels[p + 1] = 255
+    pixels[p + 2] = 255
+    pixels[p + 3] = Math.min(255, Math.max(0, Math.round(value * 255)))
+  }
+}
+
+function fillMaskPixelsFromUint8(pixels: Uint8ClampedArray, confidence: Uint8Array): void {
+  for (let i = 0, p = 0; i < confidence.length; i++, p += 4) {
+    const value = confidence[i] ?? 0
+    pixels[p] = 255
+    pixels[p + 1] = 255
+    pixels[p + 2] = 255
+    pixels[p + 3] = value
+  }
+}
+
+export function attachLiveLooksCustomBackground(engine: LiveLooksEngine, file: File): void {
+  const url = URL.createObjectURL(file)
+  if (engine.customBackground?.src.startsWith('blob:')) {
+    URL.revokeObjectURL(engine.customBackground.src)
+  }
+  const image = new Image()
+  image.onload = () => {
+    engine.customBackground = image
+  }
+  image.src = url
 }

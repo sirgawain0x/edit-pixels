@@ -2,7 +2,7 @@ import type { LiveLooksRendererBackend, LiveLooksStyleFilter } from './types'
 import { selectLiveLooksRendererBackend } from './select-renderer-backend'
 import { applyCanvas2dStyleFilter } from './style-filter-canvas2d'
 import { WebGlStyleFilterRenderer } from './style-filter-webgl'
-import { WebGpuStyleFilterRenderer } from './style-filter-webgpu'
+import { createWebGpuStyleFilterRenderer } from './style-filter-webgpu'
 
 export interface StyleFilterPipeline {
   backend: LiveLooksRendererBackend
@@ -18,7 +18,7 @@ export async function createStyleFilterPipeline(
   const preference = selectLiveLooksRendererBackend()
 
   if (preference === 'webgpu') {
-    const webgpu = await WebGpuStyleFilterRenderer.tryCreate(width, height)
+    const webgpu = await createWebGpuStyleFilterRenderer(width, height)
     if (webgpu) {
       return {
         backend: 'webgpu',
