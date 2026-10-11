@@ -4,6 +4,10 @@ export interface LiveStyleProviderCreateParams {
   sessionId: string
   prompt?: string
   stylePreset?: string
+  /** Short-lived HMAC connect token (query param); never the signing secret. */
+  wsToken?: string
+  /** Server-only — reference verification in stub adapters. */
+  wsTokenSecret?: string
 }
 
 export interface LiveStyleProviderSession {

@@ -52,7 +52,8 @@ export interface CreateLiveStyleSessionInput {
   prompt?: string
   stylePreset?: string
   nowMs: number
-  env?: { providerUrl?: string }
+  env?: { providerUrl?: string; wsTokenSecret?: string }
+  buildWsToken?: (sessionId: string) => string
 }
 
 export interface CreateLiveStyleSessionResult {
@@ -134,10 +135,13 @@ export async function createLiveStyleSession(
   const sessionId = newSessionId()
   const capUsdc6 = capPresetToUsdc6(input.capPresetUsd)
   const provider = getLiveStyleProvider(input.providerId, input.env ?? {})
+  const wsToken = input.buildWsToken?.(sessionId)
   const providerSession = await provider.create({
     sessionId,
     prompt: input.prompt,
     stylePreset: input.stylePreset,
+    wsToken,
+    wsTokenSecret: input.env?.wsTokenSecret,
   })
 
   const metering = createMeteringState({

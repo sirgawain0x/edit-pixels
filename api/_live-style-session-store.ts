@@ -3,6 +3,7 @@
  */
 
 import type { LiveStyleSessionRecord } from '../src/features/live-style/lib/session-broker.ts'
+import { revokeLiveStyleWsSession } from '../src/features/live-style/lib/ws-session-revocation.ts'
 
 const sessions = new Map<string, LiveStyleSessionRecord>()
 const walletActive = new Map<string, string>()
@@ -20,6 +21,7 @@ export function deleteLiveStyleSession(sessionId: string): void {
   const row = sessions.get(sessionId)
   if (row) walletActive.delete(row.wallet)
   sessions.delete(sessionId)
+  revokeLiveStyleWsSession(sessionId)
 }
 
 export function getActiveSessionForWallet(wallet: string): LiveStyleSessionRecord | undefined {

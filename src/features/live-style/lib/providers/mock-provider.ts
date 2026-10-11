@@ -1,3 +1,4 @@
+import { verifyLiveStyleWsSessionToken } from '../ws-session-token'
 import type {
   LiveStyleProviderAdapter,
   LiveStyleProviderCreateParams,
@@ -11,6 +12,12 @@ const sessions = new Map<string, { alive: boolean }>()
 export const mockLiveStyleProvider: LiveStyleProviderAdapter = {
   id: 'mock',
   async create(params: LiveStyleProviderCreateParams): Promise<LiveStyleProviderSession> {
+    if (params.wsToken && params.wsTokenSecret) {
+      const verified = verifyLiveStyleWsSessionToken(params.wsToken, params.wsTokenSecret)
+      if (!verified.ok) {
+        throw new Error(verified.reason)
+      }
+    }
     sessions.set(params.sessionId, { alive: true })
     return {
       providerSessionId: params.sessionId,

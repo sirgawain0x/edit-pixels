@@ -8,10 +8,15 @@ import { isPremiumWallet } from './_premium-membership.js'
 import {
   getLiveStylePaymentSpender,
   getLiveStyleProviderUrl,
+  getLiveStyleWsTokenSecret,
   isLiveStyleEnabled,
   parseCapPresetUsd,
   parseProviderId,
 } from './_live-style-config.js'
+import {
+  isLiveStyleSpendAuthEnforced,
+  verifyAndConsumeLiveStyleSpendAuth,
+} from './_live-style-spend-auth-verify.js'
 import { getLiveStylePaymentLedger } from './_live-style-payment-server.js'
 import { runLiveStyleSessionSweep } from './_live-style-sweep.js'
 import {
@@ -23,7 +28,9 @@ import {
 import {
   capPresetToUsdc6,
   LIVE_STYLE_HEARTBEAT_INTERVAL_MS,
+  LIVE_STYLE_MAX_SESSION_SECONDS,
 } from '../src/features/live-style/lib/config.ts'
+import { signLiveStyleWsToken } from '../src/features/live-style/lib/ws-session-token.ts'
 import { sessionAfterStoppingHeartbeat } from '../src/features/live-style/lib/heartbeat-stop.ts'
 import {
   createLiveStyleSession,
@@ -79,25 +86,50 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json({ error: 'spend_auth_required' }, { status: 400 })
     }
 
+    const capUsdc6 = capPresetToUsdc6(capPreset)
+    const authMethod = parseAuthMethod(body.spendAuthMethod)
+
+    if (isLiveStyleSpendAuthEnforced()) {
+      const verified = await verifyAndConsumeLiveStyleSpendAuth({
+        proof,
+        method: authMethod,
+        wallet: auth.address,
+        capUsdc6,
+        nowMs,
+      })
+      if (!verified.ok) {
+        return Response.json({ error: 'spend_auth_invalid', reason: verified.reason }, { status: 400 })
+      }
+    }
+
+    const wsSecret = getLiveStyleWsTokenSecret()
+    if (!wsSecret) {
+      return Response.json({ error: 'live_style_ws_token_secret_not_configured' }, { status: 503 })
+    }
+
+    const expMs = nowMs + LIVE_STYLE_MAX_SESSION_SECONDS * 1000 + 60_000
+    const wallet = auth.address
+
     const isPremium = await isPremiumWallet(auth.address)
     const providerId = parseProviderId(body.providerId)
     const created = await createLiveStyleSession({
-      wallet: auth.address,
+      wallet,
       providerId,
       capPresetUsd: capPreset,
       isPremium,
       prompt: typeof body.prompt === 'string' ? body.prompt : undefined,
       stylePreset: typeof body.stylePreset === 'string' ? body.stylePreset : undefined,
       nowMs,
-      env,
+      env: { ...env, wsTokenSecret: wsSecret },
+      buildWsToken: (sessionId) =>
+        signLiveStyleWsToken({ sessionId, wallet, expMs }, wsSecret),
     })
 
-    const capUsdc6 = capPresetToUsdc6(capPreset)
     await ledger.recordAuthorization({
       sessionId: created.session.sessionId,
       wallet: auth.address,
       capUsdc6,
-      method: parseAuthMethod(body.spendAuthMethod),
+      method: authMethod,
       proof,
       createdAtMs: nowMs,
     })

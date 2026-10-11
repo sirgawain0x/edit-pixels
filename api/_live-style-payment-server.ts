@@ -1,13 +1,21 @@
 /**
- * Server-side payment ledger for Live Style (mock pulls until G2 wires treasury pull).
+ * Server-side payment ledger for Live Style.
  */
 
 import { createInMemoryLiveStylePaymentLedger } from '../src/features/live-style/lib/payment/in-memory-ledger.ts'
+import {
+  createServerLiveStylePaymentLedger,
+  isLiveStylePaymentLedgerTestMode,
+} from '../src/features/live-style/lib/payment/server-ledger.ts'
 import type { LiveStylePaymentLedger } from '../src/features/live-style/lib/payment/types.ts'
 
-let ledger: ReturnType<typeof createInMemoryLiveStylePaymentLedger> | null = null
+let ledger: LiveStylePaymentLedger | null = null
 
 export function getLiveStylePaymentLedger(): LiveStylePaymentLedger {
-  if (!ledger) ledger = createInMemoryLiveStylePaymentLedger()
+  if (!ledger) {
+    ledger = isLiveStylePaymentLedgerTestMode()
+      ? createInMemoryLiveStylePaymentLedger()
+      : createServerLiveStylePaymentLedger()
+  }
   return ledger
 }

@@ -1,3 +1,4 @@
+import { verifyLiveStyleWsSessionToken } from '../ws-session-token'
 import type {
   LiveStyleProviderAdapter,
   LiveStyleProviderCreateParams,
@@ -16,12 +17,27 @@ export function createStreamDiffusionStubProvider(providerUrl: string | undefine
   return {
     id: 'streamdiffusion',
     async create(params: LiveStyleProviderCreateParams): Promise<LiveStyleProviderSession> {
+      if (!params.wsToken) {
+        throw new Error('live_style_ws_token_required')
+      }
+      if (params.wsTokenSecret) {
+        const verified = verifyLiveStyleWsSessionToken(params.wsToken, params.wsTokenSecret)
+        if (!verified.ok) {
+          throw new Error(verified.reason)
+        }
+        if (verified.payload.sessionId !== params.sessionId) {
+          throw new Error('ws_token_session_mismatch')
+        }
+      }
+
       sessions.set(params.sessionId, { alive: true })
+      const style = encodeURIComponent(params.stylePreset ?? 'default')
+      const token = encodeURIComponent(params.wsToken)
       return {
         providerSessionId: params.sessionId,
         connect: {
           kind: 'websocket',
-          websocketUrl: `${base}/ws?style=${encodeURIComponent(params.stylePreset ?? 'default')}`,
+          websocketUrl: `${base}/ws?style=${style}&token=${token}`,
         },
       }
     },

@@ -194,6 +194,18 @@
       "exports": ["*"]
     },
     {
+      "file": "api/_live-style-spend-auth-verify.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/_live-style-payment-server.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/_live-style-session-store.ts",
+      "exports": ["*"]
+    },
+    {
       "file": "api/live-style-session.ts",
       "exports": ["*"]
     },
