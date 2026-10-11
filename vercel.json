@@ -50,6 +50,9 @@
     },
     "api/pixels-director-batch-confirm.ts": {
       "maxDuration": 60
+    },
+    "api/live-style-session.ts": {
+      "maxDuration": 30
     }
   },
   "rewrites": [
