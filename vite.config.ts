@@ -489,8 +489,16 @@ function mipdStorePatchPlugin(): Plugin {
   }
 }
 
+function buildViteVercelEnvDefine(mode: string): Record<string, string> {
+  const loaded = loadEnv(mode, process.cwd(), '')
+  const viteVercelEnv = loaded.VITE_VERCEL_ENV || process.env.VERCEL_ENV || ''
+  if (!viteVercelEnv) return {}
+  return { 'import.meta.env.VITE_VERCEL_ENV': JSON.stringify(viteVercelEnv) }
+}
+
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+  define: buildViteVercelEnvDefine(mode),
   lint: {
     ...oxlintConfig,
     ignorePatterns: toolIgnorePatterns,
@@ -773,4 +781,4 @@ export default defineConfig({
       'lucide-react',
     ],
   },
-})
+}))
