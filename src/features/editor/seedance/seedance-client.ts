@@ -7,7 +7,7 @@ import type { GenerativeTaskDetail, SignedRequestParams } from '@/features/edito
 import {
   pixelsIdentityHeaders,
   withPixelsIdentityBody,
-} from '@/features/generative/pixels-api-identity'
+} from '@/features/editor/deps/generative'
 
 const log = createLogger('SeedanceClient')
 

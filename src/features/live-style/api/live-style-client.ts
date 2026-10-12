@@ -1,4 +1,4 @@
-import { PIXELS_SIGNER_HEADER } from '@/features/generative/pixels-api-identity'
+import { PIXELS_SIGNER_HEADER } from '@/features/live-style/deps/generative'
 import type { LiveStyleTransportConnectInfo } from '@/features/live-style/lib/transport'
 import type { LiveStyleCapPresetUsd } from '@/features/live-style/lib/config'
 import type { LiveStyleSpendAuthMethod } from '@/features/live-style/lib/payment/types'

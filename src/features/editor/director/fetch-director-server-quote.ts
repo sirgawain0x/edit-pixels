@@ -4,7 +4,7 @@ import {
   DIRECTOR_USDC6_PER_AUDIO_MINUTE_PREMIUM,
   DIRECTOR_USDC6_PER_AUDIO_MINUTE_RETAIL,
 } from '@/config/billing'
-import { PIXELS_SIGNER_HEADER } from '@/features/generative/pixels-api-identity'
+import { PIXELS_SIGNER_HEADER } from '@/features/editor/deps/generative'
 
 interface DirectorServerQuoteResponse {
   quoteId: string

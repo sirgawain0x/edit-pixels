@@ -1,4 +1,4 @@
-import { PIXELS_SIGNER_HEADER } from '@/features/generative/pixels-api-identity'
+import { PIXELS_SIGNER_HEADER } from '@/features/editor/deps/generative'
 import type { FlowQuote } from './flow-pricing'
 import type { FlowTier } from '@/config/flow'
 import type { NanobananaQuality, VeoQuality } from '@/config/credits'
