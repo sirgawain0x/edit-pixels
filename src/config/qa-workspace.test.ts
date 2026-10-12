@@ -34,6 +34,38 @@ describe('qa-workspace production gate', () => {
     expect(isQaWorkspaceFallbackEnabled()).toBe(false)
   })
 
+  it('blocks when VITE_VERCEL_ENV is missing even with the query flag on vercel.app', () => {
+    vi.stubGlobal('window', {
+      location: {
+        hostname: 'edit-pixels.vercel.app',
+        href: 'https://edit-pixels.vercel.app/?qaWorkspace=opfs',
+      },
+      sessionStorage: { getItem: () => null, setItem: vi.fn() },
+    })
+    vi.stubEnv('DEV', false)
+    vi.stubEnv('VITE_VERCEL_ENV', '')
+
+    expect(isProductionDeployEnvironment()).toBe(false)
+    expect(isQaWorkspaceHostEnvironmentAllowed()).toBe(false)
+    expect(resolveQaWorkspaceFallbackMode()).toBeNull()
+    expect(isQaWorkspaceFallbackEnabled()).toBe(false)
+  })
+
+  it('allows qa mode in Vite dev (import.meta.env.DEV) without VITE_VERCEL_ENV', () => {
+    vi.stubGlobal('window', {
+      location: {
+        hostname: 'localhost',
+        href: 'http://localhost:5173/?qaWorkspace=opfs',
+      },
+      sessionStorage: { getItem: () => null, setItem: vi.fn() },
+    })
+    vi.stubEnv('DEV', true)
+    vi.stubEnv('VITE_VERCEL_ENV', '')
+
+    expect(isQaWorkspaceHostEnvironmentAllowed()).toBe(true)
+    expect(resolveQaWorkspaceFallbackMode()).toBe('opfs')
+  })
+
   it('blocks when VITE_VERCEL_ENV is production even with the query flag', () => {
     vi.stubGlobal('window', {
       location: { hostname: 'pixels-git-staging-example.vercel.app', href: 'https://pixels-git-staging-example.vercel.app/?qaWorkspace=opfs' },
@@ -54,6 +86,7 @@ describe('qa-workspace production gate', () => {
       },
       sessionStorage: { getItem: () => null, setItem: vi.fn() },
     })
+    vi.stubEnv('DEV', false)
     vi.stubEnv('VITE_VERCEL_ENV', 'preview')
 
     expect(readQaWorkspaceFallbackModeFromUrl('https://preview.example/?qaWorkspace=opfs')).toBe(
@@ -71,10 +104,26 @@ describe('qa-workspace production gate', () => {
       },
       sessionStorage: { getItem: () => null, setItem: vi.fn() },
     })
+    vi.stubEnv('DEV', false)
     vi.stubEnv('VITE_VERCEL_ENV', 'preview')
 
     expect(resolveQaWorkspaceFallbackMode()).toBeNull()
     expect(isQaWorkspaceFallbackEnabled()).toBe(false)
+  })
+
+  it('enables opfs mode on development VITE_VERCEL_ENV when the query flag is set', () => {
+    vi.stubGlobal('window', {
+      location: {
+        hostname: 'pixels-dev.example.vercel.app',
+        href: 'https://pixels-dev.example.vercel.app/?qaWorkspace=opfs',
+      },
+      sessionStorage: { getItem: () => null, setItem: vi.fn() },
+    })
+    vi.stubEnv('DEV', false)
+    vi.stubEnv('VITE_VERCEL_ENV', 'development')
+
+    expect(isQaWorkspaceHostEnvironmentAllowed()).toBe(true)
+    expect(resolveQaWorkspaceFallbackMode()).toBe('opfs')
   })
 
   it('accepts VITE_QA_WORKSPACE_FALLBACK on allowed hosts', () => {
