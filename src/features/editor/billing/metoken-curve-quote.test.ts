@@ -12,6 +12,7 @@ import {
   ContractFunctionExecutionError,
   ContractFunctionRevertedError,
   HttpRequestError,
+  RpcRequestError,
   TimeoutError,
 } from 'viem'
 import { vi } from 'vitest'
@@ -70,6 +71,34 @@ describe('isRpcTransportError', () => {
     const call = new CallExecutionError(revert, emptyCall)
     const wrapped = new ContractFunctionExecutionError(call, contractCtx)
     expect(isRpcTransportError(wrapped)).toBe(false)
+  })
+
+  function rpcRequestError(code: number, message: string) {
+    return new RpcRequestError({
+      body: { jsonrpc: '2.0', id: 1, method: 'eth_call', params: [] },
+      url: 'https://rpc.example',
+      error: { code, message },
+    })
+  }
+
+  function revertWrappingRpc(code: number, message: string) {
+    const rpc = rpcRequestError(code, message)
+    const revert = new ContractFunctionRevertedError({
+      abi: [],
+      functionName: 'totalSupply',
+      message: 'execution reverted',
+      cause: rpc,
+    })
+    const call = new CallExecutionError(revert, emptyCall)
+    return new ContractFunctionExecutionError(call, contractCtx)
+  }
+
+  it('does not treat revert wrapping RpcRequestError (-32000) as transport', () => {
+    expect(isRpcTransportError(revertWrappingRpc(-32_000, 'execution reverted'))).toBe(false)
+  })
+
+  it('does not treat revert wrapping RpcRequestError (-32603) as transport', () => {
+    expect(isRpcTransportError(revertWrappingRpc(-32_603, 'internal error'))).toBe(false)
   })
 })
 

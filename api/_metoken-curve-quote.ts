@@ -79,12 +79,35 @@ function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === 'AbortError'
 }
 
+function rpcRequestLooksLikeExecutionRevert(error: RpcRequestError): boolean {
+  if (error.code === ExecutionRevertedError.code) return true
+
+  const details = (error.details ?? '').toLowerCase()
+  const message = (error.shortMessage ?? error.message ?? '').toLowerCase()
+  if (
+    details.includes('execution reverted') ||
+    message.includes('execution reverted') ||
+    ExecutionRevertedError.nodeMessage.test(details) ||
+    ExecutionRevertedError.nodeMessage.test(message)
+  ) {
+    return true
+  }
+
+  const { data } = error
+  if (data === undefined || data === null) return false
+  if (typeof data === 'string') return data !== '0x' && data.length > 0
+  if (typeof data === 'object' && 'data' in data) {
+    const nested = (data as { data?: unknown }).data
+    return typeof nested === 'string' && nested !== '0x' && nested.length > 0
+  }
+  return true
+}
+
 function isContractRevertError(error: unknown): boolean {
-  return (
-    error instanceof ContractFunctionRevertedError ||
-    error instanceof ExecutionRevertedError ||
-    (error instanceof RpcRequestError && error.code === ExecutionRevertedError.code)
-  )
+  if (error instanceof ContractFunctionRevertedError) return true
+  if (error instanceof ExecutionRevertedError) return true
+  if (error instanceof RpcRequestError) return rpcRequestLooksLikeExecutionRevert(error)
+  return false
 }
 
 function isTransportErrorNode(error: unknown): boolean {
@@ -105,16 +128,16 @@ function readErrorCause(error: unknown): unknown {
 /** True when an RPC/HTTP failure should fail closed as `quote_unpayable` (not contract reverts). */
 export function isRpcTransportError(error: unknown): boolean {
   if (error instanceof BaseError) {
-    if (error.walk((e) => isTransportErrorNode(e))) return true
     if (error.walk((e) => isContractRevertError(e))) return false
+    if (error.walk((e) => isTransportErrorNode(e))) return true
     return false
   }
 
   let current: unknown = error
   for (let depth = 0; depth < RPC_TRANSPORT_CAUSE_MAX_DEPTH && current != null; depth++) {
     if (current instanceof BaseError) return isRpcTransportError(current)
-    if (isTransportErrorNode(current)) return true
     if (isContractRevertError(current)) return false
+    if (isTransportErrorNode(current)) return true
     current = readErrorCause(current)
   }
   return false
