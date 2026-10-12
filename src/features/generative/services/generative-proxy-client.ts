@@ -231,6 +231,12 @@ export async function proxyFlowRun(
     endPrompt?: string
     stillQuality?: NanobananaQuality
     paymentTxHash?: string
+    quoteId?: string
+    quoteSignature?: string
+    quoteExpiresAtMs?: number
+    quoteSlippageBps?: number
+    quoteEstimatedUsdc6?: number
+    quoteCrtvaiRequired?: string
   },
   signal?: AbortSignal,
 ): Promise<

@@ -14,6 +14,8 @@ import {
   releasePaymentTxHash,
 } from './_payment-ledger.js'
 import {
+  isQuoteSigningConfigured,
+  METOKEN_QUOTE_SLIPPAGE_BPS,
   MetokenQuoteError,
   quoteCrtvaiForUsdc6,
   validateSettlementAgainstQuote,
@@ -95,6 +97,20 @@ export async function quoteDirectorForWallet(
 export async function resolveDirectorSettlementMinWei(
   quote: DirectorBillingQuote,
 ): Promise<bigint> {
+  if (isDirectorBillingEnforced()) {
+    if (!isQuoteSigningConfigured()) {
+      throw new MetokenQuoteError(
+        'quote_invalid',
+        'Quote signing is not configured for enforced billing.',
+      )
+    }
+    if (quote.signature.startsWith('unsigned:')) {
+      throw new MetokenQuoteError('quote_invalid', 'Invalid quote signature')
+    }
+    if (quote.slippageBps !== METOKEN_QUOTE_SLIPPAGE_BPS) {
+      throw new MetokenQuoteError('quote_invalid', 'Invalid quote slippage')
+    }
+  }
   if (
     !verifyQuoteSignature({
       quoteId: quote.quoteId,

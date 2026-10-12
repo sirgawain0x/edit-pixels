@@ -10,16 +10,14 @@ import {
   CRTVAI_METOKEN_ADDRESS,
   METOKENS_DIAMOND_ADDRESS,
   METOKEN_QUOTE_EXPIRY_SECONDS,
+  METOKEN_QUOTE_SETTLEMENT_GRACE_SECONDS,
   METOKEN_QUOTE_SLIPPAGE_BPS,
 } from './_metoken-curve-config.js'
-import {
-  type CurveState,
-  isWithinSlippageBand,
-  settlementMinCrtvaiWei,
-} from './_metoken-curve-math.js'
+import { type CurveState, isWithinSlippageBand } from './_metoken-curve-math.js'
 
 export {
   METOKEN_QUOTE_EXPIRY_SECONDS,
+  METOKEN_QUOTE_SETTLEMENT_GRACE_SECONDS,
   METOKEN_QUOTE_SLIPPAGE_BPS,
 } from './_metoken-curve-config.js'
 
@@ -89,6 +87,10 @@ export async function readMeTokensMintedForDeposit(assetsUsdc6: bigint): Promise
 function signingSecret(): string | null {
   const raw = process.env.PIXELS_QUOTE_SIGNING_SECRET?.trim()
   return raw && raw.length >= 16 ? raw : null
+}
+
+export function isQuoteSigningConfigured(): boolean {
+  return signingSecret() !== null
 }
 
 function signPayload(payload: string): string {
@@ -208,17 +210,20 @@ export async function validateSettlementAgainstQuote(stored: {
   expiresAtMs: number
   slippageBps: number
 }): Promise<{ minAmountWei: bigint }> {
-  if (Date.now() > stored.expiresAtMs) {
+  const settlementDeadlineMs =
+    stored.expiresAtMs + METOKEN_QUOTE_SETTLEMENT_GRACE_SECONDS * 1000
+  if (Date.now() > settlementDeadlineMs) {
     throw new MetokenQuoteError('quote_expired', 'Quote expired — request a new price.')
   }
 
   const freshWei = await readMeTokensMintedForDeposit(BigInt(stored.estimatedUsdc6))
-  if (!isWithinSlippageBand(stored.minCrtvaiWei, freshWei, stored.slippageBps)) {
+  if (!isWithinSlippageBand(stored.minCrtvaiWei, freshWei, METOKEN_QUOTE_SLIPPAGE_BPS)) {
     throw new MetokenQuoteError(
       'quote_slippage',
       'Price moved beyond the quoted band — request a new quote.',
     )
   }
 
-  return { minAmountWei: settlementMinCrtvaiWei(stored.minCrtvaiWei, freshWei) }
+  // Treasury transfer is for the signed quote amount; slippage only gates rejection.
+  return { minAmountWei: stored.minCrtvaiWei }
 }
