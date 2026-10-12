@@ -4,37 +4,30 @@
  */
 // fallow-ignore-file complexity
 
-import { getBearerToken, verifyPrivyAccessToken } from './_wallet-auth.js'
 import { getPixelsGenerateJob } from './_pixels-generate-jobs.js'
 import { isSeedanceGenerateEnabled } from './_seedance-pricing.js'
+import { authenticateGenerativeGet } from './_pixels-generate-route-auth.js'
 
 export async function GET(request: Request): Promise<Response> {
   if (!isSeedanceGenerateEnabled()) {
     return Response.json({ error: 'feature_disabled' }, { status: 404 })
   }
 
-  const token = getBearerToken(request)
-  if (!token) {
-    return Response.json({ error: 'missing authorization' }, { status: 401 })
-  }
-
   const url = new URL(request.url)
   const taskId = url.searchParams.get('id')?.trim()
-  const walletHint = url.searchParams.get('wallet')?.trim()
   if (!taskId) {
     return Response.json({ error: 'id required' }, { status: 400 })
   }
 
-  const auth = await verifyPrivyAccessToken(token, walletHint)
-  if (!auth) {
-    return Response.json({ error: 'invalid authorization' }, { status: 401 })
-  }
+  const authenticated = await authenticateGenerativeGet(request)
+  if (!authenticated.ok) return authenticated.response
+  const { signer } = authenticated
 
   const job = await getPixelsGenerateJob(taskId)
   if (!job) {
     return Response.json({ error: 'task not found' }, { status: 404 })
   }
-  if (job.wallet !== auth.address.toLowerCase()) {
+  if (job.wallet !== signer.toLowerCase()) {
     return Response.json({ error: 'forbidden' }, { status: 403 })
   }
 

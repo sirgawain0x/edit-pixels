@@ -1,3 +1,4 @@
+import { PIXELS_SIGNER_HEADER } from '@/features/generative/pixels-api-identity'
 import type { FlowQuote } from './flow-pricing'
 import type { FlowTier } from '@/config/flow'
 import type { NanobananaQuality, VeoQuality } from '@/config/credits'
@@ -21,7 +22,7 @@ interface FlowServerQuoteResponse {
 }
 
 export async function fetchFlowServerQuote(
-  auth: { token: string; walletAddress?: string },
+  auth: { token: string; signerAddress: `0x${string}` },
   input: {
     duration: number
     quality: VeoQuality
@@ -35,10 +36,11 @@ export async function fetchFlowServerQuote(
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${auth.token}`,
+      [PIXELS_SIGNER_HEADER]: auth.signerAddress,
     },
     body: JSON.stringify({
       token: auth.token,
-      walletAddress: auth.walletAddress,
+      signerAddress: auth.signerAddress,
       duration: input.duration,
       quality: input.quality,
       tier: input.tier,

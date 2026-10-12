@@ -296,8 +296,17 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
         return
       }
 
+      if (!generativeAuth?.signerAddress) {
+        reportLocalError(
+          t('director.error.connectWallet', {
+            defaultValue: 'Connect your wallet to pay for the Director in CRTVAI.',
+          }),
+        )
+        return
+      }
+
       const quote = await fetchDirectorServerQuote(
-        { token },
+        { token, signerAddress: generativeAuth.signerAddress },
         { audioDurationSeconds: audioContext.primary.durationSeconds },
       )
       if (!quote) {
@@ -349,6 +358,7 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
         balance,
         canPayOnChain,
         account,
+        signerAddress: generativeAuth?.signerAddress,
         getAccessToken,
         sendOps,
         refreshBalance,
@@ -365,6 +375,7 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
     account,
     balance,
     canPayOnChain,
+    generativeAuth?.signerAddress,
     getAccessToken,
     paying,
     pendingInvoice,

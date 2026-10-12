@@ -27,7 +27,10 @@ describe('fetchFlowServerQuote', () => {
     )
 
     const quote = await fetchFlowServerQuote(
-      { token: 'test-token' },
+      {
+        token: 'test-token',
+        signerAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      },
       {
         duration: 8,
         quality: '720p',

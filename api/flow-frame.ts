@@ -7,7 +7,12 @@
 // fallow-ignore-file complexity,code-duplication
 
 import { randomBytes } from 'node:crypto'
-import { getBearerToken, verifyPrivyAccessToken } from './_wallet-auth.js'
+import { getBearerToken } from './_wallet-auth.js'
+import {
+  PIXELS_SIGNER_HEADER,
+  readSignerHint,
+  resolvePrivySignerFromToken,
+} from './_pixels-identity.js'
 import { getRedis, isRedisConfigured } from './_redis-client.js'
 
 const FRAME_KEY_PREFIX = 'pixels:flow:frame:'
@@ -117,14 +122,15 @@ export async function POST(request: Request): Promise<Response> {
     if (contentTypeHeader.includes('multipart/form-data')) {
       const form = await request.formData()
       const file = form.get('file')
-      const walletAddress =
-        typeof form.get('walletAddress') === 'string'
-          ? String(form.get('walletAddress'))
-          : undefined
-      const auth = await verifyPrivyAccessToken(token, walletAddress)
-      if (!auth) {
-        return Response.json({ error: 'invalid authorization' }, { status: 401 })
-      }
+      const signerHint =
+        request.headers.get(PIXELS_SIGNER_HEADER)?.trim() ||
+        (typeof form.get('signerAddress') === 'string'
+          ? String(form.get('signerAddress'))
+          : typeof form.get('walletAddress') === 'string'
+            ? String(form.get('walletAddress'))
+            : undefined)
+      const privy = await resolvePrivySignerFromToken(token, signerHint)
+      if (!privy.ok) return privy.response
       if (!(file instanceof File)) {
         return Response.json({ error: 'file required' }, { status: 400 })
       }
@@ -145,13 +151,8 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'invalid body' }, { status: 400 })
   }
 
-  const auth = await verifyPrivyAccessToken(
-    token,
-    typeof body.walletAddress === 'string' ? body.walletAddress : undefined,
-  )
-  if (!auth) {
-    return Response.json({ error: 'invalid authorization' }, { status: 401 })
-  }
+  const privy = await resolvePrivySignerFromToken(token, readSignerHint(request, body))
+  if (!privy.ok) return privy.response
 
   const dataUri = typeof body.dataUri === 'string' ? body.dataUri : ''
   if (!dataUri.startsWith('data:')) {

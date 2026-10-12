@@ -3,55 +3,28 @@
  */
 // fallow-ignore-file complexity
 
-import { getBearerToken, verifyPrivyAccessToken } from './_wallet-auth.js'
+import { resolvePixelsIdentity } from './_pixels-identity.js'
+import { parseJsonObjectBody } from './_pixels-json-body.js'
 
 export interface PixelsGenerateAuthContext {
+  /** Active Privy-linked signer EOA (identity). */
   address: string
+  signer: string
 }
 
 export type AuthorizePixelsGenerateResult =
   | { ok: true; auth: PixelsGenerateAuthContext; body: Record<string, unknown> }
   | { ok: false; response: Response }
 
-export type ParseJsonObjectBodyResult =
-  | { ok: true; body: Record<string, unknown> }
-  | { ok: false; response: Response }
-
-export async function parseJsonObjectBody(request: Request): Promise<ParseJsonObjectBodyResult> {
-  try {
-    const parsed = await request.json()
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      return { ok: false, response: Response.json({ error: 'invalid body' }, { status: 400 }) }
-    }
-    return { ok: true, body: parsed as Record<string, unknown> }
-  } catch {
-    return { ok: false, response: Response.json({ error: 'invalid body' }, { status: 400 }) }
-  }
-}
-
 export async function authorizePixelsGeneratePost(
   request: Request,
 ): Promise<AuthorizePixelsGenerateResult> {
-  const parsedBody = await parseJsonObjectBody(request)
-  if (!parsedBody.ok) return parsedBody
-  const body = parsedBody.body
-
-  const token = getBearerToken(request) || (typeof body.token === 'string' ? body.token : null)
-  if (!token) {
-    return {
-      ok: false,
-      response: Response.json({ error: 'missing authorization' }, { status: 401 }),
-    }
+  const resolved = await resolvePixelsIdentity(request)
+  if (!resolved.ok) return resolved
+  const signer = resolved.identity.signer
+  return {
+    ok: true,
+    auth: { address: signer, signer },
+    body: resolved.body,
   }
-
-  // Tier / Unlock pricing uses the Privy-verified signer only — never a client wallet field.
-  const auth = await verifyPrivyAccessToken(token)
-  if (!auth) {
-    return {
-      ok: false,
-      response: Response.json({ error: 'invalid authorization' }, { status: 401 }),
-    }
-  }
-
-  return { ok: true, auth, body }
 }

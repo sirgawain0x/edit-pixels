@@ -3,13 +3,10 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 const PREMIUM_SIGNER = '0xlinkedsigner00000000000000000000000001'
 const SMART_PAYER = '0xsmartaccount00000000000000000000000001'
 
-vi.mock('../../../../api/_wallet-auth.js', () => ({
-  getBearerToken: (request: Request) => {
-    const header = request.headers.get('authorization')
-    if (!header?.startsWith('Bearer ')) return null
-    return header.slice('Bearer '.length)
-  },
-  verifyPrivyAccessToken: async () => ({ address: PREMIUM_SIGNER as `0x${string}` }),
+const resolvePixelsIdentity = vi.fn()
+
+vi.mock('../../../../api/_pixels-identity.js', () => ({
+  resolvePixelsIdentity: (...args: unknown[]) => resolvePixelsIdentity(...args),
 }))
 
 vi.mock('../../../../api/_director-auth.js', () => ({
@@ -41,6 +38,7 @@ vi.mock('../../../../api/_director-adk.js', () => ({
 
 describe('POST /api/director billing', () => {
   beforeEach(async () => {
+    resolvePixelsIdentity.mockReset()
     const { quoteDirectorForWallet } = await import('../../../../api/director-billing.js')
     vi.mocked(quoteDirectorForWallet).mockReset()
     vi.mocked(quoteDirectorForWallet).mockResolvedValue({
@@ -56,6 +54,10 @@ describe('POST /api/director billing', () => {
   })
 
   it('returns 401 when Privy token is missing', async () => {
+    resolvePixelsIdentity.mockResolvedValue({
+      ok: false,
+      response: Response.json({ error: 'missing authorization' }, { status: 401 }),
+    })
     const { POST } = await import('../../../../api/director.js')
     const response = await POST(
       new Request('http://localhost/api/director', {
@@ -72,6 +74,25 @@ describe('POST /api/director billing', () => {
   })
 
   it('re-quotes with the verified signer while the smart account is only the payer', async () => {
+    resolvePixelsIdentity.mockResolvedValue({
+      ok: true,
+      identity: { signer: PREMIUM_SIGNER as `0x${string}`, source: 'privy' },
+      body: {
+        prompt: 'hello',
+        token: 'privy-jwt',
+        audioDurationSeconds: 60,
+        paymentTxHash: '0xabc',
+        walletAddress: SMART_PAYER,
+        quoteId: 'dir-q-premium',
+        quoteSignature: 'signed',
+        quoteExpiresAtMs: Date.now() + 75_000,
+        quoteSlippageBps: 250,
+        quoteEstimatedUsdc6: 25_000,
+        quoteCrtvaiRequired: '1000000000000000000',
+        quoteTier: 'premium',
+      },
+    })
+
     const { quoteDirectorForWallet, verifyAndConsumeDirectorPayment } = await import(
       '../../../../api/director-billing.js'
     )

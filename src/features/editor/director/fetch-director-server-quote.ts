@@ -4,6 +4,7 @@ import {
   DIRECTOR_USDC6_PER_AUDIO_MINUTE_PREMIUM,
   DIRECTOR_USDC6_PER_AUDIO_MINUTE_RETAIL,
 } from '@/config/billing'
+import { PIXELS_SIGNER_HEADER } from '@/features/generative/pixels-api-identity'
 
 interface DirectorServerQuoteResponse {
   quoteId: string
@@ -20,7 +21,7 @@ interface DirectorServerQuoteResponse {
 }
 
 export async function fetchDirectorServerQuote(
-  auth: { token: string },
+  auth: { token: string; signerAddress: `0x${string}` },
   input: { audioDurationSeconds: number },
 ): Promise<DirectorQuote | null> {
   const response = await fetch('/api/director-quote', {
@@ -28,9 +29,11 @@ export async function fetchDirectorServerQuote(
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${auth.token}`,
+      [PIXELS_SIGNER_HEADER]: auth.signerAddress,
     },
     body: JSON.stringify({
       token: auth.token,
+      signerAddress: auth.signerAddress,
       audioDurationSeconds: input.audioDurationSeconds,
     }),
   })

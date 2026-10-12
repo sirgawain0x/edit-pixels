@@ -1,5 +1,6 @@
 // fallow-ignore-file complexity,unused-export
 import { createLogger } from '@/shared/logging/logger'
+import { PIXELS_SIGNER_HEADER } from '@/features/generative/pixels-api-identity'
 
 const log = createLogger('ImageUploadService')
 
@@ -11,7 +12,7 @@ export async function getPublicImageUrl(
   blob: Blob,
   auth?: {
     getAccessToken: () => Promise<string | null>
-    walletAddress: `0x${string}`
+    signerAddress: `0x${string}`
   },
 ): Promise<string> {
   if (!auth) {
@@ -24,11 +25,14 @@ export async function getPublicImageUrl(
 
   const form = new FormData()
   form.append('file', blob, blob.type.includes('png') ? 'frame.png' : 'frame.jpg')
-  form.append('walletAddress', auth.walletAddress)
+  form.append('signerAddress', auth.signerAddress)
 
   const response = await fetch('/api/flow-frame', {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
+    headers: {
+      Authorization: `Bearer ${token}`,
+      [PIXELS_SIGNER_HEADER]: auth.signerAddress,
+    },
     body: form,
   })
   if (!response.ok) {
@@ -51,7 +55,7 @@ export async function ensurePublicUrl(
   source: { type: 'file'; blob: Blob } | { type: 'generated'; url: string },
   auth?: {
     getAccessToken: () => Promise<string | null>
-    walletAddress: `0x${string}`
+    signerAddress: `0x${string}`
   },
 ): Promise<string> {
   if (source.type === 'generated') {
@@ -66,10 +70,11 @@ export async function ensurePublicUrl(
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
+          [PIXELS_SIGNER_HEADER]: auth.signerAddress,
         },
         body: JSON.stringify({
           dataUri: source.url,
-          walletAddress: auth.walletAddress,
+          signerAddress: auth.signerAddress,
         }),
       })
       if (!response.ok) {
@@ -79,7 +84,7 @@ export async function ensurePublicUrl(
       if (!body.url) throw new Error('Frame upload returned no URL')
       return body.url
     }
-    return source.url
+    throw new Error('Generated image URL must be http(s) or data: with auth')
   }
   return getPublicImageUrl(source.blob, auth)
 }

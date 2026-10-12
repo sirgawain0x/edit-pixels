@@ -13,6 +13,8 @@ export interface ConfirmDirectorInvoiceArgs {
   canPayOnChain: boolean
   /** Smart account used for on-chain CRTVAI payment (payer only). */
   account?: string
+  /** Privy-linked signer EOA (identity). */
+  signerAddress?: `0x${string}`
   getAccessToken: () => Promise<string | null | undefined>
   sendOps: (ops: SmartWalletOp[]) => Promise<{ txHash: string }>
   refreshBalance: () => void
@@ -24,6 +26,7 @@ export interface ConfirmDirectorInvoiceArgs {
       audioDurationSeconds?: number
       paymentTxHash?: string
       walletAddress?: string
+      signerAddress?: string
       accessToken?: string
       projectId?: string
       quoteId?: string
@@ -39,8 +42,17 @@ export interface ConfirmDirectorInvoiceArgs {
 
 // fallow-ignore-next-line complexity
 export async function confirmDirectorInvoice(args: ConfirmDirectorInvoiceArgs): Promise<void> {
-  const { invoice, balance, canPayOnChain, account, getAccessToken, sendOps, refreshBalance, submit } =
-    args
+  const {
+    invoice,
+    balance,
+    canPayOnChain,
+    account,
+    signerAddress,
+    getAccessToken,
+    sendOps,
+    refreshBalance,
+    submit,
+  } = args
   const { brief, apiPrompt, audioUri, quote: invoiceQuote } = invoice
 
   const token = await getAccessToken()
@@ -48,8 +60,12 @@ export async function confirmDirectorInvoice(args: ConfirmDirectorInvoiceArgs): 
     throw new Error('Connect your wallet to refresh the Director quote.')
   }
 
+  if (!signerAddress) {
+    throw new Error('Connect your wallet to refresh the Director quote.')
+  }
+
   const checkoutQuote = await fetchDirectorServerQuote(
-    { token },
+    { token, signerAddress },
     { audioDurationSeconds: invoiceQuote.audioDurationSeconds },
   )
   if (!checkoutQuote) {
@@ -83,6 +99,7 @@ export async function confirmDirectorInvoice(args: ConfirmDirectorInvoiceArgs): 
     audioDurationSeconds: quote.audioDurationSeconds,
     ...(paymentTxHash ? { paymentTxHash } : {}),
     ...(account ? { walletAddress: account, userId: account } : {}),
+    signerAddress,
     ...(invoice.projectId ? { projectId: invoice.projectId } : {}),
     ...(quote.quoteId
       ? {

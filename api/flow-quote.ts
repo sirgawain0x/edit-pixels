@@ -3,7 +3,7 @@
  */
 // fallow-ignore-file complexity
 
-import { getBearerToken, verifyPrivyAccessToken } from './_wallet-auth.js'
+import { authenticateGenerativePost } from './_pixels-generate-route-auth.js'
 import {
   clampFlowDuration,
   normalizeVeoQuality,
@@ -14,7 +14,6 @@ import {
 } from './_generative-pricing.js'
 import { quoteFlowCreditsUsdc6 } from './flow-billing.js'
 import { MetokenQuoteError } from './_metoken-curve-quote.js'
-import { parseJsonObjectBody } from './_pixels-generate-api-auth.js'
 
 function parseTier(body: Record<string, unknown>): VeoTier {
   const raw =
@@ -28,22 +27,9 @@ function parseTier(body: Record<string, unknown>): VeoTier {
 }
 
 export async function POST(request: Request): Promise<Response> {
-  const parsedBody = await parseJsonObjectBody(request)
-  if (!parsedBody.ok) return parsedBody.response
-  const body = parsedBody.body
-
-  const token = getBearerToken(request) || (typeof body.token === 'string' ? body.token : null)
-  if (!token) {
-    return Response.json({ error: 'missing authorization' }, { status: 401 })
-  }
-
-  const auth = await verifyPrivyAccessToken(
-    token,
-    typeof body.walletAddress === 'string' ? body.walletAddress : undefined,
-  )
-  if (!auth) {
-    return Response.json({ error: 'invalid authorization' }, { status: 401 })
-  }
+  const authenticated = await authenticateGenerativePost(request)
+  if (!authenticated.ok) return authenticated.response
+  const { body } = authenticated
 
   const tier = parseTier(body)
   const qualityRaw = typeof body.quality === 'string' ? body.quality : '720p'

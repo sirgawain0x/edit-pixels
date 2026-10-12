@@ -37,6 +37,7 @@ describe('confirmDirectorInvoice', () => {
         balance: 10,
         canPayOnChain: false,
         account: '0xSmartAccount00000000000000000000000001',
+        signerAddress: '0xSigner00000000000000000000000000000001',
         getAccessToken: async () => 'token',
         sendOps: vi.fn(),
         refreshBalance: vi.fn(),
@@ -44,6 +45,9 @@ describe('confirmDirectorInvoice', () => {
       }),
     ).rejects.toThrow(/refresh the Director quote/)
 
-    expect(fetchDirectorServerQuote).toHaveBeenCalledWith({ token: 'token' }, { audioDurationSeconds: 60 })
+    expect(fetchDirectorServerQuote).toHaveBeenCalledWith(
+      { token: 'token', signerAddress: '0xSigner00000000000000000000000000000001' },
+      { audioDurationSeconds: 60 },
+    )
   })
 })

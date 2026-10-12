@@ -4,6 +4,10 @@ import { createLogger } from '@/shared/logging/logger'
 import type { SeedanceAspectRatio, SeedanceResolution } from '@/config/seedance'
 import type { PixelsRenderProvider } from '@/config/pixels-render'
 import type { GenerativeTaskDetail, SignedRequestParams } from '@/features/editor/deps/generative'
+import {
+  pixelsIdentityHeaders,
+  withPixelsIdentityBody,
+} from '@/features/generative/pixels-api-identity'
 
 const log = createLogger('SeedanceClient')
 
@@ -77,15 +81,11 @@ export class PixelsGenerateApiError extends Error {
 async function withAuth<T extends Record<string, unknown>>(
   params: SignedRequestParams,
   payload: T,
-): Promise<T & { token: string }> {
-  const token = await params.getAccessToken()
-  if (!token) {
-    throw new Error('Not authenticated')
-  }
-  return {
+): Promise<T & { token: string; signerAddress: `0x${string}`; payerAddress: `0x${string}` }> {
+  return withPixelsIdentityBody(params, {
     ...payload,
-    token,
-  }
+    payerAddress: params.payerAddress,
+  })
 }
 
 // fallow-ignore-next-line complexity
@@ -195,7 +195,7 @@ async function postSeedanceApi<T>(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
+      ...(await pixelsIdentityHeaders(auth)),
     },
     body: JSON.stringify(payload),
     signal,
@@ -218,10 +218,10 @@ export async function getPixelsGenerateTask(
   }
   const params = new URLSearchParams({
     id: taskId,
-    wallet: auth.walletAddress,
+    signer: auth.signerAddress,
   })
   const response = await fetch(`/api/pixels-generate-task?${params.toString()}`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: await pixelsIdentityHeaders(auth),
     signal,
   })
   if (!response.ok) {

@@ -4,9 +4,20 @@ vi.mock('./flow-billing.js', () => ({
   quoteFlowCreditsUsdc6: vi.fn(),
 }))
 
-vi.mock('./_wallet-auth.js', () => ({
-  getBearerToken: () => 'test-token',
-  verifyPrivyAccessToken: async () => ({ address: '0xabc' as `0x${string}` }),
+const SIGNER = '0xabc' as `0x${string}`
+
+vi.mock('./_pixels-generate-route-auth.js', () => ({
+  authenticateGenerativePost: vi.fn(async () => ({
+    ok: true,
+    signer: SIGNER,
+    payer: SIGNER,
+    body: {
+      duration: 8,
+      quality: '720p',
+      tier: 'standard',
+      stillCount: 0,
+    },
+  })),
 }))
 
 describe('POST /api/flow-quote', () => {
@@ -30,8 +41,10 @@ describe('POST /api/flow-quote', () => {
     const response = await POST(
       new Request('http://localhost/api/flow-quote', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        headers: { Authorization: 'Bearer test-token' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer test-token',
+        },
         body: JSON.stringify({
           duration: 8,
           quality: '720p',

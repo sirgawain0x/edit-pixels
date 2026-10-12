@@ -33,8 +33,7 @@ import {
   isDirectorUpstreamAuthFailure,
   vertexAuthFailureMessage,
 } from './_vertex-auth.js'
-import { isDirectorSecretAuthorized } from './_director-auth.js'
-import { authorizePixelsGeneratePost } from './_pixels-generate-api-auth.js'
+import { resolvePixelsIdentity } from './_pixels-identity.js'
 import {
   isDirectorBillingEnforced,
   quoteDirectorForWallet,
@@ -309,12 +308,6 @@ async function assertDirectorPayment(data: ParsedDirectorRequest): Promise<
     }
   }
 
-  if (!data.verifiedSignerAddress) {
-    return {
-      error: Response.json({ error: 'invalid authorization' }, { status: 401 }),
-    }
-  }
-
   const verified = await verifyAndConsumeDirectorPayment({
     txHash: data.paymentTxHash,
     from: data.walletAddress,
@@ -568,16 +561,13 @@ async function handleDirectorPost(
   request: Request,
   reserved: ReservedDirectorPayment,
 ): Promise<Response> {
-  let parsed: Awaited<ReturnType<typeof parseDirectorRequest>>
-  if (isDirectorSecretAuthorized(request)) {
-    logDirectorStage('auth', { mode: 'director_secret' })
-    parsed = await parseDirectorRequest(request)
-  } else {
-    const authorized = await authorizePixelsGeneratePost(request)
-    if (!authorized.ok) return authorized.response
-    logDirectorStage('auth', { mode: 'privy', signer: authorized.auth.address })
-    parsed = parseDirectorBody(authorized.body as DirectorRequestBody, authorized.auth.address)
-  }
+  const identity = await resolvePixelsIdentity(request, { allowDirectorSecret: true })
+  if (!identity.ok) return identity.response
+  logDirectorStage('auth', { mode: identity.identity.source, signer: identity.identity.signer })
+  const parsed = parseDirectorBody(
+    identity.body as DirectorRequestBody,
+    identity.identity.signer,
+  )
   if (!parsed.ok) return parsed.response
 
   const payment = await assertDirectorPayment(parsed.data)

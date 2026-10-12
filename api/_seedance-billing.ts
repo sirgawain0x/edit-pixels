@@ -284,11 +284,13 @@ export async function verifySeedancePayment(options: {
   txHash: string
   from: string
   minAmountWei: bigint
+  verifiedSignerAddress?: string
 }): Promise<PaymentVerifyResult> {
   return verifyFlowPayment({
     txHash: options.txHash,
     from: options.from,
     minAmountWei: options.minAmountWei,
     purpose: 'seedance-generate',
+    verifiedSignerAddress: options.verifiedSignerAddress,
   })
 }
