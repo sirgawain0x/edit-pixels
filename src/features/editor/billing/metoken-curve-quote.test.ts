@@ -1,11 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import * as curveQuote from '../../../../api/_metoken-curve-quote.js'
 import {
+  isRpcTransportError,
   METOKEN_QUOTE_EXPIRY_SECONDS,
   METOKEN_QUOTE_SETTLEMENT_GRACE_SECONDS,
   METOKEN_QUOTE_SLIPPAGE_BPS,
   validateSettlementAgainstQuote,
 } from '../../../../api/_metoken-curve-quote.js'
+import {
+  CallExecutionError,
+  ContractFunctionExecutionError,
+  ContractFunctionRevertedError,
+  HttpRequestError,
+  TimeoutError,
+} from 'viem'
 import { vi } from 'vitest'
 import {
   calculateMeTokensMintedPure,
@@ -22,6 +30,48 @@ function memoCurveState(): CurveState {
     balancePooledUsdc6: MEMO_BALANCE_POOLED_USDC6,
   }
 }
+
+describe('isRpcTransportError', () => {
+  const emptyCall = {}
+  const contractCtx = {
+    abi: [] as const,
+    functionName: 'totalSupply',
+  }
+
+  it('detects a top-level HttpRequestError', () => {
+    expect(isRpcTransportError(new HttpRequestError({ url: 'https://rpc.example' }))).toBe(true)
+  })
+
+  it('maps wrapped ContractFunctionExecutionError → CallExecutionError → HttpRequestError', () => {
+    const http = new HttpRequestError({ url: 'https://rpc.example' })
+    const call = new CallExecutionError(http, emptyCall)
+    const wrapped = new ContractFunctionExecutionError(call, contractCtx)
+    expect(isRpcTransportError(wrapped)).toBe(true)
+  })
+
+  it('maps wrapped TimeoutError', () => {
+    const timeout = new TimeoutError({ body: {}, url: 'https://rpc.example' })
+    const call = new CallExecutionError(timeout, emptyCall)
+    expect(isRpcTransportError(new ContractFunctionExecutionError(call, contractCtx))).toBe(true)
+  })
+
+  it('maps AbortError by name', () => {
+    const abort = new Error('The operation was aborted')
+    abort.name = 'AbortError'
+    expect(isRpcTransportError(abort)).toBe(true)
+  })
+
+  it('does not treat contract reverts as transport errors', () => {
+    const revert = new ContractFunctionRevertedError({
+      abi: [],
+      functionName: 'totalSupply',
+      message: 'execution reverted',
+    })
+    const call = new CallExecutionError(revert, emptyCall)
+    const wrapped = new ContractFunctionExecutionError(call, contractCtx)
+    expect(isRpcTransportError(wrapped)).toBe(false)
+  })
+})
 
 describe('metoken curve math (memo reference)', () => {
   it('$1 mints ~0.29857 CRTVAI at supply 3.2 and pooled $5.12', () => {

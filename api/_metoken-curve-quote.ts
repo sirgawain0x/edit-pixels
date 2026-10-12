@@ -4,7 +4,19 @@
 // fallow-ignore-file complexity,unused-export
 
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto'
-import { createPublicClient, http, parseAbi, type Hex } from 'viem'
+import {
+  BaseError,
+  ContractFunctionRevertedError,
+  createPublicClient,
+  ExecutionRevertedError,
+  http,
+  HttpRequestError,
+  parseAbi,
+  RpcRequestError,
+  SocketClosedError,
+  TimeoutError,
+  type Hex,
+} from 'viem'
 import { base } from 'viem/chains'
 import {
   CRTVAI_METOKEN_ADDRESS,
@@ -58,15 +70,54 @@ function alchemyRpcUrl(): string {
   return key ? `https://base-mainnet.g.alchemy.com/v2/${key}` : 'https://mainnet.base.org'
 }
 
-function isRpcTransportError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false
-  const name = error.name
+const RPC_TRANSPORT_CAUSE_MAX_DEPTH = 32
+
+function isAbortError(error: unknown): boolean {
+  if (typeof DOMException !== 'undefined' && error instanceof DOMException) {
+    return error.name === 'AbortError'
+  }
+  return error instanceof Error && error.name === 'AbortError'
+}
+
+function isContractRevertError(error: unknown): boolean {
   return (
-    name === 'TimeoutError' ||
-    name === 'AbortError' ||
-    name === 'HttpRequestError' ||
-    name === 'SocketClosedError'
+    error instanceof ContractFunctionRevertedError ||
+    error instanceof ExecutionRevertedError ||
+    (error instanceof RpcRequestError && error.code === ExecutionRevertedError.code)
   )
+}
+
+function isTransportErrorNode(error: unknown): boolean {
+  if (isContractRevertError(error)) return false
+  if (error instanceof TimeoutError) return true
+  if (error instanceof HttpRequestError) return true
+  if (error instanceof SocketClosedError) return true
+  if (isAbortError(error)) return true
+  if (error instanceof RpcRequestError) return true
+  return false
+}
+
+function readErrorCause(error: unknown): unknown {
+  if (!error || typeof error !== 'object' || !('cause' in error)) return undefined
+  return (error as { cause?: unknown }).cause
+}
+
+/** True when an RPC/HTTP failure should fail closed as `quote_unpayable` (not contract reverts). */
+export function isRpcTransportError(error: unknown): boolean {
+  if (error instanceof BaseError) {
+    if (error.walk((e) => isTransportErrorNode(e))) return true
+    if (error.walk((e) => isContractRevertError(e))) return false
+    return false
+  }
+
+  let current: unknown = error
+  for (let depth = 0; depth < RPC_TRANSPORT_CAUSE_MAX_DEPTH && current != null; depth++) {
+    if (current instanceof BaseError) return isRpcTransportError(current)
+    if (isTransportErrorNode(current)) return true
+    if (isContractRevertError(current)) return false
+    current = readErrorCause(current)
+  }
+  return false
 }
 
 function curveRpcFetch(url: RequestInfo | URL, init?: RequestInit): Promise<Response> {
