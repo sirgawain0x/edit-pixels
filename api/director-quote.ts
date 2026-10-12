@@ -3,28 +3,14 @@
  */
 // fallow-ignore-file complexity
 
-import { getBearerToken, verifyPrivyAccessToken } from './_wallet-auth.js'
 import { quoteDirectorForWallet } from './director-billing.js'
 import { MetokenQuoteError } from './_metoken-curve-quote.js'
-import { parseJsonObjectBody } from './_pixels-generate-api-auth.js'
+import { authorizePixelsGeneratePost } from './_pixels-generate-api-auth.js'
 
 export async function POST(request: Request): Promise<Response> {
-  const parsedBody = await parseJsonObjectBody(request)
-  if (!parsedBody.ok) return parsedBody.response
-  const body = parsedBody.body
-
-  const token = getBearerToken(request) || (typeof body.token === 'string' ? body.token : null)
-  if (!token) {
-    return Response.json({ error: 'missing authorization' }, { status: 401 })
-  }
-
-  const auth = await verifyPrivyAccessToken(
-    token,
-    typeof body.walletAddress === 'string' ? body.walletAddress : undefined,
-  )
-  if (!auth) {
-    return Response.json({ error: 'invalid authorization' }, { status: 401 })
-  }
+  const authorized = await authorizePixelsGeneratePost(request)
+  if (!authorized.ok) return authorized.response
+  const { auth, body } = authorized
 
   const audioDurationSeconds =
     typeof body.audioDurationSeconds === 'number' ? body.audioDurationSeconds : NaN
