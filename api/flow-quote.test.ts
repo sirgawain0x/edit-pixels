@@ -4,6 +4,11 @@ vi.mock('./flow-billing.js', () => ({
   quoteFlowCreditsUsdc6: vi.fn(),
 }))
 
+vi.mock('./_wallet-auth.js', () => ({
+  getBearerToken: () => 'test-token',
+  verifyPrivyAccessToken: async () => ({ address: '0xabc' as `0x${string}` }),
+}))
+
 describe('POST /api/flow-quote', () => {
   beforeEach(async () => {
     const { quoteFlowCreditsUsdc6 } = await import('./flow-billing.js')
@@ -26,6 +31,7 @@ describe('POST /api/flow-quote', () => {
       new Request('http://localhost/api/flow-quote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        headers: { Authorization: 'Bearer test-token' },
         body: JSON.stringify({
           duration: 8,
           quality: '720p',
