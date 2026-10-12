@@ -11,18 +11,31 @@ const PAYMENT_TTL_SECONDS = 60 * 60 * 24 * 14 // 14 days
 
 export type ConsumePaymentResult = { ok: true } | { ok: false; reason: string }
 
+function normalizeTxHash(txHash: string): string | null {
+  const normalized = txHash.trim().toLowerCase()
+  if (!normalized.startsWith('0x') || normalized.length < 66) return null
+  return normalized
+}
+
+function logConsumptionKey(txHash: string, logIndex: number): string {
+  return `${PAYMENT_KEY_PREFIX}${txHash}:${logIndex}`
+}
+
 /**
- * Mark `txHash` as spent. Fails if already consumed.
- * When Redis is not configured, returns ok only if billing soft/local — callers
- * that enforce billing should require Redis.
+ * Mark a specific CRTVAI Transfer log as spent (`txHash` + `logIndex`).
+ * Fails if already consumed.
  */
-export async function consumePaymentTxHash(
+export async function consumePaymentTxLog(
   txHash: string,
+  logIndex: number,
   meta: { wallet: string; purpose: string },
 ): Promise<ConsumePaymentResult> {
-  const normalized = txHash.trim().toLowerCase()
-  if (!normalized.startsWith('0x') || normalized.length < 66) {
+  const normalized = normalizeTxHash(txHash)
+  if (!normalized) {
     return { ok: false, reason: 'Invalid payment transaction hash' }
+  }
+  if (!Number.isInteger(logIndex) || logIndex < 0) {
+    return { ok: false, reason: 'Invalid payment log index' }
   }
 
   if (!isRedisConfigured()) {
@@ -37,13 +50,13 @@ export async function consumePaymentTxHash(
     return { ok: false, reason: 'Payment ledger unavailable' }
   }
 
-  const key = `${PAYMENT_KEY_PREFIX}${normalized}`
-  // SET NX — only succeeds the first time
+  const key = logConsumptionKey(normalized, logIndex)
   const set = await redis.set(
     key,
     JSON.stringify({
       wallet: meta.wallet.toLowerCase(),
       purpose: meta.purpose,
+      logIndex,
       at: Date.now(),
     }),
     { nx: true, ex: PAYMENT_TTL_SECONDS },
@@ -56,19 +69,27 @@ export async function consumePaymentTxHash(
   return { ok: true }
 }
 
+/** @deprecated Prefer `consumePaymentTxLog` with the verified Transfer log index. */
+export async function consumePaymentTxHash(
+  txHash: string,
+  meta: { wallet: string; purpose: string },
+): Promise<ConsumePaymentResult> {
+  return consumePaymentTxLog(txHash, 0, meta)
+}
+
 /**
- * Release a reserved/consumed payment hash so a failed pre-delivery request
- * can be retried. No-op when Redis is unavailable.
+ * Release a consumed payment log so a failed pre-delivery request can be retried.
  */
-export async function releasePaymentTxHash(txHash: string): Promise<void> {
-  const normalized = txHash.trim().toLowerCase()
-  if (!normalized.startsWith('0x') || normalized.length < 66) return
+export async function releasePaymentTxLog(txHash: string, logIndex: number): Promise<void> {
+  const normalized = normalizeTxHash(txHash)
+  if (!normalized) return
+  if (!Number.isInteger(logIndex) || logIndex < 0) return
   if (!isRedisConfigured()) return
 
   const redis = await getRedis()
   if (!redis) return
 
-  await redis.del(`${PAYMENT_KEY_PREFIX}${normalized}`)
+  await redis.del(logConsumptionKey(normalized, logIndex))
 }
 
 /** Whether production billing can safely enforce one-time payments. */

@@ -140,7 +140,7 @@ export const FlowPanel = memo(function FlowPanel() {
       const token = await auth.getAccessToken()
       if (!token || cancelled) return
       const priced = await fetchFlowServerQuote(
-        { token, walletAddress: auth.walletAddress },
+        { token, signerAddress: auth.signerAddress },
         {
           duration,
           quality: effectiveQuality,
@@ -275,7 +275,7 @@ export const FlowPanel = memo(function FlowPanel() {
         throw new Error(t('flow.error.auth', { defaultValue: 'Wallet auth required for Flow.' }))
       }
       const serverQuote = await fetchFlowServerQuote(
-        { token, walletAddress: auth.walletAddress },
+        { token, signerAddress: auth.signerAddress },
         {
           duration: clampFlowDuration(duration),
           quality: effectiveQuality,

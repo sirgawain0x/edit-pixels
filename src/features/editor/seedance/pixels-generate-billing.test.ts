@@ -96,9 +96,11 @@ describe('pixels generate billing', () => {
         progress: 0,
         model: 'veo',
         paymentTxHash: '0xpay',
+        paymentLogIndex: 2,
       })
 
       expect(await payment.releasePixelsGenerateJobPayment('req-1')).toBe(true)
+      expect(releaseFlowPayment).toHaveBeenCalledWith('0xpay', 2)
       expect(releaseFlowPayment).toHaveBeenCalledTimes(1)
       expect(await payment.releasePixelsGenerateJobPayment('req-1')).toBe(false)
       expect(releaseFlowPayment).toHaveBeenCalledTimes(1)
@@ -143,6 +145,7 @@ describe('pixels generate billing', () => {
         progress: 0,
         model: 'veo',
         paymentTxHash: '0xpay',
+        paymentLogIndex: 0,
         veoTaskId: 'veo-task-1',
       })
 
@@ -157,7 +160,7 @@ describe('pixels generate billing', () => {
       const job = await jobs.getPixelsGenerateJob('req-veo')
       expect(job?.status).toBe('failed')
       expect(job?.paymentReleased).toBe(true)
-      expect(releaseFlowPayment).toHaveBeenCalledWith('0xpay')
+      expect(releaseFlowPayment).toHaveBeenCalledWith('0xpay', 0)
     })
   })
 })

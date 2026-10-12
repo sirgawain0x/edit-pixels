@@ -3,7 +3,10 @@
  */
 // fallow-ignore-file complexity,code-duplication
 
-import { getBearerToken, verifyPrivyAccessToken } from './_wallet-auth.js'
+import {
+  authenticateGenerativePost,
+  verifyGenerativeCrtvaiPayment,
+} from './_pixels-generate-route-auth.js'
 import { checkMetokenSufficient } from './_metoken-server.js'
 import {
   clampFlowDuration,
@@ -17,7 +20,7 @@ import {
   shortTaskId,
   startVeoVideo,
 } from './_vertex-generative.js'
-import { isFlowBillingEnforced, quoteFlowCreditsUsdc6, verifyFlowPayment } from './flow-billing.js'
+import { isFlowBillingEnforced, quoteFlowCreditsUsdc6 } from './flow-billing.js'
 
 function parseTier(body: Record<string, unknown>): VeoTier {
   const raw =
@@ -46,29 +49,9 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'service unavailable' }, { status: 503 })
   }
 
-  let body: Record<string, unknown>
-  try {
-    const parsed = await request.json()
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      return Response.json({ error: 'invalid body' }, { status: 400 })
-    }
-    body = parsed as Record<string, unknown>
-  } catch {
-    return Response.json({ error: 'invalid body' }, { status: 400 })
-  }
-
-  const token = getBearerToken(request) || (typeof body.token === 'string' ? body.token : null)
-  if (!token) {
-    return Response.json({ error: 'missing authorization' }, { status: 401 })
-  }
-
-  const auth = await verifyPrivyAccessToken(
-    token,
-    typeof body.walletAddress === 'string' ? body.walletAddress : undefined,
-  )
-  if (!auth) {
-    return Response.json({ error: 'invalid authorization' }, { status: 401 })
-  }
+  const authenticated = await authenticateGenerativePost(request)
+  if (!authenticated.ok) return authenticated.response
+  const { signer, payer, body } = authenticated
 
   const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
   const imageUrls = Array.isArray(body.image_urls)
@@ -97,10 +80,11 @@ export async function POST(request: Request): Promise<Response> {
     if (!paymentTxHash) {
       return Response.json({ error: 'payment_required' }, { status: 402 })
     }
-    const verified = await verifyFlowPayment({
-      txHash: paymentTxHash,
-      from: auth.address,
-      minAmountWei: quote.minCrtvaiWei,
+    const verified = await verifyGenerativeCrtvaiPayment({
+      paymentTxHash,
+      signer,
+      payer,
+      quote,
       purpose: 'generate-video',
     })
     if (!verified.ok) {
@@ -108,7 +92,7 @@ export async function POST(request: Request): Promise<Response> {
     }
   } else {
     try {
-      const balanceCheck = await checkMetokenSufficient(auth.address, quote.estimatedUsdc6)
+      const balanceCheck = await checkMetokenSufficient(payer, quote.estimatedUsdc6)
       if (!balanceCheck.sufficient) {
         return Response.json(
           {
@@ -148,7 +132,7 @@ export async function POST(request: Request): Promise<Response> {
 
     const taskId = shortTaskId(started.operationName)
     const { registerGenerativeTask } = await import('./_task-registry.js')
-    await registerGenerativeTask(taskId, auth.address, {
+    await registerGenerativeTask(taskId, signer, {
       operationName: started.operationName,
       modelId: started.modelId,
     })

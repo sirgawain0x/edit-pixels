@@ -11,7 +11,11 @@ export interface ConfirmDirectorInvoiceArgs {
   invoice: PendingDirectorInvoice
   balance: number
   canPayOnChain: boolean
+  /** Smart account used for on-chain CRTVAI payment (payer only). */
   account?: string
+  /** Privy-linked signer EOA (identity). */
+  signerAddress?: `0x${string}`
+  getAccessToken: () => Promise<string | null | undefined>
   sendOps: (ops: SmartWalletOp[]) => Promise<{ txHash: string }>
   refreshBalance: () => void
   submit: (
@@ -22,6 +26,8 @@ export interface ConfirmDirectorInvoiceArgs {
       audioDurationSeconds?: number
       paymentTxHash?: string
       walletAddress?: string
+      signerAddress?: string
+      accessToken?: string
       projectId?: string
       quoteId?: string
       quoteSignature?: string
@@ -36,14 +42,35 @@ export interface ConfirmDirectorInvoiceArgs {
 
 // fallow-ignore-next-line complexity
 export async function confirmDirectorInvoice(args: ConfirmDirectorInvoiceArgs): Promise<void> {
-  const { invoice, balance, canPayOnChain, account, sendOps, refreshBalance, submit } = args
+  const {
+    invoice,
+    balance,
+    canPayOnChain,
+    account,
+    signerAddress,
+    getAccessToken,
+    sendOps,
+    refreshBalance,
+    submit,
+  } = args
   const { brief, apiPrompt, audioUri, quote: invoiceQuote } = invoice
 
-  const checkoutQuote =
-    (await fetchDirectorServerQuote({
-      audioDurationSeconds: invoiceQuote.audioDurationSeconds,
-      walletAddress: account,
-    })) ?? invoiceQuote
+  const token = await getAccessToken()
+  if (!token) {
+    throw new Error('Connect your wallet to refresh the Director quote.')
+  }
+
+  if (!signerAddress) {
+    throw new Error('Connect your wallet to refresh the Director quote.')
+  }
+
+  const checkoutQuote = await fetchDirectorServerQuote(
+    { token, signerAddress },
+    { audioDurationSeconds: invoiceQuote.audioDurationSeconds },
+  )
+  if (!checkoutQuote) {
+    throw new Error('Could not refresh the Director quote — close the invoice and try again.')
+  }
 
   if (
     checkoutQuote.estimatedUsdc6 !== invoiceQuote.estimatedUsdc6 ||
@@ -67,10 +94,12 @@ export async function confirmDirectorInvoice(args: ConfirmDirectorInvoiceArgs): 
 
   await submit(brief, {
     apiPrompt,
+    accessToken: token,
     ...(audioUri ? { audioUri } : {}),
     audioDurationSeconds: quote.audioDurationSeconds,
     ...(paymentTxHash ? { paymentTxHash } : {}),
     ...(account ? { walletAddress: account, userId: account } : {}),
+    signerAddress,
     ...(invoice.projectId ? { projectId: invoice.projectId } : {}),
     ...(quote.quoteId
       ? {

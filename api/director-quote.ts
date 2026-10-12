@@ -5,12 +5,12 @@
 
 import { quoteDirectorForWallet } from './director-billing.js'
 import { MetokenQuoteError } from './_metoken-curve-quote.js'
-import { parseJsonObjectBody } from './_pixels-generate-api-auth.js'
+import { authorizePixelsGeneratePost } from './_pixels-generate-api-auth.js'
 
 export async function POST(request: Request): Promise<Response> {
-  const parsedBody = await parseJsonObjectBody(request)
-  if (!parsedBody.ok) return parsedBody.response
-  const body = parsedBody.body
+  const authorized = await authorizePixelsGeneratePost(request)
+  if (!authorized.ok) return authorized.response
+  const { auth, body } = authorized
 
   const audioDurationSeconds =
     typeof body.audioDurationSeconds === 'number' ? body.audioDurationSeconds : NaN
@@ -18,11 +18,8 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'audioDurationSeconds required' }, { status: 400 })
   }
 
-  const walletAddress =
-    typeof body.walletAddress === 'string' ? body.walletAddress.trim() : undefined
-
   try {
-    const quote = await quoteDirectorForWallet(audioDurationSeconds, walletAddress)
+    const quote = await quoteDirectorForWallet(audioDurationSeconds, auth.address)
     if (!quote) {
       return Response.json({ error: 'quote_unpayable' }, { status: 402 })
     }
