@@ -21,6 +21,11 @@ function logConsumptionKey(txHash: string, logIndex: number): string {
   return `${PAYMENT_KEY_PREFIX}${txHash}:${logIndex}`
 }
 
+/** Pre–logIndex ledger entries (still within TTL after key format change). */
+function legacyTxHashKey(txHash: string): string {
+  return `${PAYMENT_KEY_PREFIX}${txHash}`
+}
+
 /**
  * Mark a specific CRTVAI Transfer log as spent (`txHash` + `logIndex`).
  * Fails if already consumed.
@@ -48,6 +53,11 @@ export async function consumePaymentTxLog(
   const redis = await getRedis()
   if (!redis) {
     return { ok: false, reason: 'Payment ledger unavailable' }
+  }
+
+  const legacyConsumed = await redis.get(legacyTxHashKey(normalized))
+  if (legacyConsumed !== null) {
+    return { ok: false, reason: 'Payment transaction already used' }
   }
 
   const key = logConsumptionKey(normalized, logIndex)
