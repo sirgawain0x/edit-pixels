@@ -1,16 +1,17 @@
 import {
   getOrCreateOpfsQaWorkspaceHandle,
   isOpfsNavigatorStorageAvailable,
-  isQaOpfsWorkspaceHandle,
   isQaWorkspaceFallbackEnabled,
 } from '@/config/qa-workspace'
 import {
   ensureKnownWorkspaceForCurrent,
+  getQaOpfsWorkspaceHandleRecord,
   getWorkspaceHandleRecord,
   isFileSystemAccessSupported,
   isLikelyMobileBrowser,
   queryHandlePermission,
   requestHandlePermission,
+  saveQaOpfsWorkspaceHandleRecord,
   saveWorkspaceHandleRecord,
 } from '@/infrastructure/storage/handles-db'
 
@@ -38,8 +39,20 @@ async function activateOpfsQaWorkspace(
   activate: (handle: FileSystemDirectoryHandle) => Promise<void>,
 ): Promise<void> {
   const handle = await getOrCreateOpfsQaWorkspaceHandle()
-  await saveWorkspaceHandleRecord(handle)
+  await saveQaOpfsWorkspaceHandleRecord(handle)
   await activate(handle)
+}
+
+async function activatePersistedQaOpfsWorkspace(
+  activate: (handle: FileSystemDirectoryHandle) => Promise<void>,
+): Promise<WorkspaceGateStatus> {
+  const qaRecord = await getQaOpfsWorkspaceHandleRecord()
+  if (qaRecord) {
+    await activate(qaRecord.handle as FileSystemDirectoryHandle)
+    return { kind: 'ready' }
+  }
+  await activateOpfsQaWorkspace(activate)
+  return { kind: 'ready' }
 }
 
 async function isReadWritePermissionGranted(handle: FileSystemDirectoryHandle): Promise<boolean> {
@@ -60,21 +73,16 @@ async function pickDirectoryWithReadWrite(): Promise<FileSystemDirectoryHandle> 
 async function resolveSavedWorkspaceStatus(
   activate: (handle: FileSystemDirectoryHandle) => Promise<void>,
 ): Promise<WorkspaceGateStatus> {
+  if (isQaWorkspaceFallbackEnabled()) {
+    return activatePersistedQaOpfsWorkspace(activate)
+  }
+
   const record = await getWorkspaceHandleRecord()
   if (!record) {
-    if (isQaWorkspaceFallbackEnabled()) {
-      await activateOpfsQaWorkspace(activate)
-      return { kind: 'ready' }
-    }
     return { kind: 'pick' }
   }
 
   const handle = record.handle as FileSystemDirectoryHandle
-  if (isQaWorkspaceFallbackEnabled() && isQaOpfsWorkspaceHandle(handle)) {
-    await activate(handle)
-    return { kind: 'ready' }
-  }
-
   const permission = await queryHandlePermission(handle)
   if (permission === 'granted') {
     await activate(handle)
@@ -141,15 +149,15 @@ export type ReconnectWorkspaceResult =
 export async function reconnectWorkspaceFolder(
   activate: (handle: FileSystemDirectoryHandle) => Promise<void>,
 ): Promise<ReconnectWorkspaceResult> {
+  if (isQaWorkspaceFallbackEnabled()) {
+    await activatePersistedQaOpfsWorkspace(activate)
+    return { kind: 'ready' }
+  }
+
   const record = await getWorkspaceHandleRecord()
   if (!record) return { kind: 'pick' }
 
   const handle = record.handle as FileSystemDirectoryHandle
-  if (isQaWorkspaceFallbackEnabled() && isQaOpfsWorkspaceHandle(handle)) {
-    await activate(handle)
-    return { kind: 'ready' }
-  }
-
   const permission = await requestHandlePermission(handle)
   if (permission === 'granted') {
     await activate(handle)
