@@ -11,7 +11,12 @@ import {
   type DirectorBillingQuote,
   type PaymentVerifyResult,
 } from './director-billing.js'
-import { MetokenQuoteError, quoteCrtvaiForUsdc6 } from './_metoken-curve-quote.js'
+import {
+  MetokenQuoteError,
+  quoteCrtvaiForUsdc6,
+  validateSettlementAgainstQuote,
+  verifyQuoteSignature,
+} from './_metoken-curve-quote.js'
 
 export { isDirectorBillingEnforced as isFlowBillingEnforced, type PaymentVerifyResult }
 
@@ -25,6 +30,28 @@ export interface FlowCreditsQuote {
 }
 
 /** Convert legacy Flow credits ($0.10/credit) to usdc6 + live-curve CRTVAI wei. */
+export async function resolveFlowSettlementMinWei(quote: FlowCreditsQuote): Promise<bigint> {
+  if (
+    !verifyQuoteSignature({
+      quoteId: quote.quoteId,
+      signature: quote.signature,
+      estimatedUsdc6: quote.estimatedUsdc6,
+      minCrtvaiWei: quote.minCrtvaiWei,
+      expiresAtMs: quote.expiresAtMs,
+      slippageBps: quote.slippageBps,
+    })
+  ) {
+    throw new MetokenQuoteError('quote_invalid', 'Invalid quote signature')
+  }
+  const { minAmountWei } = await validateSettlementAgainstQuote({
+    estimatedUsdc6: quote.estimatedUsdc6,
+    minCrtvaiWei: quote.minCrtvaiWei,
+    expiresAtMs: quote.expiresAtMs,
+    slippageBps: quote.slippageBps,
+  })
+  return minAmountWei
+}
+
 export async function quoteFlowCreditsUsdc6(credits: number): Promise<FlowCreditsQuote | null> {
   if (!Number.isFinite(credits) || credits <= 0) return null
   const estimatedUsdc6 = Math.max(1, Math.ceil(credits)) * 100_000

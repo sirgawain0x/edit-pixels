@@ -4,6 +4,7 @@
 
 import { buildDirectorPaymentOp } from './build-director-payment'
 import type { PendingDirectorInvoice } from './director-invoice-card'
+import { fetchDirectorServerQuote } from './fetch-director-server-quote'
 import type { SmartWalletOp } from '@/hooks/use-smart-wallet-ops'
 
 export interface ConfirmDirectorInvoiceArgs {
@@ -36,18 +37,33 @@ export interface ConfirmDirectorInvoiceArgs {
 // fallow-ignore-next-line complexity
 export async function confirmDirectorInvoice(args: ConfirmDirectorInvoiceArgs): Promise<void> {
   const { invoice, balance, canPayOnChain, account, sendOps, refreshBalance, submit } = args
-  const { brief, apiPrompt, audioUri, quote } = invoice
+  const { brief, apiPrompt, audioUri, quote: invoiceQuote } = invoice
 
-  if (balance < quote.crtvaiDisplay) {
+  const checkoutQuote =
+    (await fetchDirectorServerQuote({
+      audioDurationSeconds: invoiceQuote.audioDurationSeconds,
+      walletAddress: account,
+    })) ?? invoiceQuote
+
+  if (
+    checkoutQuote.estimatedUsdc6 !== invoiceQuote.estimatedUsdc6 ||
+    checkoutQuote.tier !== invoiceQuote.tier
+  ) {
+    throw new Error('Director price changed — close the invoice and brief again.')
+  }
+
+  if (balance < checkoutQuote.crtvaiDisplay) {
     throw new Error('Insufficient CRTVAI balance for this Director invoice.')
   }
 
   let paymentTxHash: string | undefined
   if (canPayOnChain) {
-    const { txHash } = await sendOps([buildDirectorPaymentOp(quote.crtvaiWei)])
+    const { txHash } = await sendOps([buildDirectorPaymentOp(checkoutQuote.crtvaiWei)])
     paymentTxHash = txHash
     refreshBalance()
   }
+
+  const quote = checkoutQuote
 
   await submit(brief, {
     apiPrompt,

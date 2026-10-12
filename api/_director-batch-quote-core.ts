@@ -158,10 +158,13 @@ export async function quoteDirectorStoryboardBatch(input: {
       return { ok: false, error: `veo quote failed for shot ${mapped.shotId}` }
     }
 
-    const seedanceQuote = await quoteSeedanceSpend({
-      duration: mapped.seedanceDuration,
-      resolution: mapped.resolution,
-    })
+    const seedanceQuote = await quoteSeedanceSpend(
+      {
+        duration: mapped.seedanceDuration,
+        resolution: mapped.resolution,
+      },
+      { batchLinked: true },
+    )
 
     const recommendedProvider = pickDirectorShotProvider(rawShot, input.providerPreference)
     const recommendedWei =

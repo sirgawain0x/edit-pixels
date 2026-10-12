@@ -50,6 +50,7 @@ import {
   type FlowTier,
 } from '@/config/flow'
 import { quoteFlowGeneration } from './flow-pricing'
+import { fetchFlowServerQuote } from './fetch-flow-server-quote'
 import { cn } from '@/shared/ui/cn'
 
 type FrameSlot = {
@@ -219,9 +220,27 @@ export const FlowPanel = memo(function FlowPanel() {
     setProgress(0)
     setStatus(t('flow.status.paying', { defaultValue: 'Confirming payment…' }))
     try {
+      const serverQuote = await fetchFlowServerQuote({
+        duration: clampFlowDuration(duration),
+        quality: effectiveQuality,
+        tier,
+        stillCount,
+      })
+      if (!serverQuote || serverQuote.crtvaiWei <= 0n) {
+        throw new Error(
+          t('flow.error.noQuote', { defaultValue: 'Could not price this Flow run — try again.' }),
+        )
+      }
+      if (balance < serverQuote.crtvaiDisplay) {
+        setBuyOpen(true)
+        throw new Error(
+          t('flow.error.insufficient', { defaultValue: 'Insufficient CRTVAI for this Flow.' }),
+        )
+      }
+
       let paymentTxHash: string | undefined
       if (canPayOnChain) {
-        const { txHash } = await sendOps([buildDirectorPaymentOp(quote.crtvaiWei)])
+        const { txHash } = await sendOps([buildDirectorPaymentOp(serverQuote.crtvaiWei)])
         paymentTxHash = txHash
         refreshBalance()
       }
@@ -242,6 +261,16 @@ export const FlowPanel = memo(function FlowPanel() {
           : {}),
         stillQuality: '2K',
         ...(paymentTxHash ? { paymentTxHash } : {}),
+        ...(serverQuote.quoteId
+          ? {
+              quoteId: serverQuote.quoteId,
+              quoteSignature: serverQuote.signature,
+              quoteExpiresAtMs: serverQuote.expiresAtMs,
+              quoteSlippageBps: serverQuote.slippageBps,
+              quoteEstimatedUsdc6: serverQuote.estimatedUsdc6,
+              quoteCrtvaiRequired: serverQuote.crtvaiWei.toString(),
+            }
+          : {}),
       })
 
       if (task.startImageUrl) {

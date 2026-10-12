@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
 describe('director batch bridge', () => {
   const originalVercel = process.env.VERCEL
@@ -105,6 +105,93 @@ describe('director batch bridge', () => {
           { shotId: 'b', provider: 'seedance' },
         ]),
       ).toMatchObject({ ok: true })
+    })
+  })
+
+  describe('batch seedance quote retention', () => {
+    it('keeps batch-linked Seedance quotes loadable after the short curve TTL', async () => {
+      const { quoteDirectorStoryboardBatch } =
+        await import('../../../../api/_director-batch-quote-core')
+      const { getSeedanceQuote } = await import('../../../../api/_seedance-billing')
+      const { METOKEN_QUOTE_EXPIRY_SECONDS } =
+        await import('../../../../api/_metoken-curve-quote.js')
+
+      const quoted = await quoteDirectorStoryboardBatch({
+        wallet: '0xabc',
+        shots: [{ shotId: 'shot-1', prompt: 'Test', duration: 5, consistentCharacter: true }],
+      })
+      expect(quoted.ok).toBe(true)
+      if (!quoted.ok) return
+
+      const seedanceQuoteId = quoted.quote.shots[0]?.seedance.quoteId
+      expect(seedanceQuoteId).toBeTruthy()
+      if (!seedanceQuoteId) return
+
+      const stored = await getSeedanceQuote(seedanceQuoteId)
+      expect(stored).toBeTruthy()
+      expect(stored?.expiresAtMs).toBeLessThanOrEqual(Date.now() + METOKEN_QUOTE_EXPIRY_SECONDS * 1000)
+      expect(stored?.expiresAtMs).toBeGreaterThan(Date.now())
+    })
+  })
+
+  describe('resolveBatchConfirmSettlementMinWei', () => {
+    it('rejects out-of-band batch confirm totals', async () => {
+      const { quoteDirectorStoryboardBatch } =
+        await import('../../../../api/_director-batch-quote-core')
+      const { getDirectorBatchQuote } = await import('../../../../api/_director-batch-store')
+      const { resolveBatchConfirmSettlementMinWei } =
+        await import('../../../../api/_director-batch-confirm-core')
+      const curve = await import('../../../../api/_metoken-curve-quote.js')
+      const spy = vi.spyOn(curve, 'validateSettlementAgainstQuote').mockRejectedValue(
+        new curve.MetokenQuoteError('quote_slippage', 'Price moved'),
+      )
+
+      const quoted = await quoteDirectorStoryboardBatch({
+        wallet: '0xabc',
+        shots: [{ shotId: 'shot-1', prompt: 'Test', duration: 5 }],
+      })
+      expect(quoted.ok).toBe(true)
+      if (!quoted.ok) return
+      const stored = await getDirectorBatchQuote(quoted.quote.batchQuoteId)
+      expect(stored).toBeTruthy()
+      if (!stored) return
+
+      await expect(
+        resolveBatchConfirmSettlementMinWei(stored, [
+          { shotId: 'shot-1', provider: 'veo' },
+        ]),
+      ).rejects.toMatchObject({ code: 'quote_slippage' })
+
+      spy.mockRestore()
+    })
+
+    it('accepts in-band batch confirm totals', async () => {
+      const { quoteDirectorStoryboardBatch } =
+        await import('../../../../api/_director-batch-quote-core')
+      const { getDirectorBatchQuote } = await import('../../../../api/_director-batch-store')
+      const { resolveBatchConfirmSettlementMinWei } =
+        await import('../../../../api/_director-batch-confirm-core')
+      const curve = await import('../../../../api/_metoken-curve-quote.js')
+      const spy = vi
+        .spyOn(curve, 'validateSettlementAgainstQuote')
+        .mockResolvedValue({ minAmountWei: 500n })
+
+      const quoted = await quoteDirectorStoryboardBatch({
+        wallet: '0xabc',
+        shots: [{ shotId: 'shot-1', prompt: 'Test', duration: 5 }],
+      })
+      expect(quoted.ok).toBe(true)
+      if (!quoted.ok) return
+      const stored = await getDirectorBatchQuote(quoted.quote.batchQuoteId)
+      expect(stored).toBeTruthy()
+      if (!stored) return
+
+      const minWei = await resolveBatchConfirmSettlementMinWei(stored, [
+        { shotId: 'shot-1', provider: 'veo' },
+      ])
+      expect(minWei).toBe(500n)
+
+      spy.mockRestore()
     })
   })
 

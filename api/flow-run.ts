@@ -20,7 +20,14 @@ import {
   shortTaskId,
   startVeoVideo,
 } from './_vertex-generative.js'
-import { isFlowBillingEnforced, quoteFlowCreditsUsdc6, verifyFlowPayment } from './flow-billing.js'
+import {
+  isFlowBillingEnforced,
+  quoteFlowCreditsUsdc6,
+  resolveFlowSettlementMinWei,
+  verifyFlowPayment,
+  type FlowCreditsQuote,
+} from './flow-billing.js'
+import { MetokenQuoteError } from './_metoken-curve-quote.js'
 
 async function resolveHttpsImageUrl(url: string, requestUrl: string): Promise<string> {
   const trimmed = url.trim()
@@ -128,9 +135,36 @@ export async function POST(request: Request): Promise<Response> {
     stillCount,
     stillQuality,
   })
-  const quote = await quoteFlowCreditsUsdc6(totalCredits)
-  if (!quote) {
+  const canonical = await quoteFlowCreditsUsdc6(totalCredits)
+  if (!canonical) {
     return Response.json({ error: 'invalid quote' }, { status: 400 })
+  }
+
+  let billingQuote: FlowCreditsQuote | undefined
+  if (
+    typeof body.quoteId === 'string' &&
+    typeof body.quoteSignature === 'string' &&
+    typeof body.quoteExpiresAtMs === 'number' &&
+    typeof body.quoteSlippageBps === 'number' &&
+    typeof body.quoteEstimatedUsdc6 === 'number' &&
+    typeof body.quoteCrtvaiRequired === 'string'
+  ) {
+    billingQuote = {
+      quoteId: body.quoteId.trim(),
+      signature: body.quoteSignature.trim(),
+      expiresAtMs: body.quoteExpiresAtMs,
+      slippageBps: body.quoteSlippageBps,
+      estimatedUsdc6: body.quoteEstimatedUsdc6,
+      minCrtvaiWei: BigInt(body.quoteCrtvaiRequired),
+    }
+  }
+
+  const quote = billingQuote ?? canonical
+  if (
+    billingQuote &&
+    billingQuote.estimatedUsdc6 !== canonical.estimatedUsdc6
+  ) {
+    return Response.json({ error: 'flow_quote_mismatch' }, { status: 402 })
   }
 
   if (isFlowBillingEnforced()) {
@@ -138,10 +172,18 @@ export async function POST(request: Request): Promise<Response> {
     if (!paymentTxHash) {
       return Response.json({ error: 'payment_required' }, { status: 402 })
     }
+    let minAmountWei: bigint
+    try {
+      minAmountWei = await resolveFlowSettlementMinWei(quote)
+    } catch (error) {
+      const message =
+        error instanceof MetokenQuoteError ? error.message : 'Flow quote validation failed'
+      return Response.json({ error: message }, { status: 402 })
+    }
     const verified = await verifyFlowPayment({
       txHash: paymentTxHash,
       from: auth.address,
-      minAmountWei: quote.minCrtvaiWei,
+      minAmountWei,
       purpose: 'flow-run',
     })
     if (!verified.ok) {

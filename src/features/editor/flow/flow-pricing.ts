@@ -35,6 +35,10 @@ export interface FlowQuote {
   crtvaiWei: bigint
   crtvaiDisplay: number
   formattedUsd: string
+  quoteId?: string
+  signature?: string
+  expiresAtMs?: number
+  slippageBps?: number
 }
 
 export function quoteFlowGeneration(input: FlowQuoteInput): FlowQuote {

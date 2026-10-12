@@ -10,6 +10,7 @@ import { POST as directorQuotePost } from './api/director-quote'
 import { GET as directorSessionsGet } from './api/director-sessions'
 import { GET as generateTaskGet } from './api/generate-task'
 import { POST as flowFramePost } from './api/flow-frame'
+import { POST as flowQuotePost } from './api/flow-quote'
 import { POST as flowRunPost } from './api/flow-run'
 import { POST as generateImagePost } from './api/generate-image'
 import { POST as generateVideoPost } from './api/generate-video'
@@ -276,6 +277,17 @@ function directorApiDevPlugin(): Plugin {
               res.statusCode = 500
               res.setHeader('Content-Type', 'application/json')
               res.end(JSON.stringify({ error: 'Director quote proxy failed' }))
+            }
+          })
+          return
+        }
+        if (path === '/api/flow-quote' && req.method === 'POST') {
+          void proxyEarnDevRequest(req, res, flowQuotePost).catch((error) => {
+            console.error('Flow quote API middleware error', error)
+            if (!res.headersSent) {
+              res.statusCode = 500
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Flow quote proxy failed' }))
             }
           })
           return

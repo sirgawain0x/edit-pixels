@@ -10,6 +10,7 @@ import {
   CRTVAI_METOKEN_ADDRESS,
   METOKENS_DIAMOND_ADDRESS,
   METOKEN_QUOTE_EXPIRY_SECONDS,
+  METOKEN_QUOTE_SETTLEMENT_GRACE_SECONDS,
   METOKEN_QUOTE_SLIPPAGE_BPS,
 } from './_metoken-curve-config.js'
 import {
@@ -20,6 +21,7 @@ import {
 
 export {
   METOKEN_QUOTE_EXPIRY_SECONDS,
+  METOKEN_QUOTE_SETTLEMENT_GRACE_SECONDS,
   METOKEN_QUOTE_SLIPPAGE_BPS,
 } from './_metoken-curve-config.js'
 
@@ -208,7 +210,9 @@ export async function validateSettlementAgainstQuote(stored: {
   expiresAtMs: number
   slippageBps: number
 }): Promise<{ minAmountWei: bigint }> {
-  if (Date.now() > stored.expiresAtMs) {
+  const settlementDeadlineMs =
+    stored.expiresAtMs + METOKEN_QUOTE_SETTLEMENT_GRACE_SECONDS * 1000
+  if (Date.now() > settlementDeadlineMs) {
     throw new MetokenQuoteError('quote_expired', 'Quote expired — request a new price.')
   }
 
