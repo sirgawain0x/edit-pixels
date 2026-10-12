@@ -9,6 +9,7 @@ import { base } from 'viem/chains'
 import {
   CRTVAI_METOKEN_ADDRESS,
   METOKENS_DIAMOND_ADDRESS,
+  METOKEN_CURVE_RPC_TIMEOUT_MS,
   METOKEN_QUOTE_EXPIRY_SECONDS,
   METOKEN_QUOTE_SETTLEMENT_GRACE_SECONDS,
   METOKEN_QUOTE_SLIPPAGE_BPS,
@@ -57,30 +58,71 @@ function alchemyRpcUrl(): string {
   return key ? `https://base-mainnet.g.alchemy.com/v2/${key}` : 'https://mainnet.base.org'
 }
 
+function isRpcTransportError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  const name = error.name
+  return (
+    name === 'TimeoutError' ||
+    name === 'AbortError' ||
+    name === 'HttpRequestError' ||
+    name === 'SocketClosedError'
+  )
+}
+
+function curveRpcFetch(url: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const timeoutMs = METOKEN_CURVE_RPC_TIMEOUT_MS
+  return fetch(url, {
+    ...init,
+    signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
+  })
+}
+
 function getClient() {
   return createPublicClient({
     chain: base,
-    transport: http(alchemyRpcUrl()),
+    transport: http(alchemyRpcUrl(), {
+      timeout: METOKEN_CURVE_RPC_TIMEOUT_MS,
+      fetchFn: curveRpcFetch,
+    }),
   })
+}
+
+async function withCurveRpcFailClosed<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn()
+  } catch (error) {
+    if (error instanceof MetokenQuoteError) throw error
+    if (isRpcTransportError(error)) {
+      throw new MetokenQuoteError(
+        'quote_unpayable',
+        `CRTVAI curve pricing is temporarily unavailable (${label}).`,
+      )
+    }
+    throw error
+  }
 }
 
 export async function readCurveState(): Promise<CurveState> {
-  const client = getClient()
-  const supplyWei = await client.readContract({
-    address: CRTVAI_METOKEN_ADDRESS,
-    abi: METOKEN_ABI,
-    functionName: 'totalSupply',
+  return withCurveRpcFailClosed('readCurveState', async () => {
+    const client = getClient()
+    const supplyWei = await client.readContract({
+      address: CRTVAI_METOKEN_ADDRESS,
+      abi: METOKEN_ABI,
+      functionName: 'totalSupply',
+    })
+    return { supplyWei, balancePooledUsdc6: 0n }
   })
-  return { supplyWei, balancePooledUsdc6: 0n }
 }
 
 export async function readMeTokensMintedForDeposit(assetsUsdc6: bigint): Promise<bigint> {
-  const client = getClient()
-  return client.readContract({
-    address: METOKENS_DIAMOND_ADDRESS,
-    abi: DIAMOND_ABI,
-    functionName: 'calculateMeTokensMinted',
-    args: [CRTVAI_METOKEN_ADDRESS, assetsUsdc6],
+  return withCurveRpcFailClosed('readMeTokensMintedForDeposit', async () => {
+    const client = getClient()
+    return client.readContract({
+      address: METOKENS_DIAMOND_ADDRESS,
+      abi: DIAMOND_ABI,
+      functionName: 'calculateMeTokensMinted',
+      args: [CRTVAI_METOKEN_ADDRESS, assetsUsdc6],
+    })
   })
 }
 
