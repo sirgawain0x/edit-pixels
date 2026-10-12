@@ -72,7 +72,10 @@
       ],
       "improved": [
         {
-          "title": "Director and render checkout uses the live CRTVAI rate for fairer pricing"
+          "title": "Flow and batch now charge at the live CRTVAI rate at checkout"
+        },
+        {
+          "title": "Director quotes now require you to be signed in"
         },
         {
           "title": "Invalid or inverted storyboard timecodes fall back to equal-split placement with a clear warning"

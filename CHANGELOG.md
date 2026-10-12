@@ -34,7 +34,8 @@ Live Looks brings free on-device camera backgrounds and style filters. Director 
 - Timeline scrubbing cancels cleanly when the window loses focus
 
 ### Improved
-- Director and render checkout uses the live CRTVAI rate for fairer pricing
+- Flow and batch now charge at the live CRTVAI rate at checkout
+- Director quotes now require you to be signed in
 - Invalid or inverted storyboard timecodes fall back to equal-split placement with a clear warning
 - Re-lay on timeline shows a toast confirming crossfade or hard cuts
 - Director batch quotes survive Agent Engine restarts
