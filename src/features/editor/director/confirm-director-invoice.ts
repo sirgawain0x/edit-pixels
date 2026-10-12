@@ -11,7 +11,10 @@ export interface ConfirmDirectorInvoiceArgs {
   invoice: PendingDirectorInvoice
   balance: number
   canPayOnChain: boolean
+  /** Smart account used for on-chain payment and Director stream identity. */
   account?: string
+  /** Privy-linked signer EOA for authenticated quote refresh (not the smart account). */
+  quoteWalletAddress?: string
   getAccessToken: () => Promise<string | null | undefined>
   sendOps: (ops: SmartWalletOp[]) => Promise<{ txHash: string }>
   refreshBalance: () => void
@@ -37,8 +40,17 @@ export interface ConfirmDirectorInvoiceArgs {
 
 // fallow-ignore-next-line complexity
 export async function confirmDirectorInvoice(args: ConfirmDirectorInvoiceArgs): Promise<void> {
-  const { invoice, balance, canPayOnChain, account, getAccessToken, sendOps, refreshBalance, submit } =
-    args
+  const {
+    invoice,
+    balance,
+    canPayOnChain,
+    account,
+    quoteWalletAddress,
+    getAccessToken,
+    sendOps,
+    refreshBalance,
+    submit,
+  } = args
   const { brief, apiPrompt, audioUri, quote: invoiceQuote } = invoice
 
   const token = await getAccessToken()
@@ -46,11 +58,13 @@ export async function confirmDirectorInvoice(args: ConfirmDirectorInvoiceArgs): 
     throw new Error('Connect your wallet to refresh the Director quote.')
   }
 
-  const checkoutQuote =
-    (await fetchDirectorServerQuote(
-      { token, walletAddress: account },
-      { audioDurationSeconds: invoiceQuote.audioDurationSeconds },
-    )) ?? invoiceQuote
+  const checkoutQuote = await fetchDirectorServerQuote(
+    { token, walletAddress: quoteWalletAddress },
+    { audioDurationSeconds: invoiceQuote.audioDurationSeconds },
+  )
+  if (!checkoutQuote) {
+    throw new Error('Could not refresh the Director quote — close the invoice and try again.')
+  }
 
   if (
     checkoutQuote.estimatedUsdc6 !== invoiceQuote.estimatedUsdc6 ||

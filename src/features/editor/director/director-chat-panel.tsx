@@ -166,8 +166,14 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
 
   const { projectId } = useParams({ from: '/editor/$projectId' })
 
-  const { account, connect, authenticated, configured: walletConfigured, getAccessToken } =
-    useWalletContext()
+  const {
+    account,
+    signerAddress,
+    connect,
+    authenticated,
+    configured: walletConfigured,
+    getAccessToken,
+  } = useWalletContext()
   const generativeAuth = useGenerativeAuth()
   const { balance, refreshBalance } = useCredits()
   const { isPremiumMember } = usePremiumMembership(account)
@@ -297,7 +303,7 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
       }
 
       const quote = await fetchDirectorServerQuote(
-        { token, walletAddress: generativeAuth?.walletAddress ?? account },
+        { token, walletAddress: signerAddress },
         { audioDurationSeconds: audioContext.primary.durationSeconds },
       )
       if (!quote) {
@@ -332,6 +338,7 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
       walletConfigured,
       projectId,
       account,
+      signerAddress,
     ],
   )
 
@@ -349,6 +356,7 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
         balance,
         canPayOnChain,
         account,
+        quoteWalletAddress: signerAddress,
         getAccessToken,
         sendOps,
         refreshBalance,
@@ -363,6 +371,7 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
     }
   }, [
     account,
+    signerAddress,
     balance,
     canPayOnChain,
     getAccessToken,
