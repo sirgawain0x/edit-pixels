@@ -1,22 +1,35 @@
 import type { FlowQuote } from './flow-pricing'
+import type { FlowTier } from '@/config/flow'
+import type { NanobananaQuality, VeoQuality } from '@/config/credits'
 
 interface FlowServerQuoteResponse {
+  quoteId: string
+  signature: string
+  expiresAtMs: number
+  slippageBps: number
+  duration: number
+  quality: VeoQuality
+  tier: FlowTier
+  stillCount: number
+  videoCredits: number
+  stillCredits: number
+  totalCredits: number
+  estimatedUsdc6: number
+  formattedUsd: string
   crtvaiRequired: string
   crtvaiDisplay: number
-  formattedUsd: string
-  estimatedUsdc6: number
 }
 
 export async function fetchFlowServerQuote(
   auth: { token: string; walletAddress?: string },
   input: {
     duration: number
-    quality: string
-    tier: string
+    quality: VeoQuality
+    tier: FlowTier
     stillCount: number
-    stillQuality?: string
+    stillQuality?: NanobananaQuality
   },
-): Promise<Pick<FlowQuote, 'crtvaiWei' | 'crtvaiDisplay' | 'formattedUsd' | 'estimatedUsdc6'> | null> {
+): Promise<FlowQuote | null> {
   const response = await fetch('/api/flow-quote', {
     method: 'POST',
     headers: {
@@ -35,10 +48,19 @@ export async function fetchFlowServerQuote(
   })
   if (!response.ok) return null
   const data = (await response.json()) as FlowServerQuoteResponse
+
   return {
+    duration: data.duration,
+    videoCredits: data.videoCredits,
+    stillCredits: data.stillCredits,
+    totalCredits: data.totalCredits,
     estimatedUsdc6: data.estimatedUsdc6,
     crtvaiWei: BigInt(data.crtvaiRequired),
     crtvaiDisplay: data.crtvaiDisplay,
     formattedUsd: data.formattedUsd,
+    quoteId: data.quoteId,
+    signature: data.signature,
+    expiresAtMs: data.expiresAtMs,
+    slippageBps: data.slippageBps,
   }
 }

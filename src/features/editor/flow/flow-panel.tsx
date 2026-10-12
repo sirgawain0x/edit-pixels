@@ -272,29 +272,32 @@ export const FlowPanel = memo(function FlowPanel() {
     try {
       const token = await auth.getAccessToken()
       if (!token) {
-        throw new Error('Wallet auth required for Flow.')
+        throw new Error(t('flow.error.auth', { defaultValue: 'Wallet auth required for Flow.' }))
       }
-      const checkoutQuote =
-        (await fetchFlowServerQuote(
-          { token, walletAddress: auth.walletAddress },
-          {
-            duration,
-            quality: effectiveQuality,
-            tier,
-            stillCount,
-          },
-        )) ?? quote
-      if (checkoutQuote.crtvaiDisplay <= 0) {
-        throw new Error('Could not price this Flow run.')
+      const serverQuote = await fetchFlowServerQuote(
+        { token, walletAddress: auth.walletAddress },
+        {
+          duration: clampFlowDuration(duration),
+          quality: effectiveQuality,
+          tier,
+          stillCount,
+        },
+      )
+      if (!serverQuote || serverQuote.crtvaiWei <= 0n) {
+        throw new Error(
+          t('flow.error.noQuote', { defaultValue: 'Could not price this Flow run — try again.' }),
+        )
       }
-      if (balance < checkoutQuote.crtvaiDisplay) {
+      if (balance < serverQuote.crtvaiDisplay) {
         setBuyOpen(true)
-        throw new Error('Insufficient CRTVAI for this Flow.')
+        throw new Error(
+          t('flow.error.insufficient', { defaultValue: 'Insufficient CRTVAI for this Flow.' }),
+        )
       }
 
       let paymentTxHash: string | undefined
       if (canPayOnChain) {
-        const { txHash } = await sendOps([buildDirectorPaymentOp(checkoutQuote.crtvaiWei)])
+        const { txHash } = await sendOps([buildDirectorPaymentOp(serverQuote.crtvaiWei)])
         paymentTxHash = txHash
         refreshBalance()
       }
@@ -315,6 +318,16 @@ export const FlowPanel = memo(function FlowPanel() {
           : {}),
         stillQuality: '2K',
         ...(paymentTxHash ? { paymentTxHash } : {}),
+        ...(serverQuote.quoteId
+          ? {
+              quoteId: serverQuote.quoteId,
+              quoteSignature: serverQuote.signature,
+              quoteExpiresAtMs: serverQuote.expiresAtMs,
+              quoteSlippageBps: serverQuote.slippageBps,
+              quoteEstimatedUsdc6: serverQuote.estimatedUsdc6,
+              quoteCrtvaiRequired: serverQuote.crtvaiWei.toString(),
+            }
+          : {}),
       })
 
       if (task.startImageUrl) {

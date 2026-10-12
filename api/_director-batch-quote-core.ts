@@ -3,7 +3,7 @@
  */
 // fallow-ignore-file complexity
 
-import { quoteSeedanceSpend } from './_seedance-billing.js'
+import { quoteSeedanceSpend, syncBatchLinkedSeedanceQuoteExpiry } from './_seedance-billing.js'
 import {
   clampFlowDuration,
   quoteFlowTotalCredits,
@@ -163,10 +163,13 @@ export async function quoteDirectorStoryboardBatch(input: {
       return { ok: false, error: `veo quote failed for shot ${mapped.shotId}` }
     }
 
-    const seedanceQuote = await quoteSeedanceSpend({
-      duration: mapped.seedanceDuration,
-      resolution: mapped.resolution,
-    })
+    const seedanceQuote = await quoteSeedanceSpend(
+      {
+        duration: mapped.seedanceDuration,
+        resolution: mapped.resolution,
+      },
+      { batchLinked: true },
+    )
 
     const recommendedProvider = pickDirectorShotProvider(rawShot, input.providerPreference)
     const recommendedWei =
@@ -240,6 +243,11 @@ export async function quoteDirectorStoryboardBatch(input: {
       recommendedMixCrtvaiWei: mixWei.toString(),
     },
   })
+
+  await syncBatchLinkedSeedanceQuoteExpiry(
+    storeShots.map((shot) => shot.seedanceQuoteId),
+    stored.expiresAtMs,
+  )
 
   const allVeoUsdc6 = shotResults.reduce((sum, shot) => sum + shot.veo.estimatedUsdc6, 0)
   const allSeedanceUsdc6 = shotResults.reduce((sum, shot) => sum + shot.seedance.estimatedUsdc6, 0)

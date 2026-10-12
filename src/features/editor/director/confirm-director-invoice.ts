@@ -46,22 +46,31 @@ export async function confirmDirectorInvoice(args: ConfirmDirectorInvoiceArgs): 
     throw new Error('Connect your wallet to refresh the Director quote.')
   }
 
-  const quote =
+  const checkoutQuote =
     (await fetchDirectorServerQuote(
       { token, walletAddress: account },
       { audioDurationSeconds: invoiceQuote.audioDurationSeconds },
     )) ?? invoiceQuote
 
-  if (balance < quote.crtvaiDisplay) {
+  if (
+    checkoutQuote.estimatedUsdc6 !== invoiceQuote.estimatedUsdc6 ||
+    checkoutQuote.tier !== invoiceQuote.tier
+  ) {
+    throw new Error('Director price changed — close the invoice and brief again.')
+  }
+
+  if (balance < checkoutQuote.crtvaiDisplay) {
     throw new Error('Insufficient CRTVAI balance for this Director invoice.')
   }
 
   let paymentTxHash: string | undefined
   if (canPayOnChain) {
-    const { txHash } = await sendOps([buildDirectorPaymentOp(quote.crtvaiWei)])
+    const { txHash } = await sendOps([buildDirectorPaymentOp(checkoutQuote.crtvaiWei)])
     paymentTxHash = txHash
     refreshBalance()
   }
+
+  const quote = checkoutQuote
 
   await submit(brief, {
     apiPrompt,

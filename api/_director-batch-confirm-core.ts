@@ -12,10 +12,20 @@ import {
   isDirectorBatchQuoteConsumed,
   saveDirectorBatchConfirm,
   type DirectorBatchConfirmRecord,
+  type DirectorBatchQuoteRecord,
 } from './_director-batch-store.js'
 import type { PixelsRenderProvider } from './_director-generate-map.js'
-import { isSeedanceBillingEnforced } from './_seedance-billing.js'
+import {
+  getSeedanceQuote,
+  isSeedanceBillingEnforced,
+  resolveSeedanceSettlementMinWei,
+} from './_seedance-billing.js'
 import { isFlowBillingEnforced, verifyFlowPayment } from './flow-billing.js'
+import {
+  METOKEN_QUOTE_SLIPPAGE_BPS,
+  MetokenQuoteError,
+  validateSettlementAgainstQuote,
+} from './_metoken-curve-quote.js'
 
 export interface DirectorBatchConfirmSelection {
   shotId: string
@@ -32,6 +42,41 @@ export interface DirectorBatchConfirmJob {
   crtvaiRequired: string
   pollUrl: string
   generateEndpoint: '/api/seedance-generate' | '/api/pixels-render-veo'
+}
+
+export async function resolveBatchConfirmSettlementMinWei(
+  quote: DirectorBatchQuoteRecord,
+  selections: Array<{ shotId: string; provider: PixelsRenderProvider }>,
+): Promise<bigint> {
+  const shotById = new Map(quote.shots.map((shot) => [shot.shotId, shot]))
+  let total = 0n
+
+  for (const selection of selections) {
+    const shotId = selection.shotId.trim()
+    const shot = shotById.get(shotId)
+    if (!shot) {
+      throw new MetokenQuoteError('quote_invalid', 'Batch shot not found for settlement')
+    }
+
+    if (selection.provider === 'seedance') {
+      const stored = await getSeedanceQuote(shot.seedanceQuoteId)
+      if (!stored) {
+        throw new MetokenQuoteError('quote_invalid', 'Seedance quote expired — refresh batch quote.')
+      }
+      total += await resolveSeedanceSettlementMinWei(stored)
+      continue
+    }
+
+    const { minAmountWei } = await validateSettlementAgainstQuote({
+      estimatedUsdc6: shot.veoUsdc6,
+      minCrtvaiWei: BigInt(shot.veoCrtvaiWei),
+      expiresAtMs: quote.expiresAtMs,
+      slippageBps: METOKEN_QUOTE_SLIPPAGE_BPS,
+    })
+    total += minAmountWei
+  }
+
+  return total
 }
 
 export interface DirectorBatchConfirmResult {
@@ -90,10 +135,19 @@ export async function confirmDirectorStoryboardBatch(input: {
     if (!tx) {
       return { ok: false, error: 'payment_required', status: 402 }
     }
+    let minAmountWei: bigint
+    try {
+      minAmountWei = await resolveBatchConfirmSettlementMinWei(quote, input.selections)
+    } catch (error) {
+      const message =
+        error instanceof MetokenQuoteError ? error.message : 'Batch quote validation failed'
+      return { ok: false, error: message, status: 402 }
+    }
+
     const verified = await verifyFlowPayment({
       txHash: tx,
       from: input.wallet,
-      minAmountWei: binding.totalCrtvaiWei,
+      minAmountWei,
       purpose: 'pixels-director-batch',
     })
     if (!verified.ok) {

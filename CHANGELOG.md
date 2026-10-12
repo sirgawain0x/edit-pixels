@@ -4,11 +4,12 @@ All notable changes to Creative Pixels. Weekly CalVer: `YYYY.MM.DD` = the Monday
 
 <!-- Entries below are generated via the `changelog` skill. Newest first. -->
 
-## [Current] — week of 2026-09-15
+## [Current] — week of 2026-10-12
 
-Generate AI video from text, batch-render Director storyboards, and drop finished shots onto your timeline. Paid Generate now walks you through quote → pay → render with clearer errors when something fails.
+Live Looks brings free on-device camera backgrounds and style filters. Director and render checkout now follow the live CRTVAI rate, and Director pack copy is corrected.
 
 ### Added
+- Live Looks — free on-device camera background blur and replacement, plus style filters, in all nine app languages
 - Phone-friendly Projects hub — menu sheet for Docs, Discord, GitHub, language, workspace, and import; wallet and New stay in the top bar
 - Generate video from text with Seedance or Veo, then drop the clip onto the timeline
 - Director "Render all shots" — one quote and confirm, live progress, retry failed shots, import to the media library
@@ -26,12 +27,14 @@ Generate AI video from text, batch-render Director storyboards, and drop finishe
 - Keyframes pushed outside a clip are flagged with one-click cleanup
 
 ### Fixed
+- Director credit pack copy matches what you receive at checkout
 - A clear "project not found" screen with copyable details instead of a crash
 - Captions keep their transcript boundaries when edited
 - Playhead stays locked to the cursor during edge scrolling
 - Timeline scrubbing cancels cleanly when the window loses focus
 
 ### Improved
+- Director and render checkout uses the live CRTVAI rate for fairer pricing
 - Invalid or inverted storyboard timecodes fall back to equal-split placement with a clear warning
 - Re-lay on timeline shows a toast confirming crossfade or hard cuts
 - Director batch quotes survive Agent Engine restarts

@@ -8,6 +8,7 @@ import {
   clampFlowDuration,
   normalizeVeoQuality,
   quoteFlowTotalCredits,
+  quoteNanobananaCredits,
   type NanobananaQuality,
   type VeoTier,
 } from './_generative-pricing.js'
@@ -70,6 +71,16 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json({ error: 'quote_unpayable' }, { status: 402 })
     }
 
+    const videoCredits = quoteFlowTotalCredits({
+      duration,
+      quality: qualityRaw,
+      tier,
+      stillCount: 0,
+      stillQuality,
+    })
+    const stillCredits =
+      stillCount > 0 ? stillCount * quoteNanobananaCredits(stillQuality) : 0
+
     return Response.json({
       quoteId: quote.quoteId,
       signature: quote.signature,
@@ -79,6 +90,9 @@ export async function POST(request: Request): Promise<Response> {
       quality,
       tier,
       stillCount,
+      videoCredits,
+      stillCredits,
+      totalCredits,
       estimatedUsdc6: quote.estimatedUsdc6,
       formattedUsd: `$${(quote.estimatedUsdc6 / 1_000_000).toFixed(2)}`,
       crtvaiRequired: quote.minCrtvaiWei.toString(),
