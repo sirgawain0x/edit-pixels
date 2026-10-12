@@ -1,13 +1,27 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
+/** Stable CRTVAI wei for mocked curve reads (avoids live Base RPC in unit tests). */
+const MOCK_CRTVAI_MINTED_WEI = 298_570_000_000_000_000n
+
+async function mockCurveReadsForBatchTests(): Promise<void> {
+  const curve = await import('../../../../api/_metoken-curve-quote.js')
+  vi.spyOn(curve, 'readCurveState').mockResolvedValue({
+    supplyWei: MOCK_CRTVAI_MINTED_WEI,
+    balancePooledUsdc6: 0n,
+  })
+  vi.spyOn(curve, 'readMeTokensMintedForDeposit').mockResolvedValue(MOCK_CRTVAI_MINTED_WEI)
+}
+
 describe('director batch bridge', () => {
   const originalVercel = process.env.VERCEL
 
-  beforeEach(() => {
+  beforeEach(async () => {
     delete process.env.VERCEL
+    await mockCurveReadsForBatchTests()
   })
 
   afterEach(async () => {
+    vi.restoreAllMocks()
     const { __resetDirectorBatchStoreForTest } =
       await import('../../../../api/_director-batch-store')
     __resetDirectorBatchStoreForTest()

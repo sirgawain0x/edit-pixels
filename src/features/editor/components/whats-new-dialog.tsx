@@ -8,6 +8,11 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/shared/ui/cn'
 import changelogData from '@/data/changelog.json'
+import {
+  formatChangelogCalendarDate,
+  formatChangelogWeekRange,
+  getWhatsNewEntries,
+} from '@/data/changelog-display'
 import type { ChangelogEntry, ChangelogFile, ChangelogGroup } from '@/data/changelog-types'
 import { markChangelogSeen } from './whats-new-seen'
 
@@ -32,30 +37,15 @@ function formatEntryLabel(entry: ChangelogEntry): string {
   return entry.version === 'current' ? i18n.t('editor.whatsNew.thisWeek') : entry.version
 }
 
-function formatWeekRange(mondayIso: string): string {
-  const monday = new Date(`${mondayIso}T00:00:00Z`)
-  const sunday = new Date(monday.getTime() + 6 * 24 * 60 * 60 * 1000)
-  const fmt = new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: 'numeric',
-  })
-  return `${fmt.format(monday)} — ${fmt.format(sunday)}`
-}
-
 function formatEntrySubtitle(entry: ChangelogEntry): string {
   if (entry.subtitleKey) return i18n.t(`changelog.${entry.subtitleKey}`)
   if (entry.version === 'current')
-    return i18n.t('editor.whatsNew.asOf', { date: formatSingleDate(entry.date) })
-  return i18n.t('editor.whatsNew.weekOf', { range: formatWeekRange(entry.date) })
-}
-
-function formatSingleDate(iso: string): string {
-  const d = new Date(`${iso}T00:00:00Z`)
-  return new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  }).format(d)
+    return i18n.t('editor.whatsNew.asOf', {
+      date: formatChangelogCalendarDate(entry.date),
+    })
+  return i18n.t('editor.whatsNew.weekOf', {
+    range: formatChangelogWeekRange(entry.date),
+  })
 }
 
 interface WhatsNewDialogProps {
@@ -65,10 +55,7 @@ interface WhatsNewDialogProps {
 
 export function WhatsNewDialog({ open, onOpenChange }: WhatsNewDialogProps) {
   const { t } = useTranslation()
-  const entries = useMemo<ChangelogEntry[]>(
-    () => (data.current ? [data.current, ...data.releases] : data.releases),
-    [],
-  )
+  const entries = useMemo<ChangelogEntry[]>(() => getWhatsNewEntries(data), [])
 
   const [selectedVersion, setSelectedVersion] = useState<string>(() => entries[0]?.version ?? '')
 

@@ -4,11 +4,24 @@
 // fallow-ignore-file complexity,unused-export
 
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto'
-import { createPublicClient, http, parseAbi, type Hex } from 'viem'
+import {
+  BaseError,
+  ContractFunctionRevertedError,
+  createPublicClient,
+  ExecutionRevertedError,
+  http,
+  HttpRequestError,
+  parseAbi,
+  RpcRequestError,
+  SocketClosedError,
+  TimeoutError,
+  type Hex,
+} from 'viem'
 import { base } from 'viem/chains'
 import {
   CRTVAI_METOKEN_ADDRESS,
   METOKENS_DIAMOND_ADDRESS,
+  METOKEN_CURVE_RPC_TIMEOUT_MS,
   METOKEN_QUOTE_EXPIRY_SECONDS,
   METOKEN_QUOTE_SETTLEMENT_GRACE_SECONDS,
   METOKEN_QUOTE_SLIPPAGE_BPS,
@@ -57,30 +70,144 @@ function alchemyRpcUrl(): string {
   return key ? `https://base-mainnet.g.alchemy.com/v2/${key}` : 'https://mainnet.base.org'
 }
 
+const RPC_TRANSPORT_CAUSE_MAX_DEPTH = 32
+
+function isAbortError(error: unknown): boolean {
+  if (typeof DOMException !== 'undefined' && error instanceof DOMException) {
+    return error.name === 'AbortError'
+  }
+  return error instanceof Error && error.name === 'AbortError'
+}
+
+/** ABI revert return data: `0x` + at least a 4-byte selector (see viem `getContractError`). */
+const REVERT_RETURN_DATA_HEX = /^0x[0-9a-fA-F]{8,}$/
+
+function rpcRevertReturnData(data: unknown): boolean {
+  if (typeof data === 'string') return REVERT_RETURN_DATA_HEX.test(data)
+  if (data && typeof data === 'object' && 'data' in data) {
+    const nested = (data as { data?: unknown }).data
+    return typeof nested === 'string' && REVERT_RETURN_DATA_HEX.test(nested)
+  }
+  return false
+}
+
+function rpcRequestLooksLikeExecutionRevert(error: RpcRequestError): boolean {
+  if (error.code === ExecutionRevertedError.code) return true
+
+  const details = error.details ?? ''
+  const message = error.shortMessage ?? error.message ?? ''
+  if (
+    ExecutionRevertedError.nodeMessage.test(details) ||
+    ExecutionRevertedError.nodeMessage.test(message)
+  ) {
+    return true
+  }
+
+  if (
+    error.code === -32_000 &&
+    details === 'execution reverted' &&
+    rpcRevertReturnData(error.data)
+  ) {
+    return true
+  }
+
+  return rpcRevertReturnData(error.data)
+}
+
+function isContractRevertError(error: unknown): boolean {
+  if (error instanceof ContractFunctionRevertedError) return true
+  if (error instanceof ExecutionRevertedError) return true
+  if (error instanceof RpcRequestError) return rpcRequestLooksLikeExecutionRevert(error)
+  return false
+}
+
+function isTransportErrorNode(error: unknown): boolean {
+  if (isContractRevertError(error)) return false
+  if (error instanceof TimeoutError) return true
+  if (error instanceof HttpRequestError) return true
+  if (error instanceof SocketClosedError) return true
+  if (isAbortError(error)) return true
+  if (error instanceof RpcRequestError) return true
+  return false
+}
+
+function readErrorCause(error: unknown): unknown {
+  if (!error || typeof error !== 'object' || !('cause' in error)) return undefined
+  return (error as { cause?: unknown }).cause
+}
+
+/** True when an RPC/HTTP failure should fail closed as `quote_unpayable` (not contract reverts). */
+export function isRpcTransportError(error: unknown): boolean {
+  if (error instanceof BaseError) {
+    if (error.walk((e) => isContractRevertError(e))) return false
+    if (error.walk((e) => isTransportErrorNode(e))) return true
+    return false
+  }
+
+  let current: unknown = error
+  for (let depth = 0; depth < RPC_TRANSPORT_CAUSE_MAX_DEPTH && current != null; depth++) {
+    if (current instanceof BaseError) return isRpcTransportError(current)
+    if (isContractRevertError(current)) return false
+    if (isTransportErrorNode(current)) return true
+    current = readErrorCause(current)
+  }
+  return false
+}
+
+function curveRpcFetch(url: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const timeoutMs = METOKEN_CURVE_RPC_TIMEOUT_MS
+  return fetch(url, {
+    ...init,
+    signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
+  })
+}
+
 function getClient() {
   return createPublicClient({
     chain: base,
-    transport: http(alchemyRpcUrl()),
+    transport: http(alchemyRpcUrl(), {
+      timeout: METOKEN_CURVE_RPC_TIMEOUT_MS,
+      fetchFn: curveRpcFetch,
+    }),
   })
+}
+
+async function withCurveRpcFailClosed<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn()
+  } catch (error) {
+    if (error instanceof MetokenQuoteError) throw error
+    if (isRpcTransportError(error)) {
+      throw new MetokenQuoteError(
+        'quote_unpayable',
+        `CRTVAI curve pricing is temporarily unavailable (${label}).`,
+      )
+    }
+    throw error
+  }
 }
 
 export async function readCurveState(): Promise<CurveState> {
-  const client = getClient()
-  const supplyWei = await client.readContract({
-    address: CRTVAI_METOKEN_ADDRESS,
-    abi: METOKEN_ABI,
-    functionName: 'totalSupply',
+  return withCurveRpcFailClosed('readCurveState', async () => {
+    const client = getClient()
+    const supplyWei = await client.readContract({
+      address: CRTVAI_METOKEN_ADDRESS,
+      abi: METOKEN_ABI,
+      functionName: 'totalSupply',
+    })
+    return { supplyWei, balancePooledUsdc6: 0n }
   })
-  return { supplyWei, balancePooledUsdc6: 0n }
 }
 
 export async function readMeTokensMintedForDeposit(assetsUsdc6: bigint): Promise<bigint> {
-  const client = getClient()
-  return client.readContract({
-    address: METOKENS_DIAMOND_ADDRESS,
-    abi: DIAMOND_ABI,
-    functionName: 'calculateMeTokensMinted',
-    args: [CRTVAI_METOKEN_ADDRESS, assetsUsdc6],
+  return withCurveRpcFailClosed('readMeTokensMintedForDeposit', async () => {
+    const client = getClient()
+    return client.readContract({
+      address: METOKENS_DIAMOND_ADDRESS,
+      abi: DIAMOND_ABI,
+      functionName: 'calculateMeTokensMinted',
+      args: [CRTVAI_METOKEN_ADDRESS, assetsUsdc6],
+    })
   })
 }
 
