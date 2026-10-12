@@ -22,7 +22,7 @@ export async function POST(request: Request): Promise<Response> {
 
   const authenticated = await authenticateGenerativePost(request)
   if (!authenticated.ok) return authenticated.response
-  const { payer, body } = authenticated
+  const { signer, payer, body } = authenticated
 
   const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
   if (!prompt) {

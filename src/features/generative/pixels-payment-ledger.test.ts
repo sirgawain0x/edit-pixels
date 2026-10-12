@@ -18,7 +18,7 @@ vi.mock('../../../api/_redis-client.js', () => ({
   }),
 }))
 
-const { consumePaymentTxLog } = await import('../../../api/_payment-ledger.js')
+const { consumePaymentTxLog, releasePaymentTxLog } = await import('../../../api/_payment-ledger.js')
 
 describe('consumePaymentTxLog', () => {
   beforeEach(() => {
@@ -40,5 +40,31 @@ describe('consumePaymentTxLog', () => {
     })
     expect(second.ok).toBe(false)
     if (!second.ok) expect(second.reason).toMatch(/already used/i)
+  })
+
+  it('allows two users in one bundler tx; release one log only', async () => {
+    const txHash = `0x${'cd'.repeat(32)}`
+    const userA = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    const userB = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+
+    const a = await consumePaymentTxLog(txHash, 1, { wallet: userA, purpose: 'director' })
+    const b = await consumePaymentTxLog(txHash, 3, { wallet: userB, purpose: 'director' })
+    expect(a.ok).toBe(true)
+    expect(b.ok).toBe(true)
+
+    await releasePaymentTxLog(txHash, 1)
+
+    const replayReleased = await consumePaymentTxLog(txHash, 1, {
+      wallet: userA,
+      purpose: 'director-retry',
+    })
+    expect(replayReleased.ok).toBe(true)
+
+    const replayStillConsumed = await consumePaymentTxLog(txHash, 3, {
+      wallet: userB,
+      purpose: 'director-replay',
+    })
+    expect(replayStillConsumed.ok).toBe(false)
+    if (!replayStillConsumed.ok) expect(replayStillConsumed.reason).toMatch(/already used/i)
   })
 })

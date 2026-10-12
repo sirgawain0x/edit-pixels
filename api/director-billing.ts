@@ -10,7 +10,7 @@ import { base } from 'viem/chains'
 import { isPremiumWallet } from './_premium-membership.js'
 import {
   isPaymentLedgerReady,
-  releasePaymentTxHash,
+  releasePaymentTxLog,
 } from './_payment-ledger.js'
 import { assertPaymentPayerMatchesSigner } from './_pixels-payment-payer.js'
 import { verifyCrtvaiPaymentFromReceipt } from './_pixels-crtvai-payment.js'
@@ -154,7 +154,7 @@ function alchemyRpcUrl(): string {
 }
 
 export type PaymentVerifyResult =
-  | { ok: true; amountWei: bigint; logIndex?: number }
+  | { ok: true; amountWei: bigint; logIndex: number }
   | { ok: false; reason: string; httpStatus?: number }
 
 /**
@@ -165,7 +165,7 @@ export async function verifyDirectorPayment(options: {
   txHash: string
   from: string
   minAmountWei: bigint
-  verifiedSignerAddress?: string
+  verifiedSignerAddress: string
 }): Promise<PaymentVerifyResult> {
   const treasury = getDirectorTreasury()
   if (!treasury) return { ok: false, reason: 'Treasury not configured' }
@@ -175,7 +175,7 @@ export async function verifyDirectorPayment(options: {
   }
 
   const payer = options.from.trim()
-  const signer = options.verifiedSignerAddress?.trim() ?? payer
+  const signer = options.verifiedSignerAddress.trim()
   if (!payer.startsWith('0x') || payer.length < 42) {
     return { ok: false, reason: 'Invalid wallet address' }
   }
@@ -218,31 +218,29 @@ export async function verifyAndConsumeDirectorPayment(options: {
   from: string
   minAmountWei: bigint
   purpose: string
-  verifiedSignerAddress?: string
+  verifiedSignerAddress: string
 }): Promise<PaymentVerifyResult> {
   if (isDirectorBillingEnforced() && !isPaymentLedgerReady()) {
     return { ok: false, reason: 'Payment ledger unavailable (configure Upstash/Vercel KV)' }
   }
 
-  if (options.verifiedSignerAddress) {
-    const payerBinding = assertPaymentPayerMatchesSigner(
-      options.from,
-      options.verifiedSignerAddress,
-    )
-    if (!payerBinding.ok) {
-      return { ok: false, reason: payerBinding.reason, httpStatus: 403 }
-    }
+  const payerBinding = assertPaymentPayerMatchesSigner(
+    options.from,
+    options.verifiedSignerAddress,
+  )
+  if (!payerBinding.ok) {
+    return { ok: false, reason: payerBinding.reason, httpStatus: 403 }
   }
 
   const verified = await verifyDirectorPayment({
     txHash: options.txHash,
     from: options.from,
     minAmountWei: options.minAmountWei,
-    verifiedSignerAddress: options.verifiedSignerAddress ?? options.from,
+    verifiedSignerAddress: options.verifiedSignerAddress,
   })
   if (!verified.ok) return verified
 
-  const logIndex = verified.logIndex ?? 0
+  const logIndex = verified.logIndex
 
   if (isDirectorBillingEnforced()) {
     try {
@@ -262,7 +260,7 @@ export async function verifyAndConsumeDirectorPayment(options: {
   return verified
 }
 
-/** Undo a consumed payment hash after a pre-delivery Director failure. */
-export async function releaseDirectorPayment(txHash: string): Promise<void> {
-  await releasePaymentTxHash(txHash)
+/** Undo a consumed payment log after a pre-delivery Director failure. */
+export async function releaseDirectorPayment(txHash: string, logIndex: number): Promise<void> {
+  await releasePaymentTxLog(txHash, logIndex)
 }

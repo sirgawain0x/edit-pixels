@@ -28,7 +28,7 @@ export async function verifyGenerativeCrtvaiPayment(options: {
   payer: string
   quote: Pick<FlowCreditsQuote, 'minCrtvaiWei'>
   purpose: string
-}): Promise<{ ok: true } | { ok: false; reason: string }> {
+}): Promise<{ ok: true; logIndex: number } | { ok: false; reason: string }> {
   const verified = await verifyFlowPayment({
     txHash: options.paymentTxHash,
     from: options.payer,
@@ -39,5 +39,5 @@ export async function verifyGenerativeCrtvaiPayment(options: {
   if (!verified.ok) {
     return { ok: false, reason: verified.reason }
   }
-  return { ok: true }
+  return { ok: true, logIndex: verified.logIndex }
 }

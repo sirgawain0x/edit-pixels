@@ -25,6 +25,8 @@ export interface PixelsGenerateJob {
   veoTaskId?: string
   /** Treasury CRTVAI transfer consumed for this job. */
   paymentTxHash?: string
+  /** Transfer log index within `paymentTxHash` (anti-replay key). */
+  paymentLogIndex?: number
   /** True after releaseFlowPayment succeeds for this job. */
   paymentReleased?: boolean
   output?: { video_url?: string }

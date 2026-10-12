@@ -185,7 +185,10 @@ export async function POST(request: Request): Promise<Response> {
         )
         return Response.json({ error: verified.reason }, { status: 402 })
       }
-      await updatePixelsGenerateJob(requestId, { paymentTxHash })
+      await updatePixelsGenerateJob(requestId, {
+        paymentTxHash,
+        paymentLogIndex: verified.logIndex,
+      })
     }
   } else {
     try {

@@ -94,8 +94,8 @@ export async function quoteDirectorForReuse(
 }
 
 /** Undo a consumed payment hash after a pre-delivery generative failure. */
-export async function releaseFlowPayment(txHash: string): Promise<void> {
-  await releaseDirectorPayment(txHash)
+export async function releaseFlowPayment(txHash: string, logIndex: number): Promise<void> {
+  await releaseDirectorPayment(txHash, logIndex)
 }
 
 /** Verify treasury transfer and mark tx consumed for `purpose`. */
@@ -104,7 +104,7 @@ export async function verifyFlowPayment(options: {
   from: string
   minAmountWei: bigint
   purpose?: string
-  verifiedSignerAddress?: string
+  verifiedSignerAddress: string
 }): Promise<PaymentVerifyResult> {
   return verifyAndConsumeDirectorPayment({
     txHash: options.txHash,

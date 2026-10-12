@@ -254,12 +254,13 @@ async function assertDirectorPayment(data: ParsedDirectorRequest): Promise<
   | { error: Response }
   | {
       paymentTxHash: string | null
+      paymentLogIndex: number | null
       quote: DirectorBillingQuote | null
       audioSeconds: number | null
     }
 > {
   if (!isDirectorBillingEnforced()) {
-    return { paymentTxHash: null, quote: null, audioSeconds: null }
+    return { paymentTxHash: null, paymentLogIndex: null, quote: null, audioSeconds: null }
   }
 
   const billable = await resolveBillableAudioSeconds(data)
@@ -278,6 +279,12 @@ async function assertDirectorPayment(data: ParsedDirectorRequest): Promise<
   ) {
     return {
       error: Response.json({ error: 'Director quote mismatch — refresh and try again.' }, { status: 402 }),
+    }
+  }
+
+  if (!data.verifiedSignerAddress) {
+    return {
+      error: Response.json({ error: 'Director signer identity required' }, { status: 403 }),
     }
   }
 
@@ -328,6 +335,7 @@ async function assertDirectorPayment(data: ParsedDirectorRequest): Promise<
 
   return {
     paymentTxHash: data.paymentTxHash,
+    paymentLogIndex: verified.logIndex,
     quote,
     audioSeconds: billable.seconds,
   }
@@ -339,7 +347,12 @@ async function handleDirectorAdkPost(
   data: ParsedDirectorRequest,
   adkBase: string,
   message: string,
-  payment: Awaited<ReturnType<typeof assertDirectorPayment>>,
+  payment: {
+    paymentTxHash: string | null
+    paymentLogIndex: number | null
+    quote: DirectorBillingQuote | null
+    audioSeconds: number | null
+  },
   persistCtx: DirectorPersistContext,
   reservedPaymentTxHash: string | null,
   releaseReservedPayment: () => Promise<void>,
@@ -554,6 +567,7 @@ function buildPersistContext(data: ParsedDirectorRequest): DirectorPersistContex
 
 interface ReservedDirectorPayment {
   txHash: string | null
+  logIndex: number | null
 }
 
 // fallow-ignore-next-line complexity
@@ -573,7 +587,9 @@ async function handleDirectorPost(
   const payment = await assertDirectorPayment(parsed.data)
   if ('error' in payment) return payment.error
   const reservedPaymentTxHash = payment.paymentTxHash
+  const reservedPaymentLogIndex = payment.paymentLogIndex
   reserved.txHash = reservedPaymentTxHash
+  reserved.logIndex = reservedPaymentLogIndex
   const persistCtx = buildPersistContext(parsed.data)
   logDirectorStage('payment_consumed', {
     paymentTxHash: reservedPaymentTxHash,
@@ -584,9 +600,14 @@ async function handleDirectorPost(
   })
 
   const releaseReservedPayment = async () => {
-    if (reservedPaymentTxHash) {
-      await releaseDirectorPayment(reservedPaymentTxHash).catch(() => undefined)
-      logDirectorStage('payment_released', { paymentTxHash: reservedPaymentTxHash })
+    if (reservedPaymentTxHash != null && reservedPaymentLogIndex != null) {
+      await releaseDirectorPayment(reservedPaymentTxHash, reservedPaymentLogIndex).catch(
+        () => undefined,
+      )
+      logDirectorStage('payment_released', {
+        paymentTxHash: reservedPaymentTxHash,
+        paymentLogIndex: reservedPaymentLogIndex,
+      })
     }
   }
 
@@ -696,15 +717,16 @@ async function handleDirectorPost(
 }
 
 export async function POST(request: Request): Promise<Response> {
-  const reserved: ReservedDirectorPayment = { txHash: null }
+  const reserved: ReservedDirectorPayment = { txHash: null, logIndex: null }
   try {
     return await handleDirectorPost(request, reserved)
   } catch (error) {
     console.error('Director request failed', error)
-    if (reserved.txHash) {
-      await releaseDirectorPayment(reserved.txHash).catch(() => undefined)
+    if (reserved.txHash != null && reserved.logIndex != null) {
+      await releaseDirectorPayment(reserved.txHash, reserved.logIndex).catch(() => undefined)
       logDirectorStage('payment_released', {
         paymentTxHash: reserved.txHash,
+        paymentLogIndex: reserved.logIndex,
         reason: 'uncaught',
       })
     }

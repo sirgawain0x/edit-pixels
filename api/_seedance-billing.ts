@@ -284,7 +284,7 @@ export async function verifySeedancePayment(options: {
   txHash: string
   from: string
   minAmountWei: bigint
-  verifiedSignerAddress?: string
+  verifiedSignerAddress: string
 }): Promise<PaymentVerifyResult> {
   return verifyFlowPayment({
     txHash: options.txHash,
