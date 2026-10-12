@@ -11,10 +11,8 @@ export interface ConfirmDirectorInvoiceArgs {
   invoice: PendingDirectorInvoice
   balance: number
   canPayOnChain: boolean
-  /** Smart account used for on-chain payment and Director stream identity. */
+  /** Smart account used for on-chain CRTVAI payment (payer only). */
   account?: string
-  /** Privy-linked signer EOA for authenticated quote refresh (not the smart account). */
-  quoteWalletAddress?: string
   getAccessToken: () => Promise<string | null | undefined>
   sendOps: (ops: SmartWalletOp[]) => Promise<{ txHash: string }>
   refreshBalance: () => void
@@ -26,6 +24,7 @@ export interface ConfirmDirectorInvoiceArgs {
       audioDurationSeconds?: number
       paymentTxHash?: string
       walletAddress?: string
+      accessToken?: string
       projectId?: string
       quoteId?: string
       quoteSignature?: string
@@ -40,17 +39,8 @@ export interface ConfirmDirectorInvoiceArgs {
 
 // fallow-ignore-next-line complexity
 export async function confirmDirectorInvoice(args: ConfirmDirectorInvoiceArgs): Promise<void> {
-  const {
-    invoice,
-    balance,
-    canPayOnChain,
-    account,
-    quoteWalletAddress,
-    getAccessToken,
-    sendOps,
-    refreshBalance,
-    submit,
-  } = args
+  const { invoice, balance, canPayOnChain, account, getAccessToken, sendOps, refreshBalance, submit } =
+    args
   const { brief, apiPrompt, audioUri, quote: invoiceQuote } = invoice
 
   const token = await getAccessToken()
@@ -59,7 +49,7 @@ export async function confirmDirectorInvoice(args: ConfirmDirectorInvoiceArgs): 
   }
 
   const checkoutQuote = await fetchDirectorServerQuote(
-    { token, walletAddress: quoteWalletAddress },
+    { token },
     { audioDurationSeconds: invoiceQuote.audioDurationSeconds },
   )
   if (!checkoutQuote) {
@@ -88,6 +78,7 @@ export async function confirmDirectorInvoice(args: ConfirmDirectorInvoiceArgs): 
 
   await submit(brief, {
     apiPrompt,
+    accessToken: token,
     ...(audioUri ? { audioUri } : {}),
     audioDurationSeconds: quote.audioDurationSeconds,
     ...(paymentTxHash ? { paymentTxHash } : {}),

@@ -77,14 +77,13 @@ export class PixelsGenerateApiError extends Error {
 async function withAuth<T extends Record<string, unknown>>(
   params: SignedRequestParams,
   payload: T,
-): Promise<T & { walletAddress: `0x${string}`; token: string }> {
+): Promise<T & { token: string }> {
   const token = await params.getAccessToken()
   if (!token) {
     throw new Error('Not authenticated')
   }
   return {
     ...payload,
-    walletAddress: params.walletAddress,
     token,
   }
 }

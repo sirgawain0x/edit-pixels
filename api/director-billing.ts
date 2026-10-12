@@ -189,7 +189,16 @@ export async function verifyDirectorPayment(options: {
       return { ok: false, reason: 'Payment transaction failed' }
     }
 
+    const txSender = (await client.getTransaction({ hash: options.txHash as Hex })).from.toLowerCase()
     const fromPad = `0x000000000000000000000000${from.slice(2)}`.toLowerCase()
+    if (txSender !== from && !receipt.logs.some(
+      (log) =>
+        log.address.toLowerCase() === CRTVAI_DIAMOND.toLowerCase() &&
+        log.topics[1]?.toLowerCase() === fromPad,
+    )) {
+      return { ok: false, reason: 'Payment sender does not match payer wallet' }
+    }
+
     const toPad = `0x000000000000000000000000${to.slice(2)}`.toLowerCase()
 
     const logs = receipt.logs.filter(

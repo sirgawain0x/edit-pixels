@@ -20,7 +20,7 @@ interface DirectorServerQuoteResponse {
 }
 
 export async function fetchDirectorServerQuote(
-  auth: { token: string; walletAddress?: string },
+  auth: { token: string },
   input: { audioDurationSeconds: number },
 ): Promise<DirectorQuote | null> {
   const response = await fetch('/api/director-quote', {
@@ -31,7 +31,6 @@ export async function fetchDirectorServerQuote(
     },
     body: JSON.stringify({
       token: auth.token,
-      walletAddress: auth.walletAddress,
       audioDurationSeconds: input.audioDurationSeconds,
     }),
   })

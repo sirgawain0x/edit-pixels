@@ -55,12 +55,9 @@ describe('POST /api/director-quote', () => {
     expect(response.status).toBe(401)
   })
 
-  it('quotes using the verified Privy wallet, not a spoofed smart-account body address', async () => {
-    verifyPrivyAccessToken.mockImplementation(async (_token, expectedAddress) => {
-      if (expectedAddress?.toLowerCase() === '0xsmartaccount00000000000000000000000001') {
-        return null
-      }
-      return { address: '0xlinkedsigner00000000000000000000000001' as `0x${string}` }
+  it('ignores a client walletAddress and prices from the verified Privy signer', async () => {
+    verifyPrivyAccessToken.mockResolvedValue({
+      address: '0xlinkedsigner00000000000000000000000001' as `0x${string}`,
     })
 
     const { quoteDirectorForWallet } = await import('../../../../api/director-billing.js')
@@ -70,9 +67,9 @@ describe('POST /api/director-quote', () => {
       expiresAtMs: Date.now() + 75_000,
       slippageBps: 250,
       billableMinutes: 1,
-      estimatedUsdc6: 50_000,
+      estimatedUsdc6: 25_000,
       minCrtvaiWei: 950_000_000_000_000_000n,
-      tier: 'retail',
+      tier: 'premium',
     })
 
     const { POST } = await import('../../../../api/director-quote.js')
@@ -90,30 +87,13 @@ describe('POST /api/director-quote', () => {
       }),
     )
 
-    expect(response.status).toBe(401)
-    expect(quoteDirectorForWallet).not.toHaveBeenCalled()
-
-    verifyPrivyAccessToken.mockImplementation(async () => ({
-      address: '0xlinkedsigner00000000000000000000000001' as `0x${string}`,
-    }))
-
-    const ok = await POST(
-      new Request('http://localhost/api/director-quote', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer good-token',
-        },
-        body: JSON.stringify({
-          audioDurationSeconds: 60,
-          walletAddress: '0xLinkedSigner00000000000000000000000001',
-        }),
-      }),
-    )
-    expect(ok.status).toBe(200)
+    expect(response.status).toBe(200)
+    expect(verifyPrivyAccessToken).toHaveBeenCalledWith('good-token', undefined)
     expect(quoteDirectorForWallet).toHaveBeenCalledWith(
       60,
       '0xlinkedsigner00000000000000000000000001',
     )
+    const body = (await response.json()) as { tier: string }
+    expect(body.tier).toBe('premium')
   })
 })

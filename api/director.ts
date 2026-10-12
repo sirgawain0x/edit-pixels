@@ -33,7 +33,8 @@ import {
   isDirectorUpstreamAuthFailure,
   vertexAuthFailureMessage,
 } from './_vertex-auth.js'
-import { assertDirectorAuthorized } from './_director-auth.js'
+import { isDirectorSecretAuthorized } from './_director-auth.js'
+import { authorizePixelsGeneratePost } from './_pixels-generate-api-auth.js'
 import {
   isDirectorBillingEnforced,
   quoteDirectorForWallet,
@@ -89,7 +90,10 @@ interface ParsedDirectorRequest {
   audioUri?: string
   audioDurationSeconds?: number
   paymentTxHash?: string
+  /** CRTVAI payer (smart account) — not used for tier / Unlock pricing. */
   walletAddress?: string
+  /** Privy-verified signer used for tier and re-quote (never from client body). */
+  verifiedSignerAddress?: string
   billingQuote?: DirectorBillingQuote
 }
 
@@ -120,16 +124,10 @@ function logDirectorStage(
 }
 
 // fallow-ignore-next-line complexity
-async function parseDirectorRequest(
-  request: Request,
-): Promise<{ ok: true; data: ParsedDirectorRequest } | { ok: false; response: Response }> {
-  let body: DirectorRequestBody
-  try {
-    body = (await request.json()) as DirectorRequestBody
-  } catch {
-    return { ok: false, response: Response.json({ error: 'Invalid JSON body' }, { status: 400 }) }
-  }
-
+function parseDirectorBody(
+  body: DirectorRequestBody,
+  verifiedSignerAddress?: string,
+): { ok: true; data: ParsedDirectorRequest } | { ok: false; response: Response } {
   const prompt = body.prompt?.trim()
   if (!prompt) {
     return { ok: false, response: Response.json({ error: 'prompt is required' }, { status: 400 }) }
@@ -173,9 +171,24 @@ async function parseDirectorRequest(
       audioDurationSeconds,
       paymentTxHash: body.paymentTxHash?.trim(),
       walletAddress: body.walletAddress?.trim(),
+      verifiedSignerAddress,
       billingQuote,
     },
   }
+}
+
+// fallow-ignore-next-line complexity
+async function parseDirectorRequest(
+  request: Request,
+  verifiedSignerAddress?: string,
+): Promise<{ ok: true; data: ParsedDirectorRequest } | { ok: false; response: Response }> {
+  let body: DirectorRequestBody
+  try {
+    body = (await request.json()) as DirectorRequestBody
+  } catch {
+    return { ok: false, response: Response.json({ error: 'Invalid JSON body' }, { status: 400 }) }
+  }
+  return parseDirectorBody(body, verifiedSignerAddress)
 }
 
 // fallow-ignore-next-line complexity
@@ -253,7 +266,7 @@ async function assertDirectorPayment(data: ParsedDirectorRequest): Promise<
   const billable = await resolveBillableAudioSeconds(data)
   if (!billable.ok) return { error: billable.response }
 
-  const canonical = await quoteDirectorForWallet(billable.seconds, data.walletAddress)
+  const canonical = await quoteDirectorForWallet(billable.seconds, data.verifiedSignerAddress)
   if (!canonical) {
     return { error: Response.json({ error: 'Unable to quote Director brief' }, { status: 402 }) }
   }
@@ -547,11 +560,16 @@ async function handleDirectorPost(
   request: Request,
   reserved: ReservedDirectorPayment,
 ): Promise<Response> {
-  const authError = assertDirectorAuthorized(request)
-  if (authError) return authError
-  logDirectorStage('auth')
-
-  const parsed = await parseDirectorRequest(request)
+  let parsed: Awaited<ReturnType<typeof parseDirectorRequest>>
+  if (isDirectorSecretAuthorized(request)) {
+    logDirectorStage('auth', { mode: 'director_secret' })
+    parsed = await parseDirectorRequest(request)
+  } else {
+    const authorized = await authorizePixelsGeneratePost(request)
+    if (!authorized.ok) return authorized.response
+    logDirectorStage('auth', { mode: 'privy', signer: authorized.auth.address })
+    parsed = parseDirectorBody(authorized.body as DirectorRequestBody, authorized.auth.address)
+  }
   if (!parsed.ok) return parsed.response
 
   const payment = await assertDirectorPayment(parsed.data)

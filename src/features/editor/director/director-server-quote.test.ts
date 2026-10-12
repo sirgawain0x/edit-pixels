@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { fetchDirectorServerQuote } from './fetch-director-server-quote'
 
 describe('fetchDirectorServerQuote', () => {
-  it('sends the Privy bearer token on the Authorization header', async () => {
+  it('sends the Privy bearer token without a pricing walletAddress', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -22,10 +22,7 @@ describe('fetchDirectorServerQuote', () => {
       ),
     )
 
-    await fetchDirectorServerQuote(
-      { token: 'privy-jwt', walletAddress: '0xSigner00000000000000000000000000000001' },
-      { audioDurationSeconds: 60 },
-    )
+    await fetchDirectorServerQuote({ token: 'privy-jwt' }, { audioDurationSeconds: 60 })
 
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/director-quote',
@@ -33,6 +30,10 @@ describe('fetchDirectorServerQuote', () => {
         method: 'POST',
         headers: expect.objectContaining({
           Authorization: 'Bearer privy-jwt',
+        }),
+        body: JSON.stringify({
+          token: 'privy-jwt',
+          audioDurationSeconds: 60,
         }),
       }),
     )

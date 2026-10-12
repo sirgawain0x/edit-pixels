@@ -44,10 +44,8 @@ export async function authorizePixelsGeneratePost(
     }
   }
 
-  const auth = await verifyPrivyAccessToken(
-    token,
-    typeof body.walletAddress === 'string' ? body.walletAddress : undefined,
-  )
+  // Tier / Unlock pricing uses the Privy-verified signer only — never a client wallet field.
+  const auth = await verifyPrivyAccessToken(token)
   if (!auth) {
     return {
       ok: false,
