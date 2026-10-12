@@ -79,28 +79,39 @@ function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === 'AbortError'
 }
 
+/** ABI revert return data: `0x` + at least a 4-byte selector (see viem `getContractError`). */
+const REVERT_RETURN_DATA_HEX = /^0x[0-9a-fA-F]{8,}$/
+
+function rpcRevertReturnData(data: unknown): boolean {
+  if (typeof data === 'string') return REVERT_RETURN_DATA_HEX.test(data)
+  if (data && typeof data === 'object' && 'data' in data) {
+    const nested = (data as { data?: unknown }).data
+    return typeof nested === 'string' && REVERT_RETURN_DATA_HEX.test(nested)
+  }
+  return false
+}
+
 function rpcRequestLooksLikeExecutionRevert(error: RpcRequestError): boolean {
   if (error.code === ExecutionRevertedError.code) return true
 
-  const details = (error.details ?? '').toLowerCase()
-  const message = (error.shortMessage ?? error.message ?? '').toLowerCase()
+  const details = error.details ?? ''
+  const message = error.shortMessage ?? error.message ?? ''
   if (
-    details.includes('execution reverted') ||
-    message.includes('execution reverted') ||
     ExecutionRevertedError.nodeMessage.test(details) ||
     ExecutionRevertedError.nodeMessage.test(message)
   ) {
     return true
   }
 
-  const { data } = error
-  if (data === undefined || data === null) return false
-  if (typeof data === 'string') return data !== '0x' && data.length > 0
-  if (typeof data === 'object' && 'data' in data) {
-    const nested = (data as { data?: unknown }).data
-    return typeof nested === 'string' && nested !== '0x' && nested.length > 0
+  if (
+    error.code === -32_000 &&
+    details === 'execution reverted' &&
+    rpcRevertReturnData(error.data)
+  ) {
+    return true
   }
-  return true
+
+  return rpcRevertReturnData(error.data)
 }
 
 function isContractRevertError(error: unknown): boolean {

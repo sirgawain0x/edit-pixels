@@ -73,13 +73,43 @@ describe('isRpcTransportError', () => {
     expect(isRpcTransportError(wrapped)).toBe(false)
   })
 
-  function rpcRequestError(code: number, message: string) {
+  function rpcRequestError(code: number, message: string, data?: unknown) {
     return new RpcRequestError({
       body: { jsonrpc: '2.0', id: 1, method: 'eth_call', params: [] },
       url: 'https://rpc.example',
-      error: { code, message },
+      error: data === undefined ? { code, message } : { code, message, data },
     })
   }
+
+  const errorStringRevertData =
+    '0x08c379a0000000000000000000000000000000000000000000000000000000000000020' +
+    '00000000000000000000000000000000000000000000000000000000000000004' +
+    '7465737400000000000000000000000000000000000000000000000000000000'
+
+  it('treats -32000 with plain-text data as transport', () => {
+    expect(isRpcTransportError(rpcRequestError(-32_000, 'internal error', 'missing trie node'))).toBe(
+      true,
+    )
+  })
+
+  it('treats -32000 with object data payload as transport', () => {
+    expect(
+      isRpcTransportError(rpcRequestError(-32_000, 'internal error', { reason: 'missing trie node' })),
+    ).toBe(true)
+  })
+
+  it('does not classify too-short hex as a revert', () => {
+    expect(isRpcTransportError(rpcRequestError(-32_000, 'internal error', '0x12'))).toBe(true)
+  })
+
+  it('classifies Error(string) revert return data as a revert', () => {
+    expect(isRpcTransportError(rpcRequestError(3, 'execution reverted', errorStringRevertData))).toBe(
+      false,
+    )
+    expect(isRpcTransportError(rpcRequestError(-32_000, 'internal error', errorStringRevertData))).toBe(
+      false,
+    )
+  })
 
   function revertWrappingRpc(code: number, message: string) {
     const rpc = rpcRequestError(code, message)
