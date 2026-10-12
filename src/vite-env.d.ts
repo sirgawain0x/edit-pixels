@@ -22,6 +22,10 @@ interface ImportMetaEnv {
   readonly VITE_DIRECTOR_BATCH_SEEDANCE_CONCURRENCY?: string
   /** Alias for VITE_DIRECTOR_BATCH_SEEDANCE_CONCURRENCY. */
   readonly VITE_DIRECTOR_BATCH_CONCURRENCY?: string
+  /** Vercel deploy environment exposed to the client (preview | production | development). */
+  readonly VITE_VERCEL_ENV?: string
+  /** QA-only: use OPFS workspace instead of showDirectoryPicker when non-production. */
+  readonly VITE_QA_WORKSPACE_FALLBACK?: string
 }
 
 interface ImportMeta {
