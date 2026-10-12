@@ -490,13 +490,15 @@ function mipdStorePatchPlugin(): Plugin {
 }
 
 /** Vercel's `VERCEL_ENV` is server/build-only; expose a client-safe copy for QA gates. */
-const viteVercelEnvFromBuild = process.env.VERCEL_ENV ?? ''
+function buildViteVercelEnvDefine(_mode: string): Record<string, string> {
+  return {
+    'import.meta.env.VITE_VERCEL_ENV': JSON.stringify(process.env.VERCEL_ENV ?? ''),
+  }
+}
 
 // https://vite.dev/config/
-export default defineConfig({
-  define: {
-    'import.meta.env.VITE_VERCEL_ENV': JSON.stringify(viteVercelEnvFromBuild),
-  },
+export default defineConfig(({ mode }) => ({
+  define: buildViteVercelEnvDefine(mode),
   lint: {
     ...oxlintConfig,
     ignorePatterns: toolIgnorePatterns,
@@ -779,4 +781,4 @@ export default defineConfig({
       'lucide-react',
     ],
   },
-})
+}))
