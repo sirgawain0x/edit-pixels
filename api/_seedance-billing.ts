@@ -19,9 +19,11 @@ import {
   verifyFlowPayment,
   type PaymentVerifyResult,
 } from './flow-billing.js'
-import { METOKEN_BATCH_LINKED_SEEDANCE_QUOTE_TTL_SECONDS } from './_metoken-curve-config.js'
 import {
+  METOKEN_BATCH_LINKED_SEEDANCE_QUOTE_TTL_SECONDS,
   METOKEN_QUOTE_EXPIRY_SECONDS,
+} from './_metoken-curve-config.js'
+import {
   MetokenQuoteError,
   quoteCrtvaiForUsdc6,
   validateSettlementAgainstQuote,

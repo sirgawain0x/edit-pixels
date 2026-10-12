@@ -140,6 +140,7 @@ async function handleDirectorDevRequest(
 void generateTaskGet
 void directorSessionsGet
 void flowFramePost
+void flowQuotePost
 void flowRunPost
 void generateImagePost
 void generateVideoPost

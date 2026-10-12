@@ -1,7 +1,6 @@
 import type { FlowQuote } from './flow-pricing'
 import type { FlowTier } from '@/config/flow'
-import type { VeoQuality } from '@/config/credits'
-import type { NanobananaQuality } from '@/config/credits'
+import type { NanobananaQuality, VeoQuality } from '@/config/credits'
 
 interface FlowServerQuoteResponse {
   quoteId: string
@@ -21,17 +20,25 @@ interface FlowServerQuoteResponse {
   crtvaiDisplay: number
 }
 
-export async function fetchFlowServerQuote(input: {
-  duration: number
-  quality: VeoQuality
-  tier: FlowTier
-  stillCount: number
-  stillQuality?: NanobananaQuality
-}): Promise<FlowQuote | null> {
+export async function fetchFlowServerQuote(
+  auth: { token: string; walletAddress?: string },
+  input: {
+    duration: number
+    quality: VeoQuality
+    tier: FlowTier
+    stillCount: number
+    stillQuality?: NanobananaQuality
+  },
+): Promise<FlowQuote | null> {
   const response = await fetch('/api/flow-quote', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${auth.token}`,
+    },
     body: JSON.stringify({
+      token: auth.token,
+      walletAddress: auth.walletAddress,
       duration: input.duration,
       quality: input.quality,
       tier: input.tier,

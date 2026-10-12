@@ -106,7 +106,7 @@ export async function confirmDirectorStoryboardBatch(input: {
     return { ok: false, error: 'quote_not_found', status: 400 }
   }
 
-  const binding = bindDirectorBatchSelections(
+  const binding = await bindDirectorBatchSelections(
     quote,
     input.wallet,
     input.selections.map((selection) => ({

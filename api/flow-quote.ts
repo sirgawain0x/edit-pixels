@@ -3,6 +3,7 @@
  */
 // fallow-ignore-file complexity
 
+import { getBearerToken, verifyPrivyAccessToken } from './_wallet-auth.js'
 import {
   clampFlowDuration,
   normalizeVeoQuality,
@@ -31,12 +32,27 @@ export async function POST(request: Request): Promise<Response> {
   if (!parsedBody.ok) return parsedBody.response
   const body = parsedBody.body
 
+  const token = getBearerToken(request) || (typeof body.token === 'string' ? body.token : null)
+  if (!token) {
+    return Response.json({ error: 'missing authorization' }, { status: 401 })
+  }
+
+  const auth = await verifyPrivyAccessToken(
+    token,
+    typeof body.walletAddress === 'string' ? body.walletAddress : undefined,
+  )
+  if (!auth) {
+    return Response.json({ error: 'invalid authorization' }, { status: 401 })
+  }
+
   const tier = parseTier(body)
   const qualityRaw = typeof body.quality === 'string' ? body.quality : '720p'
   const quality = normalizeVeoQuality(qualityRaw, tier)
   const duration = clampFlowDuration(typeof body.duration === 'number' ? body.duration : 8)
-  const stillCount =
-    typeof body.stillCount === 'number' ? Math.min(2, Math.max(0, Math.floor(body.stillCount))) : 0
+  const stillCount = Math.min(
+    2,
+    Math.max(0, Math.floor(typeof body.stillCount === 'number' ? body.stillCount : 0)),
+  )
   const stillQuality = (
     typeof body.stillQuality === 'string' ? body.stillQuality : '2K'
   ) as NanobananaQuality

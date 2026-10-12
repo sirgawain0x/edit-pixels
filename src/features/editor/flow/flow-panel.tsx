@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   ArrowRightLeft,
@@ -49,8 +49,8 @@ import {
   type FlowQuality,
   type FlowTier,
 } from '@/config/flow'
-import { quoteFlowGeneration } from './flow-pricing'
 import { fetchFlowServerQuote } from './fetch-flow-server-quote'
+import { quoteFlowGeneration } from './flow-pricing'
 import { cn } from '@/shared/ui/cn'
 
 type FrameSlot = {
@@ -113,7 +113,7 @@ export const FlowPanel = memo(function FlowPanel() {
     (start.mode === 'generate' && !start.publicUrl && start.generatePrompt.trim() ? 1 : 0) +
     (end.mode === 'generate' && !end.publicUrl && end.generatePrompt.trim() ? 1 : 0)
 
-  const quote = useMemo(
+  const baseQuote = useMemo(
     () =>
       quoteFlowGeneration({
         duration,
@@ -124,7 +124,57 @@ export const FlowPanel = memo(function FlowPanel() {
     [duration, effectiveQuality, tier, stillCount],
   )
 
-  const insufficient = balance <= 0
+  const [serverCrtvai, setServerCrtvai] = useState<{
+    crtvaiWei: bigint
+    crtvaiDisplay: number
+    formattedUsd: string
+  } | null>(null)
+
+  useEffect(() => {
+    if (!auth) {
+      setServerCrtvai(null)
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      const token = await auth.getAccessToken()
+      if (!token || cancelled) return
+      const priced = await fetchFlowServerQuote(
+        { token, walletAddress: auth.walletAddress },
+        {
+          duration,
+          quality: effectiveQuality,
+          tier,
+          stillCount,
+        },
+      )
+      if (cancelled || !priced) return
+      setServerCrtvai({
+        crtvaiWei: priced.crtvaiWei,
+        crtvaiDisplay: priced.crtvaiDisplay,
+        formattedUsd: priced.formattedUsd,
+      })
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [auth, duration, effectiveQuality, tier, stillCount])
+
+  const quote = useMemo(
+    () =>
+      serverCrtvai
+        ? {
+            ...baseQuote,
+            crtvaiWei: serverCrtvai.crtvaiWei,
+            crtvaiDisplay: serverCrtvai.crtvaiDisplay,
+            formattedUsd: serverCrtvai.formattedUsd,
+          }
+        : baseQuote,
+    [baseQuote, serverCrtvai],
+  )
+
+  const insufficient =
+    quote.crtvaiDisplay > 0 ? balance < quote.crtvaiDisplay : balance <= 0
 
   const onTierChange = useCallback((next: FlowTier) => {
     setTier(next)
@@ -220,12 +270,19 @@ export const FlowPanel = memo(function FlowPanel() {
     setProgress(0)
     setStatus(t('flow.status.paying', { defaultValue: 'Confirming payment…' }))
     try {
-      const serverQuote = await fetchFlowServerQuote({
-        duration: clampFlowDuration(duration),
-        quality: effectiveQuality,
-        tier,
-        stillCount,
-      })
+      const token = await auth.getAccessToken()
+      if (!token) {
+        throw new Error(t('flow.error.auth', { defaultValue: 'Wallet auth required for Flow.' }))
+      }
+      const serverQuote = await fetchFlowServerQuote(
+        { token, walletAddress: auth.walletAddress },
+        {
+          duration: clampFlowDuration(duration),
+          quality: effectiveQuality,
+          tier,
+          stillCount,
+        },
+      )
       if (!serverQuote || serverQuote.crtvaiWei <= 0n) {
         throw new Error(
           t('flow.error.noQuote', { defaultValue: 'Could not price this Flow run — try again.' }),

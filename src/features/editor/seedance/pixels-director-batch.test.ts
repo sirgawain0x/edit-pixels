@@ -89,18 +89,18 @@ describe('director batch bridge', () => {
       if (!stored) return
 
       expect(
-        bindDirectorBatchSelections(stored, '0xabc', [
+        await bindDirectorBatchSelections(stored, '0xabc', [
           { shotId: 'a', provider: 'veo' },
           { shotId: 'a', provider: 'seedance' },
         ]),
       ).toEqual({ ok: false, error: 'selection_mismatch' })
 
       expect(
-        bindDirectorBatchSelections(stored, '0xabc', [{ shotId: 'a', provider: 'veo' }]),
+        await bindDirectorBatchSelections(stored, '0xabc', [{ shotId: 'a', provider: 'veo' }]),
       ).toEqual({ ok: false, error: 'selection_mismatch' })
 
       expect(
-        bindDirectorBatchSelections(stored, '0xabc', [
+        await bindDirectorBatchSelections(stored, '0xabc', [
           { shotId: 'a', provider: 'veo' },
           { shotId: 'b', provider: 'seedance' },
         ]),

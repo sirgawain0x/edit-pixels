@@ -26,12 +26,15 @@ describe('fetchFlowServerQuote', () => {
       ),
     )
 
-    const quote = await fetchFlowServerQuote({
-      duration: 8,
-      quality: '720p',
-      tier: 'standard',
-      stillCount: 0,
-    })
+    const quote = await fetchFlowServerQuote(
+      { token: 'test-token' },
+      {
+        duration: 8,
+        quality: '720p',
+        tier: 'standard',
+        stillCount: 0,
+      },
+    )
 
     expect(quote).not.toBeNull()
     expect(quote?.crtvaiWei).toBe(1_000_000_000_000_000_000n)
