@@ -12,6 +12,7 @@ export interface ConfirmDirectorInvoiceArgs {
   balance: number
   canPayOnChain: boolean
   account?: string
+  getAccessToken: () => Promise<string | null | undefined>
   sendOps: (ops: SmartWalletOp[]) => Promise<{ txHash: string }>
   refreshBalance: () => void
   submit: (
@@ -36,14 +37,20 @@ export interface ConfirmDirectorInvoiceArgs {
 
 // fallow-ignore-next-line complexity
 export async function confirmDirectorInvoice(args: ConfirmDirectorInvoiceArgs): Promise<void> {
-  const { invoice, balance, canPayOnChain, account, sendOps, refreshBalance, submit } = args
+  const { invoice, balance, canPayOnChain, account, getAccessToken, sendOps, refreshBalance, submit } =
+    args
   const { brief, apiPrompt, audioUri, quote: invoiceQuote } = invoice
 
+  const token = await getAccessToken()
+  if (!token) {
+    throw new Error('Connect your wallet to refresh the Director quote.')
+  }
+
   const quote =
-    (await fetchDirectorServerQuote({
-      audioDurationSeconds: invoiceQuote.audioDurationSeconds,
-      walletAddress: account,
-    })) ?? invoiceQuote
+    (await fetchDirectorServerQuote(
+      { token, walletAddress: account },
+      { audioDurationSeconds: invoiceQuote.audioDurationSeconds },
+    )) ?? invoiceQuote
 
   if (balance < quote.crtvaiDisplay) {
     throw new Error('Insufficient CRTVAI balance for this Director invoice.')

@@ -12,6 +12,7 @@ import {
   useItemsStore,
   useTimelineSettingsStore,
 } from '@/features/editor/deps/timeline-store-contract'
+import { useGenerativeAuth } from '@/features/editor/deps/generative'
 import { usePremiumMembership } from '@/features/editor/deps/live-ai'
 import { isLiveStyleEnabledClient } from '@/features/editor/deps/live-style'
 import { useSmartWalletOps } from '@/hooks/use-smart-wallet-ops'
@@ -165,7 +166,9 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
 
   const { projectId } = useParams({ from: '/editor/$projectId' })
 
-  const { account, connect, authenticated, configured: walletConfigured } = useWalletContext()
+  const { account, connect, authenticated, configured: walletConfigured, getAccessToken } =
+    useWalletContext()
+  const generativeAuth = useGenerativeAuth()
   const { balance, refreshBalance } = useCredits()
   const { isPremiumMember } = usePremiumMembership(account)
   const liveStyleFeatureReady = isLiveStyleEnabledClient()
@@ -282,10 +285,21 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
         return
       }
 
-      const quote = await fetchDirectorServerQuote({
-        audioDurationSeconds: audioContext.primary.durationSeconds,
-        walletAddress: account,
-      })
+      const token = generativeAuth ? await generativeAuth.getAccessToken() : null
+      if (!token) {
+        if (walletConfigured) connect()
+        reportLocalError(
+          t('director.error.connectWallet', {
+            defaultValue: 'Connect your wallet to pay for the Director in CRTVAI.',
+          }),
+        )
+        return
+      }
+
+      const quote = await fetchDirectorServerQuote(
+        { token, walletAddress: generativeAuth?.walletAddress ?? account },
+        { audioDurationSeconds: audioContext.primary.durationSeconds },
+      )
       if (!quote) {
         reportLocalError(
           t('director.error.noQuote', {
@@ -308,6 +322,7 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
       audioContext,
       authenticated,
       connect,
+      generativeAuth,
       hasCrtvai,
       hasTimelineAudio,
       isPremiumMember,
@@ -334,6 +349,7 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
         balance,
         canPayOnChain,
         account,
+        getAccessToken,
         sendOps,
         refreshBalance,
         submit,
@@ -349,6 +365,7 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
     account,
     balance,
     canPayOnChain,
+    getAccessToken,
     paying,
     pendingInvoice,
     refreshBalance,

@@ -3,6 +3,7 @@
  */
 // fallow-ignore-file complexity
 
+import { getBearerToken, verifyPrivyAccessToken } from './_wallet-auth.js'
 import { quoteDirectorForWallet } from './director-billing.js'
 import { MetokenQuoteError } from './_metoken-curve-quote.js'
 import { parseJsonObjectBody } from './_pixels-generate-api-auth.js'
@@ -12,17 +13,27 @@ export async function POST(request: Request): Promise<Response> {
   if (!parsedBody.ok) return parsedBody.response
   const body = parsedBody.body
 
+  const token = getBearerToken(request) || (typeof body.token === 'string' ? body.token : null)
+  if (!token) {
+    return Response.json({ error: 'missing authorization' }, { status: 401 })
+  }
+
+  const auth = await verifyPrivyAccessToken(
+    token,
+    typeof body.walletAddress === 'string' ? body.walletAddress : undefined,
+  )
+  if (!auth) {
+    return Response.json({ error: 'invalid authorization' }, { status: 401 })
+  }
+
   const audioDurationSeconds =
     typeof body.audioDurationSeconds === 'number' ? body.audioDurationSeconds : NaN
   if (!Number.isFinite(audioDurationSeconds) || audioDurationSeconds <= 0) {
     return Response.json({ error: 'audioDurationSeconds required' }, { status: 400 })
   }
 
-  const walletAddress =
-    typeof body.walletAddress === 'string' ? body.walletAddress.trim() : undefined
-
   try {
-    const quote = await quoteDirectorForWallet(audioDurationSeconds, walletAddress)
+    const quote = await quoteDirectorForWallet(audioDurationSeconds, auth.address)
     if (!quote) {
       return Response.json({ error: 'quote_unpayable' }, { status: 402 })
     }

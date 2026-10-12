@@ -19,16 +19,20 @@ interface DirectorServerQuoteResponse {
   audioDurationSeconds: number
 }
 
-export async function fetchDirectorServerQuote(input: {
-  audioDurationSeconds: number
-  walletAddress?: string
-}): Promise<DirectorQuote | null> {
+export async function fetchDirectorServerQuote(
+  auth: { token: string; walletAddress?: string },
+  input: { audioDurationSeconds: number },
+): Promise<DirectorQuote | null> {
   const response = await fetch('/api/director-quote', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${auth.token}`,
+    },
     body: JSON.stringify({
+      token: auth.token,
+      walletAddress: auth.walletAddress,
       audioDurationSeconds: input.audioDurationSeconds,
-      walletAddress: input.walletAddress,
     }),
   })
   if (!response.ok) return null
