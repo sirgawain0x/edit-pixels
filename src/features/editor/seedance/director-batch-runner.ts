@@ -224,6 +224,7 @@ export async function confirmPaidDirectorBatch(input: {
     const confirm = await confirmDirectorBatch(auth, {
       batchQuoteId: quote.batchQuoteId,
       selections,
+      payerAddress: auth.walletAddress,
       ...(paymentTxHash ? { paymentTxHash } : {}),
     })
 

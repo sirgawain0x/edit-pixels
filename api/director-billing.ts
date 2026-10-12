@@ -13,6 +13,7 @@ import {
   isPaymentLedgerReady,
   releasePaymentTxHash,
 } from './_payment-ledger.js'
+import { assertPaymentPayerMatchesSigner } from './_pixels-payment-payer.js'
 import {
   isQuoteSigningConfigured,
   METOKEN_QUOTE_SLIPPAGE_BPS,
@@ -153,7 +154,9 @@ function alchemyRpcUrl(): string {
   return key ? `https://base-mainnet.g.alchemy.com/v2/${key}` : 'https://mainnet.base.org'
 }
 
-export type PaymentVerifyResult = { ok: true; amountWei: bigint } | { ok: false; reason: string }
+export type PaymentVerifyResult =
+  | { ok: true; amountWei: bigint }
+  | { ok: false; reason: string; httpStatus?: number }
 
 /**
  * Confirm a CRTVAI Transfer log from `from` → treasury in `txHash`.
@@ -241,9 +244,20 @@ export async function verifyAndConsumeDirectorPayment(options: {
   from: string
   minAmountWei: bigint
   purpose: string
+  verifiedSignerAddress?: string
 }): Promise<PaymentVerifyResult> {
   if (isDirectorBillingEnforced() && !isPaymentLedgerReady()) {
     return { ok: false, reason: 'Payment ledger unavailable (configure Upstash/Vercel KV)' }
+  }
+
+  if (options.verifiedSignerAddress) {
+    const payerBinding = await assertPaymentPayerMatchesSigner(
+      options.from,
+      options.verifiedSignerAddress,
+    )
+    if (!payerBinding.ok) {
+      return { ok: false, reason: payerBinding.reason, httpStatus: 403 }
+    }
   }
 
   const verified = await verifyDirectorPayment(options)

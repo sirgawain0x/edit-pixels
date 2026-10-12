@@ -58,8 +58,16 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'selections required' }, { status: 400 })
   }
 
+  const payerAddress =
+    typeof body.payerAddress === 'string'
+      ? body.payerAddress
+      : typeof body.payer_address === 'string'
+        ? body.payer_address
+        : undefined
+
   const result = await confirmDirectorStoryboardBatch({
     wallet: auth.address,
+    payerAddress,
     batchQuoteId,
     selections,
     paymentTxHash:

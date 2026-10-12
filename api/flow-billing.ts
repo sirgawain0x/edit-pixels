@@ -104,11 +104,13 @@ export async function verifyFlowPayment(options: {
   from: string
   minAmountWei: bigint
   purpose?: string
+  verifiedSignerAddress?: string
 }): Promise<PaymentVerifyResult> {
   return verifyAndConsumeDirectorPayment({
     txHash: options.txHash,
     from: options.from,
     minAmountWei: options.minAmountWei,
     purpose: options.purpose ?? 'flow',
+    verifiedSignerAddress: options.verifiedSignerAddress,
   })
 }

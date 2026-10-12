@@ -309,18 +309,26 @@ async function assertDirectorPayment(data: ParsedDirectorRequest): Promise<
     }
   }
 
+  if (!data.verifiedSignerAddress) {
+    return {
+      error: Response.json({ error: 'invalid authorization' }, { status: 401 }),
+    }
+  }
+
   const verified = await verifyAndConsumeDirectorPayment({
     txHash: data.paymentTxHash,
     from: data.walletAddress,
     minAmountWei,
     purpose: 'director',
+    verifiedSignerAddress: data.verifiedSignerAddress,
   })
 
   if (!verified.ok) {
+    const status = verified.httpStatus ?? 402
     return {
       error: Response.json(
         { error: `Director payment rejected: ${verified.reason}` },
-        { status: 402 },
+        { status },
       ),
     }
   }

@@ -103,7 +103,10 @@ describe('POST /api/director billing', () => {
 
     expect(quoteDirectorForWallet).toHaveBeenCalledWith(60, PREMIUM_SIGNER)
     expect(verifyAndConsumeDirectorPayment).toHaveBeenCalledWith(
-      expect.objectContaining({ from: SMART_PAYER }),
+      expect.objectContaining({
+        from: SMART_PAYER,
+        verifiedSignerAddress: PREMIUM_SIGNER,
+      }),
     )
     expect(response.status).not.toBe(402)
   })

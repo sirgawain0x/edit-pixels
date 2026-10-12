@@ -90,6 +90,7 @@ export interface DirectorBatchConfirmResult {
 
 export async function confirmDirectorStoryboardBatch(input: {
   wallet: string
+  payerAddress?: string
   batchQuoteId: string
   selections: DirectorBatchConfirmSelection[]
   paymentTxHash?: string | null
@@ -144,14 +145,16 @@ export async function confirmDirectorStoryboardBatch(input: {
       return { ok: false, error: message, status: 402 }
     }
 
+    const payer = input.payerAddress?.trim() || input.wallet
     const verified = await verifyFlowPayment({
       txHash: tx,
-      from: input.wallet,
+      from: payer,
       minAmountWei,
       purpose: 'pixels-director-batch',
+      verifiedSignerAddress: input.wallet,
     })
     if (!verified.ok) {
-      return { ok: false, error: verified.reason, status: 402 }
+      return { ok: false, error: verified.reason, status: verified.httpStatus ?? 402 }
     }
     paymentTxHash = tx
   } else {

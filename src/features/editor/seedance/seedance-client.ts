@@ -387,6 +387,7 @@ export async function confirmDirectorBatch(
     batchQuoteId: string
     selections: Array<{ shotId: string; provider: PixelsRenderProvider; requestId: string }>
     paymentTxHash?: string
+    payerAddress?: string
   },
 ): Promise<DirectorBatchConfirmResponse> {
   return postSeedanceApi<DirectorBatchConfirmResponse>(
