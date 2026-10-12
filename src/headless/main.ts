@@ -1000,7 +1000,7 @@ async function renderFrame(input: HeadlessFrameInput): Promise<HeadlessFrameSumm
     quality: input.quality ?? 1,
   })
   const ext = format === 'image/jpeg' ? 'jpg' : format === 'image/webp' ? 'webp' : 'png'
-  const fileName = input.outputFileName ?? `freecut-frame-${frame}.${ext}`
+  const fileName = input.outputFileName ?? `pixels-frame-${frame}.${ext}`
   triggerDownload(blob, fileName)
 
   log.info('Headless frame grab complete', {
