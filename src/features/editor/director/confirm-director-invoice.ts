@@ -4,6 +4,7 @@
 
 import { buildDirectorPaymentOp } from './build-director-payment'
 import type { PendingDirectorInvoice } from './director-invoice-card'
+import { fetchDirectorServerQuote } from './fetch-director-server-quote'
 import type { SmartWalletOp } from '@/hooks/use-smart-wallet-ops'
 
 export interface ConfirmDirectorInvoiceArgs {
@@ -36,7 +37,13 @@ export interface ConfirmDirectorInvoiceArgs {
 // fallow-ignore-next-line complexity
 export async function confirmDirectorInvoice(args: ConfirmDirectorInvoiceArgs): Promise<void> {
   const { invoice, balance, canPayOnChain, account, sendOps, refreshBalance, submit } = args
-  const { brief, apiPrompt, audioUri, quote } = invoice
+  const { brief, apiPrompt, audioUri, quote: invoiceQuote } = invoice
+
+  const quote =
+    (await fetchDirectorServerQuote({
+      audioDurationSeconds: invoiceQuote.audioDurationSeconds,
+      walletAddress: account,
+    })) ?? invoiceQuote
 
   if (balance < quote.crtvaiDisplay) {
     throw new Error('Insufficient CRTVAI balance for this Director invoice.')

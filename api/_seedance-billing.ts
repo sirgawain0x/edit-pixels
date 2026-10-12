@@ -20,7 +20,6 @@ import {
   type PaymentVerifyResult,
 } from './flow-billing.js'
 import {
-  METOKEN_QUOTE_EXPIRY_SECONDS,
   MetokenQuoteError,
   quoteCrtvaiForUsdc6,
   validateSettlementAgainstQuote,
@@ -48,7 +47,8 @@ export interface SeedanceBillingReservation {
 
 const QUOTE_KEY_PREFIX = 'pixels:seedance:quote:'
 const RESERVATION_KEY_PREFIX = 'pixels:seedance:reservation:'
-const QUOTE_TTL_SECONDS = METOKEN_QUOTE_EXPIRY_SECONDS
+/** Batch Director quotes reference seedanceQuoteId for up to 15 minutes. */
+const QUOTE_TTL_SECONDS = 15 * 60
 
 const memoryQuotes = new Map<string, SeedanceBillingQuote>()
 const memoryReservations = new Map<string, SeedanceBillingReservation>()
