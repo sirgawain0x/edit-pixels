@@ -1,9 +1,12 @@
 {
   "current": {
     "version": "current",
-    "date": "2026-09-20",
+    "date": "2026-10-12",
     "groups": {
       "added": [
+        {
+          "title": "Live Looks — free on-device camera background blur and replacement, plus style filters, in all nine app languages"
+        },
         {
           "title": "Phone-friendly Projects hub — menu sheet for Docs, Discord, GitHub, language, workspace, and import; wallet and New stay in the top bar"
         },
@@ -52,6 +55,9 @@
       ],
       "fixed": [
         {
+          "title": "Director credit pack copy matches what you receive at checkout"
+        },
+        {
           "title": "A clear \"project not found\" screen with copyable details instead of a crash"
         },
         {
@@ -65,6 +71,9 @@
         }
       ],
       "improved": [
+        {
+          "title": "Director and render checkout uses the live CRTVAI rate for fairer pricing"
+        },
         {
           "title": "Invalid or inverted storyboard timecodes fall back to equal-split placement with a clear warning"
         },

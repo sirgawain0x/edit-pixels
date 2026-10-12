@@ -1,5 +1,4 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import {
   Layers,
@@ -20,11 +19,6 @@ import { PixelsLogo } from '@/components/brand/pixels-logo'
 import { DiscordIcon } from '@/components/brand/discord-icon'
 import { Button } from '@/components/ui/button'
 import { DISCORD_INVITE_URL, GITHUB_REPO_URL } from '@/config/community'
-import {
-  isGitHubStarsCacheFresh,
-  readGitHubStarsCache,
-  refreshGitHubStarCount,
-} from '@/shared/utils/github-stars'
 import {
   Accordion,
   AccordionContent,
@@ -95,37 +89,8 @@ const showcaseItems = [
   },
 ]
 
-function useGitHubStarCount(): number | null {
-  const [initialCache] = useState(readGitHubStarsCache)
-  const [starCount, setStarCount] = useState<number | null>(initialCache?.stars ?? null)
-
-  useEffect(() => {
-    if (initialCache && isGitHubStarsCacheFresh(initialCache)) return
-
-    let active = true
-    void refreshGitHubStarCount().then((count) => {
-      if (active && count !== null) setStarCount(count)
-    })
-    return () => {
-      active = false
-    }
-  }, [initialCache])
-
-  return starCount
-}
-
-function GitHubStarCount({ count }: { count: number | null }) {
-  if (count === null) return null
-  return (
-    <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-xs tabular-nums text-primary">
-      {new Intl.NumberFormat().format(count)}
-    </span>
-  )
-}
-
 function LandingPage() {
   const { t } = useTranslation()
-  const githubStarCount = useGitHubStarCount()
   const faqItems: Array<{ id?: string; question: string; answer: React.ReactNode }> = [
     {
       question: t('projects.landing.faq.free.question'),
@@ -262,7 +227,6 @@ function LandingPage() {
               <a href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer">
                 <Star className="h-4 w-4" />
                 {t('projects.landing.starOnGitHub')}
-                <GitHubStarCount count={githubStarCount} />
               </a>
             </Button>
           </div>
@@ -407,7 +371,6 @@ function LandingPage() {
               <a href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer">
                 <Star className="h-4 w-4" />
                 {t('projects.landing.starOnGitHub')}
-                <GitHubStarCount count={githubStarCount} />
               </a>
             </Button>
           </div>
