@@ -10,7 +10,7 @@ vi.mock('../../../api/_redis-client.js', () => ({
       redisKeys.add(key)
       return 'OK'
     },
-    get: async () => null,
+    get: async (key: string) => (redisKeys.has(key) ? '{}' : null),
     del: async (key: string) => {
       redisKeys.delete(key)
       return 1
@@ -66,5 +66,41 @@ describe('consumePaymentTxLog', () => {
     })
     expect(replayStillConsumed.ok).toBe(false)
     if (!replayStillConsumed.ok) expect(replayStillConsumed.reason).toMatch(/already used/i)
+  })
+
+  it('rejects consumption when prod-era hash-only ledger key exists', async () => {
+    const txHash = `0x${'ef'.repeat(32)}`
+    const normalized = txHash.toLowerCase()
+    redisKeys.add(`pixels:payment:tx:${normalized}`)
+
+    const atLog2 = await consumePaymentTxLog(txHash, 2, {
+      wallet: '0xcccccccccccccccccccccccccccccccccccccccc',
+      purpose: 'director',
+    })
+    expect(atLog2.ok).toBe(false)
+    if (!atLog2.ok) expect(atLog2.reason).toMatch(/already used/i)
+
+    const atLog0 = await consumePaymentTxLog(txHash, 0, {
+      wallet: '0xcccccccccccccccccccccccccccccccccccccccc',
+      purpose: 'director',
+    })
+    expect(atLog0.ok).toBe(false)
+  })
+
+  it('release does not remove prod-era hash-only ledger keys', async () => {
+    const txHash = `0x${'12'.repeat(32)}`
+    const normalized = txHash.toLowerCase()
+    const legacyKey = `pixels:payment:tx:${normalized}`
+
+    await consumePaymentTxLog(txHash, 4, {
+      wallet: '0xdddddddddddddddddddddddddddddddddddddddd',
+      purpose: 'director',
+    })
+    redisKeys.add(legacyKey)
+
+    await releasePaymentTxLog(txHash, 4)
+
+    expect(redisKeys.has(legacyKey)).toBe(true)
+    expect(redisKeys.has(`pixels:payment:tx:${normalized}:4`)).toBe(false)
   })
 })
