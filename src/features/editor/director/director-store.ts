@@ -50,6 +50,8 @@ interface DirectorState {
       quoteCrtvaiRequired?: string
       quoteTier?: 'retail' | 'premium'
       walletAddress?: string
+      signerAddress?: string
+      accessToken?: string
     },
   ) => Promise<void>
   /** Resume an Agent Engine session from Firestore index. */
@@ -230,14 +232,19 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
     activeController = controller
 
     try {
+      const accessToken = options?.accessToken?.trim()
+      const signerAddress = options?.signerAddress?.trim()
       const response = await fetch('/api/director', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Accept: 'text/event-stream, application/json',
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+          ...(signerAddress ? { 'x-pixels-signer': signerAddress } : {}),
         },
         body: JSON.stringify({
           prompt: apiPrompt,
+          token: accessToken,
           userId: options?.userId,
           sessionId: get().sessionId ?? undefined,
           projectId: options?.projectId,
@@ -245,6 +252,7 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
           audioDurationSeconds: options?.audioDurationSeconds,
           paymentTxHash: options?.paymentTxHash,
           walletAddress: options?.walletAddress,
+          signerAddress,
           quoteId: options?.quoteId,
           quoteSignature: options?.quoteSignature,
           quoteExpiresAtMs: options?.quoteExpiresAtMs,

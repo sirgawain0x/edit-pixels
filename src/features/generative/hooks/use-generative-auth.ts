@@ -4,15 +4,16 @@ import { useWalletContext } from '@/context/wallet-context'
 import type { SignedRequestParams } from '../services/generative-proxy-client'
 
 export function useGenerativeAuth(): SignedRequestParams | null {
-  const { account, authenticated, getAccessToken } = useWalletContext()
+  const { account, signerAddress, authenticated, getAccessToken } = useWalletContext()
 
   return useMemo(() => {
-    if (!account || !authenticated) return null
+    if (!account || !signerAddress || !authenticated) return null
     return {
       getAccessToken,
-      walletAddress: account,
+      signerAddress,
+      payerAddress: account,
     }
-  }, [account, authenticated, getAccessToken])
+  }, [account, signerAddress, authenticated, getAccessToken])
 }
 
 export function useGenerativeReady(): boolean {

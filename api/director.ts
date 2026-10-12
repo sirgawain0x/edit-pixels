@@ -33,7 +33,7 @@ import {
   isDirectorUpstreamAuthFailure,
   vertexAuthFailureMessage,
 } from './_vertex-auth.js'
-import { assertDirectorAuthorized } from './_director-auth.js'
+import { resolvePixelsIdentity } from './_pixels-identity.js'
 import {
   isDirectorBillingEnforced,
   quoteDirectorForWallet,
@@ -89,7 +89,10 @@ interface ParsedDirectorRequest {
   audioUri?: string
   audioDurationSeconds?: number
   paymentTxHash?: string
+  /** CRTVAI payer (smart account) — not used for tier / Unlock pricing. */
   walletAddress?: string
+  /** Privy-verified signer used for tier and re-quote (never from client body). */
+  verifiedSignerAddress?: string
   billingQuote?: DirectorBillingQuote
 }
 
@@ -120,16 +123,10 @@ function logDirectorStage(
 }
 
 // fallow-ignore-next-line complexity
-async function parseDirectorRequest(
-  request: Request,
-): Promise<{ ok: true; data: ParsedDirectorRequest } | { ok: false; response: Response }> {
-  let body: DirectorRequestBody
-  try {
-    body = (await request.json()) as DirectorRequestBody
-  } catch {
-    return { ok: false, response: Response.json({ error: 'Invalid JSON body' }, { status: 400 }) }
-  }
-
+function parseDirectorBody(
+  body: DirectorRequestBody,
+  verifiedSignerAddress?: string,
+): { ok: true; data: ParsedDirectorRequest } | { ok: false; response: Response } {
   const prompt = body.prompt?.trim()
   if (!prompt) {
     return { ok: false, response: Response.json({ error: 'prompt is required' }, { status: 400 }) }
@@ -173,9 +170,24 @@ async function parseDirectorRequest(
       audioDurationSeconds,
       paymentTxHash: body.paymentTxHash?.trim(),
       walletAddress: body.walletAddress?.trim(),
+      verifiedSignerAddress,
       billingQuote,
     },
   }
+}
+
+// fallow-ignore-next-line complexity
+async function parseDirectorRequest(
+  request: Request,
+  verifiedSignerAddress?: string,
+): Promise<{ ok: true; data: ParsedDirectorRequest } | { ok: false; response: Response }> {
+  let body: DirectorRequestBody
+  try {
+    body = (await request.json()) as DirectorRequestBody
+  } catch {
+    return { ok: false, response: Response.json({ error: 'Invalid JSON body' }, { status: 400 }) }
+  }
+  return parseDirectorBody(body, verifiedSignerAddress)
 }
 
 // fallow-ignore-next-line complexity
@@ -242,18 +254,19 @@ async function assertDirectorPayment(data: ParsedDirectorRequest): Promise<
   | { error: Response }
   | {
       paymentTxHash: string | null
+      paymentLogIndex: number | null
       quote: DirectorBillingQuote | null
       audioSeconds: number | null
     }
 > {
   if (!isDirectorBillingEnforced()) {
-    return { paymentTxHash: null, quote: null, audioSeconds: null }
+    return { paymentTxHash: null, paymentLogIndex: null, quote: null, audioSeconds: null }
   }
 
   const billable = await resolveBillableAudioSeconds(data)
   if (!billable.ok) return { error: billable.response }
 
-  const canonical = await quoteDirectorForWallet(billable.seconds, data.walletAddress)
+  const canonical = await quoteDirectorForWallet(billable.seconds, data.verifiedSignerAddress)
   if (!canonical) {
     return { error: Response.json({ error: 'Unable to quote Director brief' }, { status: 402 }) }
   }
@@ -266,6 +279,12 @@ async function assertDirectorPayment(data: ParsedDirectorRequest): Promise<
   ) {
     return {
       error: Response.json({ error: 'Director quote mismatch — refresh and try again.' }, { status: 402 }),
+    }
+  }
+
+  if (!data.verifiedSignerAddress) {
+    return {
+      error: Response.json({ error: 'Director signer identity required' }, { status: 403 }),
     }
   }
 
@@ -301,19 +320,22 @@ async function assertDirectorPayment(data: ParsedDirectorRequest): Promise<
     from: data.walletAddress,
     minAmountWei,
     purpose: 'director',
+    verifiedSignerAddress: data.verifiedSignerAddress,
   })
 
   if (!verified.ok) {
+    const status = verified.httpStatus ?? 402
     return {
       error: Response.json(
         { error: `Director payment rejected: ${verified.reason}` },
-        { status: 402 },
+        { status },
       ),
     }
   }
 
   return {
     paymentTxHash: data.paymentTxHash,
+    paymentLogIndex: verified.logIndex,
     quote,
     audioSeconds: billable.seconds,
   }
@@ -325,7 +347,12 @@ async function handleDirectorAdkPost(
   data: ParsedDirectorRequest,
   adkBase: string,
   message: string,
-  payment: Awaited<ReturnType<typeof assertDirectorPayment>>,
+  payment: {
+    paymentTxHash: string | null
+    paymentLogIndex: number | null
+    quote: DirectorBillingQuote | null
+    audioSeconds: number | null
+  },
   persistCtx: DirectorPersistContext,
   reservedPaymentTxHash: string | null,
   releaseReservedPayment: () => Promise<void>,
@@ -540,6 +567,7 @@ function buildPersistContext(data: ParsedDirectorRequest): DirectorPersistContex
 
 interface ReservedDirectorPayment {
   txHash: string | null
+  logIndex: number | null
 }
 
 // fallow-ignore-next-line complexity
@@ -547,17 +575,21 @@ async function handleDirectorPost(
   request: Request,
   reserved: ReservedDirectorPayment,
 ): Promise<Response> {
-  const authError = assertDirectorAuthorized(request)
-  if (authError) return authError
-  logDirectorStage('auth')
-
-  const parsed = await parseDirectorRequest(request)
+  const identity = await resolvePixelsIdentity(request, { allowDirectorSecret: true })
+  if (!identity.ok) return identity.response
+  logDirectorStage('auth', { mode: identity.identity.source, signer: identity.identity.signer })
+  const parsed = parseDirectorBody(
+    identity.body as DirectorRequestBody,
+    identity.identity.signer,
+  )
   if (!parsed.ok) return parsed.response
 
   const payment = await assertDirectorPayment(parsed.data)
   if ('error' in payment) return payment.error
   const reservedPaymentTxHash = payment.paymentTxHash
+  const reservedPaymentLogIndex = payment.paymentLogIndex
   reserved.txHash = reservedPaymentTxHash
+  reserved.logIndex = reservedPaymentLogIndex
   const persistCtx = buildPersistContext(parsed.data)
   logDirectorStage('payment_consumed', {
     paymentTxHash: reservedPaymentTxHash,
@@ -568,9 +600,14 @@ async function handleDirectorPost(
   })
 
   const releaseReservedPayment = async () => {
-    if (reservedPaymentTxHash) {
-      await releaseDirectorPayment(reservedPaymentTxHash).catch(() => undefined)
-      logDirectorStage('payment_released', { paymentTxHash: reservedPaymentTxHash })
+    if (reservedPaymentTxHash != null && reservedPaymentLogIndex != null) {
+      await releaseDirectorPayment(reservedPaymentTxHash, reservedPaymentLogIndex).catch(
+        () => undefined,
+      )
+      logDirectorStage('payment_released', {
+        paymentTxHash: reservedPaymentTxHash,
+        paymentLogIndex: reservedPaymentLogIndex,
+      })
     }
   }
 
@@ -680,15 +717,16 @@ async function handleDirectorPost(
 }
 
 export async function POST(request: Request): Promise<Response> {
-  const reserved: ReservedDirectorPayment = { txHash: null }
+  const reserved: ReservedDirectorPayment = { txHash: null, logIndex: null }
   try {
     return await handleDirectorPost(request, reserved)
   } catch (error) {
     console.error('Director request failed', error)
-    if (reserved.txHash) {
-      await releaseDirectorPayment(reserved.txHash).catch(() => undefined)
+    if (reserved.txHash != null && reserved.logIndex != null) {
+      await releaseDirectorPayment(reserved.txHash, reserved.logIndex).catch(() => undefined)
       logDirectorStage('payment_released', {
         paymentTxHash: reserved.txHash,
+        paymentLogIndex: reserved.logIndex,
         reason: 'uncaught',
       })
     }

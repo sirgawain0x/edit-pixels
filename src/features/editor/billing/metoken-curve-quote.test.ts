@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
+import * as curveQuote from '../../../../api/_metoken-curve-quote.js'
 import {
   METOKEN_QUOTE_EXPIRY_SECONDS,
+  METOKEN_QUOTE_SETTLEMENT_GRACE_SECONDS,
   METOKEN_QUOTE_SLIPPAGE_BPS,
   validateSettlementAgainstQuote,
 } from '../../../../api/_metoken-curve-quote.js'
+import { vi } from 'vitest'
 import {
   calculateMeTokensMintedPure,
   isWithinSlippageBand,
@@ -30,20 +33,50 @@ describe('metoken curve math (memo reference)', () => {
 })
 
 describe('quote expiry and slippage', () => {
-  it('exports default TTL and slippage band', () => {
+  it('exports default TTL, grace window, and slippage band', () => {
     expect(METOKEN_QUOTE_EXPIRY_SECONDS).toBe(75)
+    expect(METOKEN_QUOTE_SETTLEMENT_GRACE_SECONDS + METOKEN_QUOTE_EXPIRY_SECONDS).toBe(15 * 60)
     expect(METOKEN_QUOTE_SLIPPAGE_BPS).toBe(250)
   })
 
-  it('rejects settlement after expiry', async () => {
+  it('rejects settlement after grace window', async () => {
+    const expiresAtMs =
+      Date.now() - (METOKEN_QUOTE_SETTLEMENT_GRACE_SECONDS + 5) * 1000
     await expect(
       validateSettlementAgainstQuote({
         estimatedUsdc6: 1_000_000,
         minCrtvaiWei: 100n,
-        expiresAtMs: Date.now() - 1,
+        expiresAtMs,
         slippageBps: METOKEN_QUOTE_SLIPPAGE_BPS,
       }),
     ).rejects.toMatchObject({ code: 'quote_expired' })
+  })
+
+  it('keeps Director checkout valid after wallet delay past the 75s quote TTL', async () => {
+    const quotedWei = 298_570_000_000_000_000n
+    const mintSpy = vi
+      .spyOn(curveQuote, 'readMeTokensMintedForDeposit')
+      .mockResolvedValue(quotedWei)
+
+    const issuedAtMs = Date.now() - 90_000
+    const expiresAtMs = issuedAtMs + METOKEN_QUOTE_EXPIRY_SECONDS * 1000
+    expect(Date.now()).toBeGreaterThan(expiresAtMs)
+    expect(Date.now()).toBeLessThanOrEqual(
+      expiresAtMs + METOKEN_QUOTE_SETTLEMENT_GRACE_SECONDS * 1000,
+    )
+
+    const { validateSettlementAgainstQuote: validateLate } =
+      await import('../../../../api/_metoken-curve-quote.js')
+    await expect(
+      validateLate({
+        estimatedUsdc6: 1_000_000,
+        minCrtvaiWei: quotedWei,
+        expiresAtMs,
+        slippageBps: METOKEN_QUOTE_SLIPPAGE_BPS,
+      }),
+    ).resolves.toBeDefined()
+
+    mintSpy.mockRestore()
   })
 
   it('rejects when fresh amount exceeds the slippage band', () => {

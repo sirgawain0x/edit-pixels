@@ -3,7 +3,7 @@
  */
 // fallow-ignore-file complexity
 
-import { quoteSeedanceSpend } from './_seedance-billing.js'
+import { quoteSeedanceSpend, syncBatchLinkedSeedanceQuoteExpiry } from './_seedance-billing.js'
 import {
   clampFlowDuration,
   quoteFlowTotalCredits,
@@ -11,6 +11,11 @@ import {
   type NanobananaQuality,
 } from './_generative-pricing.js'
 import { quoteFlowCreditsUsdc6 } from './flow-billing.js'
+import {
+  METOKEN_QUOTE_SLIPPAGE_BPS,
+  MetokenQuoteError,
+  validateSettlementAgainstQuote,
+} from './_metoken-curve-quote.js'
 import {
   mapDirectorShotToGenerate,
   pickDirectorShotProvider,
@@ -158,10 +163,13 @@ export async function quoteDirectorStoryboardBatch(input: {
       return { ok: false, error: `veo quote failed for shot ${mapped.shotId}` }
     }
 
-    const seedanceQuote = await quoteSeedanceSpend({
-      duration: mapped.seedanceDuration,
-      resolution: mapped.resolution,
-    })
+    const seedanceQuote = await quoteSeedanceSpend(
+      {
+        duration: mapped.seedanceDuration,
+        resolution: mapped.resolution,
+      },
+      { batchLinked: true },
+    )
 
     const recommendedProvider = pickDirectorShotProvider(rawShot, input.providerPreference)
     const recommendedWei =
@@ -236,6 +244,11 @@ export async function quoteDirectorStoryboardBatch(input: {
     },
   })
 
+  await syncBatchLinkedSeedanceQuoteExpiry(
+    storeShots.map((shot) => shot.seedanceQuoteId),
+    stored.expiresAtMs,
+  )
+
   const allVeoUsdc6 = shotResults.reduce((sum, shot) => sum + shot.veo.estimatedUsdc6, 0)
   const allSeedanceUsdc6 = shotResults.reduce((sum, shot) => sum + shot.seedance.estimatedUsdc6, 0)
 
@@ -267,13 +280,21 @@ export async function quoteDirectorStoryboardBatch(input: {
 
 export type BatchQuoteBindingResult =
   | { ok: true; totalCrtvaiWei: bigint; shots: DirectorBatchShotQuoteRecord[] }
-  | { ok: false; error: 'quote_not_found' | 'wallet_mismatch' | 'selection_mismatch' }
+  | {
+      ok: false
+      error:
+        | 'quote_not_found'
+        | 'wallet_mismatch'
+        | 'selection_mismatch'
+        | 'quote_expired'
+        | 'quote_slippage'
+    }
 
-export function bindDirectorBatchSelections(
-  quote: { wallet: string; shots: DirectorBatchShotQuoteRecord[] },
+export async function bindDirectorBatchSelections(
+  quote: { wallet: string; expiresAtMs: number; shots: DirectorBatchShotQuoteRecord[] },
   wallet: string,
   selections: Array<{ shotId: string; provider: PixelsRenderProvider }>,
-): BatchQuoteBindingResult {
+): Promise<BatchQuoteBindingResult> {
   const normalizedWallet = wallet.trim().toLowerCase()
   if (quote.wallet !== normalizedWallet) {
     return { ok: false, error: 'wallet_mismatch' }
@@ -311,9 +332,30 @@ export function bindDirectorBatchSelections(
     if (selection.provider !== 'veo' && selection.provider !== 'seedance') {
       return { ok: false, error: 'selection_mismatch' }
     }
-    weiValues.push(
-      BigInt(selection.provider === 'veo' ? stored.veoCrtvaiWei : stored.seedanceCrtvaiWei),
+    const estimatedUsdc6 =
+      selection.provider === 'veo' ? stored.veoUsdc6 : stored.seedanceUsdc6
+    const minCrtvaiWei = BigInt(
+      selection.provider === 'veo' ? stored.veoCrtvaiWei : stored.seedanceCrtvaiWei,
     )
+    try {
+      const { minAmountWei } = await validateSettlementAgainstQuote({
+        estimatedUsdc6,
+        minCrtvaiWei,
+        expiresAtMs: quote.expiresAtMs,
+        slippageBps: METOKEN_QUOTE_SLIPPAGE_BPS,
+      })
+      weiValues.push(minAmountWei)
+    } catch (error) {
+      if (error instanceof MetokenQuoteError) {
+        if (error.code === 'quote_expired') {
+          return { ok: false, error: 'quote_expired' }
+        }
+        if (error.code === 'quote_slippage') {
+          return { ok: false, error: 'quote_slippage' }
+        }
+      }
+      throw error
+    }
   }
 
   return {

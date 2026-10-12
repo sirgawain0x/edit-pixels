@@ -9,11 +9,15 @@ import { createPublicClient, http, type Hex } from 'viem'
 import { base } from 'viem/chains'
 import { isPremiumWallet } from './_premium-membership.js'
 import {
-  consumePaymentTxHash,
   isPaymentLedgerReady,
-  releasePaymentTxHash,
+  releasePaymentTxLog,
 } from './_payment-ledger.js'
+import { assertPaymentPayerMatchesSigner } from './_pixels-payment-payer.js'
+import { verifyCrtvaiPaymentFromReceipt } from './_pixels-crtvai-payment.js'
+import { consumePaymentTxLog } from './_payment-ledger.js'
 import {
+  isQuoteSigningConfigured,
+  METOKEN_QUOTE_SLIPPAGE_BPS,
   MetokenQuoteError,
   quoteCrtvaiForUsdc6,
   validateSettlementAgainstQuote,
@@ -24,8 +28,6 @@ import {
 const DIRECTOR_USDC6_PER_AUDIO_MINUTE_RETAIL = 50_000
 /** Mirrors `DIRECTOR_USDC6_PER_AUDIO_MINUTE_PREMIUM` in src/config/billing.ts */
 const DIRECTOR_USDC6_PER_AUDIO_MINUTE_PREMIUM = 25_000
-
-const CRTVAI_DIAMOND = '0xecb695544a3d2a64d579b3828f3f60f6932f4846'
 
 export interface DirectorBillingQuote {
   quoteId: string
@@ -95,6 +97,20 @@ export async function quoteDirectorForWallet(
 export async function resolveDirectorSettlementMinWei(
   quote: DirectorBillingQuote,
 ): Promise<bigint> {
+  if (isDirectorBillingEnforced()) {
+    if (!isQuoteSigningConfigured()) {
+      throw new MetokenQuoteError(
+        'quote_invalid',
+        'Quote signing is not configured for enforced billing.',
+      )
+    }
+    if (quote.signature.startsWith('unsigned:')) {
+      throw new MetokenQuoteError('quote_invalid', 'Invalid quote signature')
+    }
+    if (quote.slippageBps !== METOKEN_QUOTE_SLIPPAGE_BPS) {
+      throw new MetokenQuoteError('quote_invalid', 'Invalid quote slippage')
+    }
+  }
   if (
     !verifyQuoteSignature({
       quoteId: quote.quoteId,
@@ -137,7 +153,9 @@ function alchemyRpcUrl(): string {
   return key ? `https://base-mainnet.g.alchemy.com/v2/${key}` : 'https://mainnet.base.org'
 }
 
-export type PaymentVerifyResult = { ok: true; amountWei: bigint } | { ok: false; reason: string }
+export type PaymentVerifyResult =
+  | { ok: true; amountWei: bigint; logIndex: number }
+  | { ok: false; reason: string; httpStatus?: number }
 
 /**
  * Confirm a CRTVAI Transfer log from `from` → treasury in `txHash`.
@@ -147,17 +165,19 @@ export async function verifyDirectorPayment(options: {
   txHash: string
   from: string
   minAmountWei: bigint
+  verifiedSignerAddress: string
 }): Promise<PaymentVerifyResult> {
   const treasury = getDirectorTreasury()
   if (!treasury) return { ok: false, reason: 'Treasury not configured' }
 
-  const from = options.from.trim().toLowerCase()
-  const to = treasury.toLowerCase()
-  if (!from.startsWith('0x') || from.length < 42) {
-    return { ok: false, reason: 'Invalid wallet address' }
-  }
   if (!options.txHash.startsWith('0x')) {
     return { ok: false, reason: 'Invalid payment transaction hash' }
+  }
+
+  const payer = options.from.trim()
+  const signer = options.verifiedSignerAddress.trim()
+  if (!payer.startsWith('0x') || payer.length < 42) {
+    return { ok: false, reason: 'Invalid wallet address' }
   }
 
   const client = createPublicClient({
@@ -169,37 +189,19 @@ export async function verifyDirectorPayment(options: {
     const receipt = await client.getTransactionReceipt({
       hash: options.txHash as Hex,
     })
-    if (receipt.status !== 'success') {
-      return { ok: false, reason: 'Payment transaction failed' }
-    }
+    const tx = await client.getTransaction({ hash: options.txHash as Hex })
 
-    const fromPad = `0x000000000000000000000000${from.slice(2)}`.toLowerCase()
-    const toPad = `0x000000000000000000000000${to.slice(2)}`.toLowerCase()
-
-    const logs = receipt.logs.filter(
-      (log) =>
-        log.address.toLowerCase() === CRTVAI_DIAMOND.toLowerCase() &&
-        log.topics[1]?.toLowerCase() === fromPad &&
-        log.topics[2]?.toLowerCase() === toPad,
-    )
-
-    if (logs.length === 0) {
-      return { ok: false, reason: 'No matching CRTVAI transfer to treasury found' }
-    }
-
-    let amountWei = 0n
-    for (const log of logs) {
-      amountWei += BigInt(log.data)
-    }
-
-    if (amountWei < options.minAmountWei) {
-      return {
-        ok: false,
-        reason: `Payment too low: need ${options.minAmountWei} wei, got ${amountWei}`,
-      }
-    }
-
-    return { ok: true, amountWei }
+    const verified = verifyCrtvaiPaymentFromReceipt({
+      receipt,
+      txFrom: tx.from,
+      txTo: tx.to,
+      verifiedSignerAddress: signer as `0x${string}`,
+      payerAddress: payer as `0x${string}`,
+      treasuryAddress: treasury,
+      minAmountWei: options.minAmountWei,
+    })
+    if (!verified.ok) return verified
+    return { ok: true, amountWei: verified.amountWei, logIndex: verified.logIndex }
   } catch (error) {
     return {
       ok: false,
@@ -216,17 +218,33 @@ export async function verifyAndConsumeDirectorPayment(options: {
   from: string
   minAmountWei: bigint
   purpose: string
+  verifiedSignerAddress: string
 }): Promise<PaymentVerifyResult> {
   if (isDirectorBillingEnforced() && !isPaymentLedgerReady()) {
     return { ok: false, reason: 'Payment ledger unavailable (configure Upstash/Vercel KV)' }
   }
 
-  const verified = await verifyDirectorPayment(options)
+  const payerBinding = assertPaymentPayerMatchesSigner(
+    options.from,
+    options.verifiedSignerAddress,
+  )
+  if (!payerBinding.ok) {
+    return { ok: false, reason: payerBinding.reason, httpStatus: 403 }
+  }
+
+  const verified = await verifyDirectorPayment({
+    txHash: options.txHash,
+    from: options.from,
+    minAmountWei: options.minAmountWei,
+    verifiedSignerAddress: options.verifiedSignerAddress,
+  })
   if (!verified.ok) return verified
+
+  const logIndex = verified.logIndex
 
   if (isDirectorBillingEnforced()) {
     try {
-      const consumed = await consumePaymentTxHash(options.txHash, {
+      const consumed = await consumePaymentTxLog(options.txHash, logIndex, {
         wallet: options.from,
         purpose: options.purpose,
       })
@@ -242,7 +260,7 @@ export async function verifyAndConsumeDirectorPayment(options: {
   return verified
 }
 
-/** Undo a consumed payment hash after a pre-delivery Director failure. */
-export async function releaseDirectorPayment(txHash: string): Promise<void> {
-  await releasePaymentTxHash(txHash)
+/** Undo a consumed payment log after a pre-delivery Director failure. */
+export async function releaseDirectorPayment(txHash: string, logIndex: number): Promise<void> {
+  await releasePaymentTxLog(txHash, logIndex)
 }

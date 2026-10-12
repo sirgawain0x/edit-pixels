@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   ArrowRightLeft,
@@ -49,6 +49,7 @@ import {
   type FlowQuality,
   type FlowTier,
 } from '@/config/flow'
+import { fetchFlowServerQuote } from './fetch-flow-server-quote'
 import { quoteFlowGeneration } from './flow-pricing'
 import { cn } from '@/shared/ui/cn'
 
@@ -112,7 +113,7 @@ export const FlowPanel = memo(function FlowPanel() {
     (start.mode === 'generate' && !start.publicUrl && start.generatePrompt.trim() ? 1 : 0) +
     (end.mode === 'generate' && !end.publicUrl && end.generatePrompt.trim() ? 1 : 0)
 
-  const quote = useMemo(
+  const baseQuote = useMemo(
     () =>
       quoteFlowGeneration({
         duration,
@@ -123,7 +124,57 @@ export const FlowPanel = memo(function FlowPanel() {
     [duration, effectiveQuality, tier, stillCount],
   )
 
-  const insufficient = balance <= 0
+  const [serverCrtvai, setServerCrtvai] = useState<{
+    crtvaiWei: bigint
+    crtvaiDisplay: number
+    formattedUsd: string
+  } | null>(null)
+
+  useEffect(() => {
+    if (!auth) {
+      setServerCrtvai(null)
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      const token = await auth.getAccessToken()
+      if (!token || cancelled) return
+      const priced = await fetchFlowServerQuote(
+        { token, signerAddress: auth.signerAddress },
+        {
+          duration,
+          quality: effectiveQuality,
+          tier,
+          stillCount,
+        },
+      )
+      if (cancelled || !priced) return
+      setServerCrtvai({
+        crtvaiWei: priced.crtvaiWei,
+        crtvaiDisplay: priced.crtvaiDisplay,
+        formattedUsd: priced.formattedUsd,
+      })
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [auth, duration, effectiveQuality, tier, stillCount])
+
+  const quote = useMemo(
+    () =>
+      serverCrtvai
+        ? {
+            ...baseQuote,
+            crtvaiWei: serverCrtvai.crtvaiWei,
+            crtvaiDisplay: serverCrtvai.crtvaiDisplay,
+            formattedUsd: serverCrtvai.formattedUsd,
+          }
+        : baseQuote,
+    [baseQuote, serverCrtvai],
+  )
+
+  const insufficient =
+    quote.crtvaiDisplay > 0 ? balance < quote.crtvaiDisplay : balance <= 0
 
   const onTierChange = useCallback((next: FlowTier) => {
     setTier(next)
@@ -219,9 +270,34 @@ export const FlowPanel = memo(function FlowPanel() {
     setProgress(0)
     setStatus(t('flow.status.paying', { defaultValue: 'Confirming payment…' }))
     try {
+      const token = await auth.getAccessToken()
+      if (!token) {
+        throw new Error(t('flow.error.auth', { defaultValue: 'Wallet auth required for Flow.' }))
+      }
+      const serverQuote = await fetchFlowServerQuote(
+        { token, signerAddress: auth.signerAddress },
+        {
+          duration: clampFlowDuration(duration),
+          quality: effectiveQuality,
+          tier,
+          stillCount,
+        },
+      )
+      if (!serverQuote || serverQuote.crtvaiWei <= 0n) {
+        throw new Error(
+          t('flow.error.noQuote', { defaultValue: 'Could not price this Flow run — try again.' }),
+        )
+      }
+      if (balance < serverQuote.crtvaiDisplay) {
+        setBuyOpen(true)
+        throw new Error(
+          t('flow.error.insufficient', { defaultValue: 'Insufficient CRTVAI for this Flow.' }),
+        )
+      }
+
       let paymentTxHash: string | undefined
       if (canPayOnChain) {
-        const { txHash } = await sendOps([buildDirectorPaymentOp(quote.crtvaiWei)])
+        const { txHash } = await sendOps([buildDirectorPaymentOp(serverQuote.crtvaiWei)])
         paymentTxHash = txHash
         refreshBalance()
       }
@@ -242,6 +318,16 @@ export const FlowPanel = memo(function FlowPanel() {
           : {}),
         stillQuality: '2K',
         ...(paymentTxHash ? { paymentTxHash } : {}),
+        ...(serverQuote.quoteId
+          ? {
+              quoteId: serverQuote.quoteId,
+              quoteSignature: serverQuote.signature,
+              quoteExpiresAtMs: serverQuote.expiresAtMs,
+              quoteSlippageBps: serverQuote.slippageBps,
+              quoteEstimatedUsdc6: serverQuote.estimatedUsdc6,
+              quoteCrtvaiRequired: serverQuote.crtvaiWei.toString(),
+            }
+          : {}),
       })
 
       if (task.startImageUrl) {

@@ -3,7 +3,10 @@
  */
 // fallow-ignore-file complexity,code-duplication
 
-import { getBearerToken, verifyPrivyAccessToken } from './_wallet-auth.js'
+import {
+  authenticateGenerativePost,
+  verifyGenerativeCrtvaiPayment,
+} from './_pixels-generate-route-auth.js'
 import { checkMetokenSufficient } from './_metoken-server.js'
 import {
   clampFlowDuration,
@@ -20,7 +23,13 @@ import {
   shortTaskId,
   startVeoVideo,
 } from './_vertex-generative.js'
-import { isFlowBillingEnforced, quoteFlowCreditsUsdc6, verifyFlowPayment } from './flow-billing.js'
+import {
+  isFlowBillingEnforced,
+  quoteFlowCreditsUsdc6,
+  resolveFlowSettlementMinWei,
+  type FlowCreditsQuote,
+} from './flow-billing.js'
+import { METOKEN_QUOTE_SLIPPAGE_BPS, MetokenQuoteError } from './_metoken-curve-quote.js'
 
 async function resolveHttpsImageUrl(url: string, requestUrl: string): Promise<string> {
   const trimmed = url.trim()
@@ -62,29 +71,9 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'service unavailable' }, { status: 503 })
   }
 
-  let body: Record<string, unknown>
-  try {
-    const parsed = await request.json()
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      return Response.json({ error: 'invalid body' }, { status: 400 })
-    }
-    body = parsed as Record<string, unknown>
-  } catch {
-    return Response.json({ error: 'invalid body' }, { status: 400 })
-  }
-
-  const token = getBearerToken(request) || (typeof body.token === 'string' ? body.token : null)
-  if (!token) {
-    return Response.json({ error: 'missing authorization' }, { status: 401 })
-  }
-
-  const auth = await verifyPrivyAccessToken(
-    token,
-    typeof body.walletAddress === 'string' ? body.walletAddress : undefined,
-  )
-  if (!auth) {
-    return Response.json({ error: 'invalid authorization' }, { status: 401 })
-  }
+  const authenticated = await authenticateGenerativePost(request)
+  if (!authenticated.ok) return authenticated.response
+  const { signer, payer, body } = authenticated
 
   const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
   if (!prompt) {
@@ -128,9 +117,38 @@ export async function POST(request: Request): Promise<Response> {
     stillCount,
     stillQuality,
   })
-  const quote = await quoteFlowCreditsUsdc6(totalCredits)
-  if (!quote) {
+  const canonical = await quoteFlowCreditsUsdc6(totalCredits)
+  if (!canonical) {
     return Response.json({ error: 'invalid quote' }, { status: 400 })
+  }
+
+  let billingQuote: FlowCreditsQuote | undefined
+  if (
+    typeof body.quoteId === 'string' &&
+    typeof body.quoteSignature === 'string' &&
+    typeof body.quoteExpiresAtMs === 'number' &&
+    typeof body.quoteSlippageBps === 'number' &&
+    typeof body.quoteEstimatedUsdc6 === 'number' &&
+    typeof body.quoteCrtvaiRequired === 'string'
+  ) {
+    billingQuote = {
+      quoteId: body.quoteId.trim(),
+      signature: body.quoteSignature.trim(),
+      expiresAtMs: body.quoteExpiresAtMs,
+      slippageBps: body.quoteSlippageBps,
+      estimatedUsdc6: body.quoteEstimatedUsdc6,
+      minCrtvaiWei: BigInt(body.quoteCrtvaiRequired),
+    }
+  }
+
+  const quote = billingQuote ?? canonical
+  if (billingQuote) {
+    if (billingQuote.estimatedUsdc6 !== canonical.estimatedUsdc6) {
+      return Response.json({ error: 'flow_quote_mismatch' }, { status: 402 })
+    }
+    if (billingQuote.slippageBps !== METOKEN_QUOTE_SLIPPAGE_BPS) {
+      return Response.json({ error: 'flow_quote_mismatch' }, { status: 402 })
+    }
   }
 
   if (isFlowBillingEnforced()) {
@@ -138,10 +156,19 @@ export async function POST(request: Request): Promise<Response> {
     if (!paymentTxHash) {
       return Response.json({ error: 'payment_required' }, { status: 402 })
     }
-    const verified = await verifyFlowPayment({
-      txHash: paymentTxHash,
-      from: auth.address,
-      minAmountWei: quote.minCrtvaiWei,
+    let minAmountWei: bigint
+    try {
+      minAmountWei = await resolveFlowSettlementMinWei(quote)
+    } catch (error) {
+      const message =
+        error instanceof MetokenQuoteError ? error.message : 'Flow quote validation failed'
+      return Response.json({ error: message }, { status: 402 })
+    }
+    const verified = await verifyGenerativeCrtvaiPayment({
+      paymentTxHash,
+      signer,
+      payer,
+      quote: { minCrtvaiWei: minAmountWei },
       purpose: 'flow-run',
     })
     if (!verified.ok) {
@@ -149,7 +176,7 @@ export async function POST(request: Request): Promise<Response> {
     }
   } else {
     try {
-      const balanceCheck = await checkMetokenSufficient(auth.address, quote.estimatedUsdc6)
+      const balanceCheck = await checkMetokenSufficient(payer, quote.estimatedUsdc6)
       if (!balanceCheck.sufficient) {
         return Response.json(
           {
@@ -192,7 +219,7 @@ export async function POST(request: Request): Promise<Response> {
 
     const taskId = shortTaskId(started.operationName)
     const { registerGenerativeTask } = await import('./_task-registry.js')
-    await registerGenerativeTask(taskId, auth.address, {
+    await registerGenerativeTask(taskId, signer, {
       operationName: started.operationName,
       modelId: started.modelId,
     })

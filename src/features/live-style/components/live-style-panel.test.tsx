@@ -21,6 +21,7 @@ vi.mock('@/context/wallet-context', () => ({
   useWalletContext: () => ({
     getAccessToken: async () => 'token',
     account: '0xSmart00000000000000000000000000000001' as Address,
+    signerAddress: '0xSigner00000000000000000000000000000001' as Address,
     chain: { id: 8453 },
   }),
 }))
@@ -46,11 +47,11 @@ describe('LiveStylePanel', () => {
     })
   })
 
-  it('creates session with smart account address', async () => {
+  it('creates session with signer identity', async () => {
     render(<LiveStylePanel />)
     fireEvent.click(screen.getByRole('button', { name: /start/i }))
     await waitFor(() => expect(mockCreate).toHaveBeenCalled())
-    const firstCall = mockCreate.mock.calls[0]?.[0] as { walletAddress: string }
-    expect(firstCall.walletAddress).toBe('0xSmart00000000000000000000000000000001')
+    const firstCall = mockCreate.mock.calls[0]?.[0] as { signerAddress: string }
+    expect(firstCall.signerAddress).toBe('0xSigner00000000000000000000000000000001')
   })
 })

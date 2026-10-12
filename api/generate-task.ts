@@ -4,39 +4,32 @@
  */
 // fallow-ignore-file complexity
 
-import { getBearerToken, verifyPrivyAccessToken } from './_wallet-auth.js'
 import { toGenerativeTaskDetail } from './_generative-task-response.js'
 import { isVertexGenerativeConfigured, pollVeoOperation } from './_vertex-generative.js'
 import { getGenerativeTaskMeta, getGenerativeTaskOwner } from './_task-registry.js'
 import { syncPixelsVeoJobFromPoll } from './_pixels-generate-veo-sync.js'
+import { authenticateGenerativeGet } from './_pixels-generate-route-auth.js'
 
 export async function GET(request: Request): Promise<Response> {
   if (!isVertexGenerativeConfigured()) {
     return Response.json({ error: 'service unavailable' }, { status: 503 })
   }
 
-  const token = getBearerToken(request)
-  if (!token) {
-    return Response.json({ error: 'missing authorization' }, { status: 401 })
-  }
-
   const url = new URL(request.url)
   const taskId = url.searchParams.get('id')?.trim()
-  const walletHint = url.searchParams.get('wallet')?.trim()
   if (!taskId) {
     return Response.json({ error: 'id required' }, { status: 400 })
   }
 
-  const auth = await verifyPrivyAccessToken(token, walletHint)
-  if (!auth) {
-    return Response.json({ error: 'invalid authorization' }, { status: 401 })
-  }
+  const authenticated = await authenticateGenerativeGet(request)
+  if (!authenticated.ok) return authenticated.response
+  const { signer } = authenticated
 
   const owner = await getGenerativeTaskOwner(taskId)
   if (!owner) {
     return Response.json({ error: 'task not found' }, { status: 404 })
   }
-  if (owner !== auth.address.toLowerCase()) {
+  if (owner !== signer.toLowerCase()) {
     return Response.json({ error: 'forbidden' }, { status: 403 })
   }
 

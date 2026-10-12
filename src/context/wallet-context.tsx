@@ -23,6 +23,7 @@ import {
 } from '@alchemy/wallet-apis'
 import { swapActions, type SwapActions } from '@alchemy/wallet-apis/experimental'
 import { createWalletClient, custom, type Chain, type WalletClient, type Address } from 'viem'
+import { PIXELS_SMART_ACCOUNT_ID, PIXELS_SMART_ACCOUNT_TYPE } from '@/config/pixels-smart-account'
 import { ALCHEMY_API_KEY, ALCHEMY_POLICY_ID } from '@/config/alchemy'
 import { DEFAULT_CHAIN, getChainById } from '@/config/chains'
 
@@ -77,8 +78,6 @@ const isPrivyConfigured = Boolean(PRIVY_APP_ID)
  * Stable per signer so we get one dedicated Pixels SCA — not a Privy/user/wallet address.
  * Pair with creationHint.accountType 'sma-b' to force ERC-4337, not EIP-7702.
  */
-const PIXELS_SMART_ACCOUNT_ID = 'e1459502-d074-4044-81e1-e7b2744a60b0'
-
 function WalletContextInner({ children }: { children: ReactNode }) {
   const { ready, authenticated, user, login, logout, connectWallet, getAccessToken } = usePrivy()
   const { wallets, ready: walletsReady } = useWallets()
@@ -159,7 +158,7 @@ function WalletContextInner({ children }: { children: ReactNode }) {
           smartWalletClient.requestAccount({
             signerAddress,
             id: PIXELS_SMART_ACCOUNT_ID,
-            creationHint: { accountType: 'sma-b' },
+            creationHint: { accountType: PIXELS_SMART_ACCOUNT_TYPE },
           }),
           new Promise<never>((_, reject) => {
             window.setTimeout(
