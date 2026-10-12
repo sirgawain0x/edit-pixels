@@ -27,7 +27,7 @@ import {
   verifyFlowPayment,
   type FlowCreditsQuote,
 } from './flow-billing.js'
-import { MetokenQuoteError } from './_metoken-curve-quote.js'
+import { METOKEN_QUOTE_SLIPPAGE_BPS, MetokenQuoteError } from './_metoken-curve-quote.js'
 
 async function resolveHttpsImageUrl(url: string, requestUrl: string): Promise<string> {
   const trimmed = url.trim()
@@ -160,11 +160,13 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const quote = billingQuote ?? canonical
-  if (
-    billingQuote &&
-    billingQuote.estimatedUsdc6 !== canonical.estimatedUsdc6
-  ) {
-    return Response.json({ error: 'flow_quote_mismatch' }, { status: 402 })
+  if (billingQuote) {
+    if (billingQuote.estimatedUsdc6 !== canonical.estimatedUsdc6) {
+      return Response.json({ error: 'flow_quote_mismatch' }, { status: 402 })
+    }
+    if (billingQuote.slippageBps !== METOKEN_QUOTE_SLIPPAGE_BPS) {
+      return Response.json({ error: 'flow_quote_mismatch' }, { status: 402 })
+    }
   }
 
   if (isFlowBillingEnforced()) {

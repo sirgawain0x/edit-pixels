@@ -89,6 +89,10 @@ function signingSecret(): string | null {
   return raw && raw.length >= 16 ? raw : null
 }
 
+export function isQuoteSigningConfigured(): boolean {
+  return signingSecret() !== null
+}
+
 function signPayload(payload: string): string {
   const secret = signingSecret()
   if (!secret) {
@@ -213,7 +217,7 @@ export async function validateSettlementAgainstQuote(stored: {
   }
 
   const freshWei = await readMeTokensMintedForDeposit(BigInt(stored.estimatedUsdc6))
-  if (!isWithinSlippageBand(stored.minCrtvaiWei, freshWei, stored.slippageBps)) {
+  if (!isWithinSlippageBand(stored.minCrtvaiWei, freshWei, METOKEN_QUOTE_SLIPPAGE_BPS)) {
     throw new MetokenQuoteError(
       'quote_slippage',
       'Price moved beyond the quoted band — request a new quote.',
