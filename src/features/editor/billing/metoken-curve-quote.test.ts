@@ -1,11 +1,20 @@
 import { describe, expect, it } from 'vitest'
 import * as curveQuote from '../../../../api/_metoken-curve-quote.js'
 import {
+  isRpcTransportError,
   METOKEN_QUOTE_EXPIRY_SECONDS,
   METOKEN_QUOTE_SETTLEMENT_GRACE_SECONDS,
   METOKEN_QUOTE_SLIPPAGE_BPS,
   validateSettlementAgainstQuote,
 } from '../../../../api/_metoken-curve-quote.js'
+import {
+  CallExecutionError,
+  ContractFunctionExecutionError,
+  ContractFunctionRevertedError,
+  HttpRequestError,
+  RpcRequestError,
+  TimeoutError,
+} from 'viem'
 import { vi } from 'vitest'
 import {
   calculateMeTokensMintedPure,
@@ -22,6 +31,106 @@ function memoCurveState(): CurveState {
     balancePooledUsdc6: MEMO_BALANCE_POOLED_USDC6,
   }
 }
+
+describe('isRpcTransportError', () => {
+  const emptyCall = {}
+  const contractCtx = {
+    abi: [] as const,
+    functionName: 'totalSupply',
+  }
+
+  it('detects a top-level HttpRequestError', () => {
+    expect(isRpcTransportError(new HttpRequestError({ url: 'https://rpc.example' }))).toBe(true)
+  })
+
+  it('maps wrapped ContractFunctionExecutionError → CallExecutionError → HttpRequestError', () => {
+    const http = new HttpRequestError({ url: 'https://rpc.example' })
+    const call = new CallExecutionError(http, emptyCall)
+    const wrapped = new ContractFunctionExecutionError(call, contractCtx)
+    expect(isRpcTransportError(wrapped)).toBe(true)
+  })
+
+  it('maps wrapped TimeoutError', () => {
+    const timeout = new TimeoutError({ body: {}, url: 'https://rpc.example' })
+    const call = new CallExecutionError(timeout, emptyCall)
+    expect(isRpcTransportError(new ContractFunctionExecutionError(call, contractCtx))).toBe(true)
+  })
+
+  it('maps AbortError by name', () => {
+    const abort = new Error('The operation was aborted')
+    abort.name = 'AbortError'
+    expect(isRpcTransportError(abort)).toBe(true)
+  })
+
+  it('does not treat contract reverts as transport errors', () => {
+    const revert = new ContractFunctionRevertedError({
+      abi: [],
+      functionName: 'totalSupply',
+      message: 'execution reverted',
+    })
+    const call = new CallExecutionError(revert, emptyCall)
+    const wrapped = new ContractFunctionExecutionError(call, contractCtx)
+    expect(isRpcTransportError(wrapped)).toBe(false)
+  })
+
+  function rpcRequestError(code: number, message: string, data?: unknown) {
+    return new RpcRequestError({
+      body: { jsonrpc: '2.0', id: 1, method: 'eth_call', params: [] },
+      url: 'https://rpc.example',
+      error: data === undefined ? { code, message } : { code, message, data },
+    })
+  }
+
+  const errorStringRevertData =
+    '0x08c379a0000000000000000000000000000000000000000000000000000000000000020' +
+    '00000000000000000000000000000000000000000000000000000000000000004' +
+    '7465737400000000000000000000000000000000000000000000000000000000'
+
+  it('treats -32000 with plain-text data as transport', () => {
+    expect(isRpcTransportError(rpcRequestError(-32_000, 'internal error', 'missing trie node'))).toBe(
+      true,
+    )
+  })
+
+  it('treats -32000 with object data payload as transport', () => {
+    expect(
+      isRpcTransportError(rpcRequestError(-32_000, 'internal error', { reason: 'missing trie node' })),
+    ).toBe(true)
+  })
+
+  it('does not classify too-short hex as a revert', () => {
+    expect(isRpcTransportError(rpcRequestError(-32_000, 'internal error', '0x12'))).toBe(true)
+  })
+
+  it('classifies Error(string) revert return data as a revert', () => {
+    expect(isRpcTransportError(rpcRequestError(3, 'execution reverted', errorStringRevertData))).toBe(
+      false,
+    )
+    expect(isRpcTransportError(rpcRequestError(-32_000, 'internal error', errorStringRevertData))).toBe(
+      false,
+    )
+  })
+
+  function revertWrappingRpc(code: number, message: string) {
+    const rpc = rpcRequestError(code, message)
+    const revert = new ContractFunctionRevertedError({
+      abi: [],
+      functionName: 'totalSupply',
+      message: 'execution reverted',
+      cause: rpc,
+    })
+    const call = new CallExecutionError(revert, emptyCall)
+    return new ContractFunctionExecutionError(call, contractCtx)
+  }
+
+  it('does not treat revert wrapping RpcRequestError (-32000) as transport', () => {
+    expect(isRpcTransportError(revertWrappingRpc(-32_000, 'execution reverted'))).toBe(false)
+  })
+
+  it('does not treat revert wrapping RpcRequestError (-32603) as transport', () => {
+    expect(isRpcTransportError(revertWrappingRpc(-32_603, 'internal error'))).toBe(false)
+  })
+})
 
 describe('metoken curve math (memo reference)', () => {
   it('$1 mints ~0.29857 CRTVAI at supply 3.2 and pooled $5.12', () => {
