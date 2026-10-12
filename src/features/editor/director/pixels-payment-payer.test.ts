@@ -1,35 +1,25 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
-
-vi.mock('../../../../api/_pixels-smart-account.js', () => ({
-  resolvePixelsSmartAccountForSigner: vi.fn(),
-}))
+import { describe, expect, it } from 'vitest'
+import { getAddress } from 'viem'
+import { predictPixelsSmartAccountForSigner } from '../../../../api/_pixels-smart-account.js'
 
 describe('assertPaymentPayerMatchesSigner', () => {
-  const SIGNER = '0x1111111111111111111111111111111111111111'
-  const SMART = '0x2222222222222222222222222222222222222222'
-  const STRANGER = '0x3333333333333333333333333333333333333333'
-
-  beforeEach(async () => {
-    const { resolvePixelsSmartAccountForSigner } = await import(
-      '../../../../api/_pixels-smart-account.js'
-    )
-    vi.mocked(resolvePixelsSmartAccountForSigner).mockReset()
-    vi.mocked(resolvePixelsSmartAccountForSigner).mockResolvedValue(SMART as `0x${string}`)
-  })
+  const SIGNER = getAddress('0x1111111111111111111111111111111111111111')
+  const SMART = predictPixelsSmartAccountForSigner(SIGNER)
+  const STRANGER = getAddress('0x3333333333333333333333333333333333333333')
 
   it('accepts the verified signer paying directly from their EOA', async () => {
     const { assertPaymentPayerMatchesSigner } = await import(
       '../../../../api/_pixels-payment-payer.js'
     )
-    const result = await assertPaymentPayerMatchesSigner(SIGNER, SIGNER)
+    const result = assertPaymentPayerMatchesSigner(SIGNER, SIGNER)
     expect(result).toEqual({ ok: true })
   })
 
-  it('accepts the Alchemy smart account derived for the verified signer', async () => {
+  it('accepts the predicted Alchemy smart account for the verified signer', async () => {
     const { assertPaymentPayerMatchesSigner } = await import(
       '../../../../api/_pixels-payment-payer.js'
     )
-    const result = await assertPaymentPayerMatchesSigner(SMART, SIGNER)
+    const result = assertPaymentPayerMatchesSigner(SMART, SIGNER)
     expect(result).toEqual({ ok: true })
   })
 
@@ -37,7 +27,7 @@ describe('assertPaymentPayerMatchesSigner', () => {
     const { assertPaymentPayerMatchesSigner } = await import(
       '../../../../api/_pixels-payment-payer.js'
     )
-    const result = await assertPaymentPayerMatchesSigner(STRANGER, SIGNER)
+    const result = assertPaymentPayerMatchesSigner(STRANGER, SIGNER)
     expect(result.ok).toBe(false)
     if (!result.ok) {
       expect(result.reason).toMatch(/not linked/i)

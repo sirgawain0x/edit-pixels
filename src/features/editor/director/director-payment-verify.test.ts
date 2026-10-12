@@ -15,9 +15,10 @@ describe('verifyDirectorPayment payer vs tx sender', () => {
     vi.stubEnv('PIXELS_TREASURY_ADDRESS', '0x1111111111111111111111111111111111111111')
   })
 
-  it('rejects when the claimed payer did not send the CRTVAI transfer', async () => {
+  it('rejects when the claimed EOA payer did not send the CRTVAI transfer', async () => {
     const payer = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
     const other = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+    const treasury = '0x1111111111111111111111111111111111111111'
 
     vi.mocked(createPublicClient).mockReturnValue({
       getTransactionReceipt: async () => ({
@@ -28,24 +29,26 @@ describe('verifyDirectorPayment payer vs tx sender', () => {
             topics: [
               '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',
               `0x000000000000000000000000${other.slice(2)}`,
-              '0x0000000000000000000000001111111111111111111111111111111111111111',
+              `0x000000000000000000000000${treasury.slice(2)}`,
             ],
             data: '0x1',
+            logIndex: 0,
           },
         ],
       }),
-      getTransaction: async () => ({ from: other }),
+      getTransaction: async () => ({ from: other, to: '0xecb695544a3d2a64d579b3828f3f60f6932f4846' }),
     } as never)
 
     const { verifyDirectorPayment } = await import('../../../../api/director-billing.js')
     const result = await verifyDirectorPayment({
-      txHash: '0xdeadbeef',
+      txHash: '0x' + 'de'.repeat(32),
       from: payer,
       minAmountWei: 1n,
+      verifiedSignerAddress: payer,
     })
     expect(result.ok).toBe(false)
     if (!result.ok) {
-      expect(result.reason).toMatch(/payer wallet/i)
+      expect(result.reason).toMatch(/sender does not match payer wallet/i)
     }
   })
 })

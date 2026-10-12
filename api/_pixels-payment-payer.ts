@@ -1,35 +1,24 @@
 /// <reference types="node" />
 /**
- * Bind on-chain CRTVAI payer to the Privy-verified signer (EOA or derived Alchemy smart account).
+ * Bind on-chain CRTVAI payer to the Privy-verified signer (EOA or predicted Alchemy SMA).
  */
 import type { Address } from 'viem'
-import { resolvePixelsSmartAccountForSigner } from './_pixels-smart-account.js'
+import { getAddress } from 'viem'
+import { predictPixelsSmartAccountForSigner } from './_pixels-smart-account.js'
 
-export async function assertPaymentPayerMatchesSigner(
+export function assertPaymentPayerMatchesSigner(
   payerAddress: string,
   verifiedSignerAddress: string,
-): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const payer = payerAddress.trim().toLowerCase()
-  const signer = verifiedSignerAddress.trim().toLowerCase()
-  if (!payer.startsWith('0x') || payer.length < 42) {
-    return { ok: false, reason: 'Invalid payer wallet address' }
-  }
-  if (!signer.startsWith('0x') || signer.length < 42) {
-    return { ok: false, reason: 'Invalid verified signer address' }
-  }
+): { ok: true } | { ok: false; reason: string } {
+  const payer = getAddress(payerAddress)
+  const signer = getAddress(verifiedSignerAddress)
 
   if (payer === signer) {
     return { ok: true }
   }
 
-  const smartAccount = await resolvePixelsSmartAccountForSigner(signer as Address)
-  if (!smartAccount) {
-    return {
-      ok: false,
-      reason: 'Unable to resolve smart account for the authenticated wallet',
-    }
-  }
-  if (payer === smartAccount.toLowerCase()) {
+  const smartAccount = predictPixelsSmartAccountForSigner(signer)
+  if (payer === smartAccount) {
     return { ok: true }
   }
 
