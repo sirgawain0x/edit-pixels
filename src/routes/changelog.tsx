@@ -4,6 +4,11 @@ import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import { PixelsLogo } from '@/components/brand/pixels-logo'
 import { Button } from '@/components/ui/button'
+import {
+  formatChangelogCalendarDate,
+  formatChangelogWeekRange,
+  getWhatsNewEntries,
+} from '@/data/changelog-display'
 import changelogData from '@/data/changelog.json'
 import type { ChangelogEntry, ChangelogFile, ChangelogGroup } from '@/data/changelog-types'
 
@@ -24,31 +29,19 @@ const groupLabelKeys: Record<ChangelogGroup, string> = {
 }
 
 const data = changelogData as ChangelogFile
-const releases: ChangelogEntry[] = data.current ? [data.current, ...data.releases] : data.releases
+const releases: ChangelogEntry[] = getWhatsNewEntries(data)
 const groupOrder: ChangelogGroup[] = ['added', 'fixed', 'improved']
-
-function formatSingleDate(iso: string, language?: string): string {
-  const date = new Date(`${iso}T00:00:00Z`)
-  return new Intl.DateTimeFormat(language, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  }).format(date)
-}
-
-function formatWeekRange(mondayIso: string, language?: string): string {
-  const monday = new Date(`${mondayIso}T00:00:00Z`)
-  const sunday = new Date(monday.getTime() + 6 * 24 * 60 * 60 * 1000)
-  const formatter = new Intl.DateTimeFormat(language, { month: 'short', day: 'numeric' })
-  return `${formatter.format(monday)} — ${formatter.format(sunday)}`
-}
 
 function formatReleasePeriod(release: ChangelogEntry, t: TFunction, language?: string): string {
   if (release.subtitleKey) return t(`changelog.${release.subtitleKey}`)
   if (release.version === 'current') {
-    return t('editor.whatsNew.asOf', { date: formatSingleDate(release.date, language) })
+    return t('editor.whatsNew.asOf', {
+      date: formatChangelogCalendarDate(release.date, language),
+    })
   }
-  return t('editor.whatsNew.weekOf', { range: formatWeekRange(release.date, language) })
+  return t('editor.whatsNew.weekOf', {
+    range: formatChangelogWeekRange(release.date, language),
+  })
 }
 
 function getChangeCount(release: ChangelogEntry): number {
