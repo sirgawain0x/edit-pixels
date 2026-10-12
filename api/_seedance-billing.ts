@@ -259,6 +259,21 @@ export async function getSeedanceQuote(quoteId: string): Promise<SeedanceBilling
   return loadQuote(quoteId)
 }
 
+/** Align batch-linked Seedance Redis TTLs with the batch quote expiry (loop skew). */
+export async function syncBatchLinkedSeedanceQuoteExpiry(
+  quoteIds: string[],
+  batchExpiresAtMs: number,
+): Promise<void> {
+  const ttlSeconds = Math.max(60, Math.ceil((batchExpiresAtMs - Date.now()) / 1000))
+  const unique = [...new Set(quoteIds.map((id) => id.trim()).filter(Boolean))]
+
+  for (const quoteId of unique) {
+    const quote = await loadQuote(quoteId)
+    if (!quote) continue
+    await persistQuote(quote, ttlSeconds)
+  }
+}
+
 export function isSeedanceBillingEnforced(): boolean {
   return isFlowBillingEnforced()
 }

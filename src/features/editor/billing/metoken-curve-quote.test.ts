@@ -79,6 +79,25 @@ describe('quote expiry and slippage', () => {
     mintSpy.mockRestore()
   })
 
+  it('verifies treasury transfer against the quoted wei when curve ticks up inside the band', async () => {
+    const quotedWei = 1000n
+    const freshWei = 1020n
+    expect(isWithinSlippageBand(quotedWei, freshWei, METOKEN_QUOTE_SLIPPAGE_BPS)).toBe(true)
+    const mintSpy = vi
+      .spyOn(curveQuote, 'readMeTokensMintedForDeposit')
+      .mockResolvedValue(freshWei)
+    const { validateSettlementAgainstQuote: validate } =
+      await import('../../../../api/_metoken-curve-quote.js')
+    const result = await validate({
+      estimatedUsdc6: 1_000_000,
+      minCrtvaiWei: quotedWei,
+      expiresAtMs: Date.now() + 60_000,
+      slippageBps: METOKEN_QUOTE_SLIPPAGE_BPS,
+    })
+    expect(result.minAmountWei).toBe(quotedWei)
+    mintSpy.mockRestore()
+  })
+
   it('rejects when fresh amount exceeds the slippage band', () => {
     const quoted = 298_570_000_000_000_000n
     const fresh = quoted + quoted / 5n

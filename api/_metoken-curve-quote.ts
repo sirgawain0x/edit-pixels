@@ -13,11 +13,7 @@ import {
   METOKEN_QUOTE_SETTLEMENT_GRACE_SECONDS,
   METOKEN_QUOTE_SLIPPAGE_BPS,
 } from './_metoken-curve-config.js'
-import {
-  type CurveState,
-  isWithinSlippageBand,
-  settlementMinCrtvaiWei,
-} from './_metoken-curve-math.js'
+import { type CurveState, isWithinSlippageBand } from './_metoken-curve-math.js'
 
 export {
   METOKEN_QUOTE_EXPIRY_SECONDS,
@@ -224,5 +220,6 @@ export async function validateSettlementAgainstQuote(stored: {
     )
   }
 
-  return { minAmountWei: settlementMinCrtvaiWei(stored.minCrtvaiWei, freshWei) }
+  // Treasury transfer is for the signed quote amount; slippage only gates rejection.
+  return { minAmountWei: stored.minCrtvaiWei }
 }
