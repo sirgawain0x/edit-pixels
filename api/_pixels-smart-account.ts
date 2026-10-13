@@ -4,7 +4,7 @@
  */
 import { DefaultAddress, predictModularAccountV2Address } from '@alchemy/smart-accounts'
 import { getAddress, type Address } from 'viem'
-import { PIXELS_SMART_ACCOUNT_SALT } from '../src/config/pixels-smart-account.ts'
+import { PIXELS_SMART_ACCOUNT_SALT } from './_pixels-smart-account-config.js'
 
 export function predictPixelsSmartAccountForSigner(signerAddress: string): Address {
   const owner = getAddress(signerAddress)
