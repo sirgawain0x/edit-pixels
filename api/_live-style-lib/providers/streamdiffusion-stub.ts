@@ -1,11 +1,11 @@
 // fallow-ignore-file unused-export,complexity,code-duplication
-import { verifyLiveStyleWsSessionToken } from '../ws-session-token'
+import { verifyLiveStyleWsSessionToken } from '../ws-session-token.js'
 import type {
   LiveStyleProviderAdapter,
   LiveStyleProviderCreateParams,
   LiveStyleProviderSession,
   LiveStyleProviderStatus,
-} from './types'
+} from './types.js'
 
 /**
  * Stub adapter — targets LIVE_STYLE_PROVIDER_URL when configured (G2: GPU host).

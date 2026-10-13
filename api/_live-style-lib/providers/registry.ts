@@ -1,8 +1,8 @@
 // fallow-ignore-file unused-export,complexity,code-duplication
-import type { LiveStyleProviderId } from '../config'
-import { mockLiveStyleProvider } from './mock-provider'
-import { createStreamDiffusionStubProvider } from './streamdiffusion-stub'
-import type { LiveStyleProviderAdapter } from './types'
+import type { LiveStyleProviderId } from '../config.js'
+import { mockLiveStyleProvider } from './mock-provider.js'
+import { createStreamDiffusionStubProvider } from './streamdiffusion-stub.js'
+import type { LiveStyleProviderAdapter } from './types.js'
 
 export function getLiveStyleProvider(
   id: LiveStyleProviderId,

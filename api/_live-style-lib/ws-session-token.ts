@@ -1,6 +1,6 @@
 // fallow-ignore-file unused-export,complexity,code-duplication
 import { createHmac, timingSafeEqual } from 'node:crypto'
-import { isLiveStyleWsSessionRevoked } from './ws-session-revocation'
+import { isLiveStyleWsSessionRevoked } from './ws-session-revocation.js'
 
 export interface LiveStyleWsTokenPayload {
   sessionId: string

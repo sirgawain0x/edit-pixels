@@ -37,8 +37,8 @@ import {
   buildSigStructure,
   normalizePem,
   pemToDer,
-} from '../_cose'
-import { resolveCert } from './_cert'
+} from '../_cose.js'
+import { resolveCert } from './_cert.js'
 
 const MAX_CLAIM_BYTES = 1024 * 1024 // 1 MiB guard — claims are a few KB
 

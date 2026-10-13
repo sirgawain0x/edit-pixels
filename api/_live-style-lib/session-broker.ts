@@ -6,7 +6,7 @@ import {
   type LiveStyleCapPresetUsd,
   type LiveStyleProviderId,
   capPresetToUsdc6,
-} from './config'
+} from './config.js'
 import {
   applyPull,
   computePullDeltaUsdc6,
@@ -20,11 +20,11 @@ import {
   stopSession,
   tickBillableSeconds,
   type MeteringState,
-} from './metering'
-import type { LiveStylePaymentLedger } from './payment/types'
-import { getLiveStyleProvider } from './providers/registry'
-import type { LiveStyleProviderSession } from './providers/types'
-import type { LiveStyleTransportConnectInfo } from './transport'
+} from './metering.js'
+import type { LiveStylePaymentLedger } from './payment/types.js'
+import { getLiveStyleProvider } from './providers/registry.js'
+import type { LiveStyleProviderSession } from './providers/types.js'
+import type { LiveStyleTransportConnectInfo } from './transport.js'
 
 export interface LiveStyleSessionRecord {
   sessionId: string

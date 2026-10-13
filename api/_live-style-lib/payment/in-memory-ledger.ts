@@ -1,5 +1,5 @@
 // fallow-ignore-file unused-export,complexity,code-duplication
-import type { LiveStylePaymentLedger, LiveStyleSpendAuthorization } from './types'
+import type { LiveStylePaymentLedger, LiveStyleSpendAuthorization } from './types.js'
 
 export function createInMemoryLiveStylePaymentLedger(): LiveStylePaymentLedger & {
   getAuthorization(sessionId: string): LiveStyleSpendAuthorization | undefined
