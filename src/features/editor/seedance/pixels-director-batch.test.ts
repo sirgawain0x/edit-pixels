@@ -1,26 +1,62 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
-/** Stable CRTVAI wei for mocked curve reads (avoids live Base RPC in unit tests). */
+/** Stable CRTVAI wei for mocked curve quotes (no live Base RPC in this suite). */
 const MOCK_CRTVAI_MINTED_WEI = 298_570_000_000_000_000n
 
-async function mockCurveReadsForBatchTests(): Promise<void> {
-  const curve = await import('../../../../api/_metoken-curve-quote.js')
-  vi.spyOn(curve, 'readCurveState').mockResolvedValue({
-    supplyWei: MOCK_CRTVAI_MINTED_WEI,
-    balancePooledUsdc6: 0n,
-  })
-  vi.spyOn(curve, 'readMeTokensMintedForDeposit').mockResolvedValue(MOCK_CRTVAI_MINTED_WEI)
-}
+let mockQuoteSeq = 0
+
+vi.mock('../../../../api/_redis-client', () => ({
+  getRedis: vi.fn(async () => null),
+  isRedisConfigured: vi.fn(() => false),
+}))
+
+vi.mock('../../../../api/_metoken-curve-quote.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../api/_metoken-curve-quote.js')>()
+  return {
+    ...actual,
+    quoteCrtvaiForUsdc6: vi.fn(
+      async (estimatedUsdc6: number, options?: { tier?: string; quoteId?: string }) => {
+        mockQuoteSeq += 1
+        const quoteId = options?.quoteId ?? `mock-curve-quote-${mockQuoteSeq}`
+        return {
+          quoteId,
+          signature: `unsigned:${Buffer.from(`mock|${quoteId}|${estimatedUsdc6}`).toString('base64url')}`,
+          estimatedUsdc6,
+          minCrtvaiWei: MOCK_CRTVAI_MINTED_WEI,
+          expiresAtMs: Date.now() + actual.METOKEN_QUOTE_EXPIRY_SECONDS * 1000,
+          slippageBps: actual.METOKEN_QUOTE_SLIPPAGE_BPS,
+          curve: { supplyWei: MOCK_CRTVAI_MINTED_WEI, balancePooledUsdc6: 0n },
+        }
+      },
+    ),
+    validateSettlementAgainstQuote: vi.fn(async (stored: { minCrtvaiWei: bigint }) => ({
+      minAmountWei: stored.minCrtvaiWei,
+    })),
+  }
+})
+
+vi.mock('../../../../api/_metoken-server.js', () => ({
+  checkMetokenSufficient: vi.fn(async () => ({ sufficient: true })),
+}))
 
 describe('director batch bridge', () => {
   const originalVercel = process.env.VERCEL
 
-  beforeEach(async () => {
+  beforeEach(() => {
     delete process.env.VERCEL
-    await mockCurveReadsForBatchTests()
+    mockQuoteSeq = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((...args: unknown[]) => {
+        throw new Error(
+          `unexpected network fetch in pixels-director-batch.test.ts: ${String(args[0])}`,
+        )
+      }),
+    )
   })
 
   afterEach(async () => {
+    vi.unstubAllGlobals()
     vi.restoreAllMocks()
     const { __resetDirectorBatchStoreForTest } =
       await import('../../../../api/_director-batch-store')
