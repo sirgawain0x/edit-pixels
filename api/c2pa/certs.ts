@@ -10,7 +10,7 @@
  * receives the opaque certId — never the wallet address or signature.
  */
 
-import { verifyAndIssue } from './_cert'
+import { verifyAndIssue } from './_cert.js'
 
 export async function POST(request: Request): Promise<Response> {
   let body: Record<string, unknown>

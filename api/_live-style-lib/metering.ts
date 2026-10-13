@@ -3,7 +3,7 @@
  * Server-measured Live Style metering (warm-up is free; billable seconds only after meter start).
  */
 
-import { LIVE_STYLE_CAP_WARN_REMAINING_SECONDS, usdc6PerMinuteForPremium } from './config'
+import { LIVE_STYLE_CAP_WARN_REMAINING_SECONDS, usdc6PerMinuteForPremium } from './config.js'
 
 export interface MeteringState {
   /** Wall-clock when the session record was created. */

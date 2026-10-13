@@ -27,6 +27,7 @@ Live Looks brings free on-device camera backgrounds and style filters. Director 
 - Keyframes pushed outside a clip are flagged with one-click cleanup
 
 ### Fixed
+- Director and Flow quote pricing works again in Creative Pixels
 - Director credit pack copy matches what you receive at checkout
 - A clear "project not found" screen with copyable details instead of a crash
 - Captions keep their transcript boundaries when edited

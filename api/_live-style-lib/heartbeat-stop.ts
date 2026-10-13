@@ -1,10 +1,10 @@
 // fallow-ignore-file unused-export,complexity,code-duplication
-import type { LiveStylePaymentLedger } from './payment/types'
+import type { LiveStylePaymentLedger } from './payment/types.js'
 import {
   stopLiveStyleSession,
   type HeartbeatResult,
   type LiveStyleSessionRecord,
-} from './session-broker'
+} from './session-broker.js'
 
 /** After a stopping heartbeat, return the session record with final settlement applied. */
 export async function sessionAfterStoppingHeartbeat(

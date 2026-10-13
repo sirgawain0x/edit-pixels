@@ -23,8 +23,8 @@ import 'reflect-metadata'
 import { createPrivateKey, createPublicKey, randomBytes } from 'node:crypto'
 import * as x509 from '@peculiar/x509'
 import { recoverTypedDataAddress } from 'viem'
-import { getRedis } from '../_redis-client'
-import { ADDRESS_REGEX, HEX_SIG_REGEX } from '../_address'
+import { getRedis } from '../_redis-client.js'
+import { ADDRESS_REGEX, HEX_SIG_REGEX } from '../_address.js'
 
 /** EIP-712 domain for the identity challenge (Base). */
 const C2PA_DOMAIN = {

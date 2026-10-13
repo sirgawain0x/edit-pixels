@@ -9,7 +9,7 @@
  * exchanges the signature for a per-wallet certId via POST /api/c2pa/certs.
  */
 
-import { issueChallenge } from '../_cert'
+import { issueChallenge } from '../_cert.js'
 
 export async function POST(request: Request): Promise<Response> {
   let body: Record<string, unknown>
