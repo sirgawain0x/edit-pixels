@@ -59,6 +59,9 @@ jobs:
       - name: Check legacy lib import migration
         run: vp run check:legacy-lib-imports
 
+      - name: Check api does not import from src
+        run: vp run check:api-src-imports
+
       - name: Check deps wrapper health
         run: vp run check:deps-wrapper-health
 

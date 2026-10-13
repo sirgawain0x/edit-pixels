@@ -16,6 +16,7 @@
     "check:boundaries": "node scripts/check-feature-boundaries.mjs",
     "check:deps-contracts": "node scripts/check-deps-contract-boundaries.mjs",
     "check:legacy-lib-imports": "node scripts/check-legacy-lib-imports.mjs",
+    "check:api-src-imports": "node scripts/check-api-src-imports.mjs",
     "check:deps-wrapper-health": "node scripts/check-deps-wrapper-health.mjs --fail-on-unused",
     "check:unused-exports": "node scripts/check-fallow-unused-exports.mjs",
     "check:unused-class-members": "node scripts/check-fallow-unused-class-members.mjs",

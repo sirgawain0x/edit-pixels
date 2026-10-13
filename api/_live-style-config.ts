@@ -6,7 +6,7 @@ import {
   type LiveStyleCapPresetUsd,
   type LiveStyleProviderId,
   LIVE_STYLE_PROVIDER_IDS,
-} from '../src/features/live-style/lib/config.ts'
+} from './_live-style-lib/config.js'
 
 export function isLiveStyleEnabled(): boolean {
   const flag = process.env.LIVE_STYLE_ENABLED ?? process.env.VITE_ENABLE_LIVE_STYLE
@@ -31,7 +31,7 @@ export function getLiveStyleWsTokenSecret(): string | undefined {
   )
 }
 
-export { parseCapPresetUsd } from '../src/features/live-style/lib/config.ts'
+export { parseCapPresetUsd } from './_live-style-lib/config.js'
 
 export function parseProviderId(value: unknown): LiveStyleProviderId {
   if (typeof value === 'string' && (LIVE_STYLE_PROVIDER_IDS as readonly string[]).includes(value)) {

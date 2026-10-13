@@ -2,12 +2,12 @@
  * Server-side payment ledger for Live Style.
  */
 
-import { createInMemoryLiveStylePaymentLedger } from '../src/features/live-style/lib/payment/in-memory-ledger.ts'
+import { createInMemoryLiveStylePaymentLedger } from './_live-style-lib/payment/in-memory-ledger.js'
 import {
   createServerLiveStylePaymentLedger,
   isLiveStylePaymentLedgerTestMode,
-} from '../src/features/live-style/lib/payment/server-ledger.ts'
-import type { LiveStylePaymentLedger } from '../src/features/live-style/lib/payment/types.ts'
+} from './_live-style-lib/payment/server-ledger.js'
+import type { LiveStylePaymentLedger } from './_live-style-lib/payment/types.js'
 
 let ledger: LiveStylePaymentLedger | null = null
 

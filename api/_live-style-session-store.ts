@@ -2,8 +2,8 @@
  * In-memory Live Style sessions (dev / single-instance). Redis optional follow-up.
  */
 
-import type { LiveStyleSessionRecord } from '../src/features/live-style/lib/session-broker.ts'
-import { revokeLiveStyleWsSession } from '../src/features/live-style/lib/ws-session-revocation.ts'
+import type { LiveStyleSessionRecord } from './_live-style-lib/session-broker.js'
+import { revokeLiveStyleWsSession } from './_live-style-lib/ws-session-revocation.js'
 
 const sessions = new Map<string, LiveStyleSessionRecord>()
 const walletActive = new Map<string, string>()

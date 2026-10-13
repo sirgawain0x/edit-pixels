@@ -12,5 +12,8 @@ export const PIXELS_SMART_ACCOUNT_TYPE = 'sma-b' as const
  * Confirmed by decoding `counterfactualInfo.factoryData` from `wallet_requestAccount`
  * with `includeCounterfactualInfo: true` (salt decodes to `0n` for sma-b).
  * Re-verify: `node scripts/confirm-pixels-smart-account-salt.mjs` when `ALCHEMY_API_KEY` is set.
+ *
+ * Server routes use the same value from `api/_pixels-smart-account-config.ts` (see
+ * `pixels-smart-account-predict.test.ts`).
  */
 export const PIXELS_SMART_ACCOUNT_SALT = 0n

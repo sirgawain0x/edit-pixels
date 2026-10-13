@@ -5,12 +5,12 @@
 
 import { createPublicClient, http } from 'viem'
 import { base } from 'viem/chains'
-import { USDC_ADDRESS_BY_CHAIN_ID } from '../src/config/chains.ts'
+import { USDC_ADDRESS_BY_CHAIN_ID } from './_usdc-by-chain-id.js'
 import {
   spendAuthProofTxHash,
   verifyLiveStyleSpendAuth,
-} from '../src/features/live-style/lib/spend-auth-verify.ts'
-import type { LiveStyleSpendAuthMethod } from '../src/features/live-style/lib/payment/types.ts'
+} from './_live-style-lib/spend-auth-verify.js'
+import type { LiveStyleSpendAuthMethod } from './_live-style-lib/payment/types.js'
 import {
   consumePaymentTxHash,
   isPaymentLedgerReady,

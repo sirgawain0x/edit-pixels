@@ -29,16 +29,16 @@ import {
   capPresetToUsdc6,
   LIVE_STYLE_HEARTBEAT_INTERVAL_MS,
   LIVE_STYLE_MAX_SESSION_SECONDS,
-} from '../src/features/live-style/lib/config.ts'
-import { signLiveStyleWsToken } from '../src/features/live-style/lib/ws-session-token.ts'
-import { sessionAfterStoppingHeartbeat } from '../src/features/live-style/lib/heartbeat-stop.ts'
+} from './_live-style-lib/config.js'
+import { signLiveStyleWsToken } from './_live-style-lib/ws-session-token.js'
+import { sessionAfterStoppingHeartbeat } from './_live-style-lib/heartbeat-stop.js'
 import {
   createLiveStyleSession,
   heartbeatLiveStyleSession,
   markMeterStarted,
   stopLiveStyleSession,
-} from '../src/features/live-style/lib/session-broker.ts'
-import type { LiveStyleSpendAuthMethod } from '../src/features/live-style/lib/payment/types.ts'
+} from './_live-style-lib/session-broker.js'
+import type { LiveStyleSpendAuthMethod } from './_live-style-lib/payment/types.js'
 
 type Action = 'create' | 'heartbeat' | 'stop' | 'meter_start'
 
