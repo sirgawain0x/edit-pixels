@@ -489,11 +489,11 @@ function mipdStorePatchPlugin(): Plugin {
   }
 }
 
-function buildViteVercelEnvDefine(mode: string): Record<string, string> {
-  const loaded = loadEnv(mode, process.cwd(), '')
-  const viteVercelEnv = loaded.VITE_VERCEL_ENV || process.env.VERCEL_ENV || ''
-  if (!viteVercelEnv) return {}
-  return { 'import.meta.env.VITE_VERCEL_ENV': JSON.stringify(viteVercelEnv) }
+/** Vercel's `VERCEL_ENV` is server/build-only; expose a client-safe copy for QA gates. */
+function buildViteVercelEnvDefine(_mode: string): Record<string, string> {
+  return {
+    'import.meta.env.VITE_VERCEL_ENV': JSON.stringify(process.env.VERCEL_ENV ?? ''),
+  }
 }
 
 // https://vite.dev/config/

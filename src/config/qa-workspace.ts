@@ -46,14 +46,7 @@ export function isQaWorkspaceHostEnvironmentAllowed(): boolean {
   if (import.meta.env.DEV) return true
 
   const vercelEnv = readViteVercelEnv()
-  if (vercelEnv === 'preview' || vercelEnv === 'development') return true
-
-  const hostname = getRuntimeHostname()
-  if (!hostname) return false
-  if (hostname === 'localhost' || hostname === '127.0.0.1') return true
-  if (hostname.endsWith('.vercel.app')) return true
-
-  return false
+  return vercelEnv === 'preview' || vercelEnv === 'development'
 }
 
 export function parseQaWorkspaceFallbackMode(
