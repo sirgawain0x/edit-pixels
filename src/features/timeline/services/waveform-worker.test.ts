@@ -31,7 +31,16 @@ function createMockSample(
   }
 }
 
+const sampleFixture = vi.hoisted(() => ({
+  mode: 'partial' as 'partial' | 'all-fail',
+}))
+
 async function* mockAudioSamples() {
+  if (sampleFixture.mode === 'all-fail') {
+    yield createMockSample(0, 1, { failCopy: true })
+    yield createMockSample(1, 1, { failCopy: true })
+    return
+  }
   yield createMockSample(0, 1)
   yield createMockSample(1, 1, { failCopy: true })
   yield createMockSample(2, 1)
@@ -71,6 +80,7 @@ describe('waveform-worker', () => {
   let onmessage: ((event: MessageEvent) => void) | null = null
 
   beforeEach(async () => {
+    sampleFixture.mode = 'partial'
     posted.length = 0
     onmessage = null
     vi.stubGlobal('self', {
@@ -130,5 +140,27 @@ describe('waveform-worker', () => {
     const complete = posted.find((message) => message.type === 'complete')
     expect(complete?.partial).toBe(true)
     expect(posted.some((message) => message.type === 'error')).toBe(false)
+  })
+
+  it('posts an error when no packets decode successfully', async () => {
+    sampleFixture.mode = 'all-fail'
+
+    await onmessage!({
+      data: {
+        type: 'generate',
+        requestId: 'waveform-zero-decode',
+        blobUrl: 'blob:test',
+        samplesPerSecond: SAMPLES_PER_SECOND,
+        binDurationSec: BIN_DURATION_SEC,
+      },
+    } as MessageEvent)
+
+    await vi.waitFor(() => posted.some((message) => message.type === 'error'), {
+      timeout: 5000,
+    })
+
+    expect(posted.some((message) => message.type === 'complete')).toBe(false)
+    const errorMessage = posted.find((message) => message.type === 'error')
+    expect(errorMessage?.error).toBe('No audio samples decoded')
   })
 })

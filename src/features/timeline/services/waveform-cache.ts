@@ -714,6 +714,7 @@ class WaveformCacheService {
       let lastProgressReportAt = 0
       let lastWaveformNotifyAt = 0
       let lastNotifiedLoadedSamples = 0
+      let workerDecodePartial = false
 
       const cleanup = () => {
         clearTimeout(timeout)
@@ -770,15 +771,18 @@ class WaveformCacheService {
 
         lastWaveformNotifyAt = now
         lastNotifiedLoadedSamples = loadedSamples
+        const isComplete =
+          isCompleteResult && !workerDecodePartial && loadedSamples >= peaks.length
         const cached = this.makeCachedWaveform(
           peaks,
           duration,
           channels,
-          isCompleteResult && loadedSamples >= peaks.length,
+          isComplete,
           stereo,
           maxPeak,
           loadedSamples,
           samplesPerSecond,
+          workerDecodePartial ? true : undefined,
         )
         if (updateMemoryCache) {
           this.addToMemoryCache(mediaId, cached)
@@ -856,6 +860,7 @@ class WaveformCacheService {
               }
 
               const workerPartial = event.data.partial === true
+              workerDecodePartial = workerPartial
               await Promise.all(pendingBinWrites)
               if (settled) {
                 break
@@ -880,7 +885,9 @@ class WaveformCacheService {
                 })
               }
 
-              loadedSamples = peaks.length
+              if (!workerPartial) {
+                loadedSamples = peaks.length
+              }
               maxPeak = event.data.maxPeak > 0 ? event.data.maxPeak : Math.max(maxPeak, 1)
               notifyWaveformUpdate(true)
               const cached = this.makeCachedWaveform(
@@ -1353,18 +1360,20 @@ class WaveformCacheService {
       timeoutMs: 20_000,
     })
       .then((waveform) => {
-        void waveformOPFSStorage
-          .saveRange(mediaId, {
-            duration: waveform.duration,
-            channels: waveform.channels,
-            sampleRate: waveform.sampleRate,
-            startTime: safeStart,
-            endTime: safeEnd,
-            peaks: waveform.peaks,
-          })
-          .catch((error) => {
-            logger.warn(`Failed to persist waveform range for ${mediaId}`, error)
-          })
+        if (!waveform.partial) {
+          void waveformOPFSStorage
+            .saveRange(mediaId, {
+              duration: waveform.duration,
+              channels: waveform.channels,
+              sampleRate: waveform.sampleRate,
+              startTime: safeStart,
+              endTime: safeEnd,
+              peaks: waveform.peaks,
+            })
+            .catch((error) => {
+              logger.warn(`Failed to persist waveform range for ${mediaId}`, error)
+            })
+        }
         return waveform
       })
       .catch((error) => {

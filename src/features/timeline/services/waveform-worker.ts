@@ -212,6 +212,7 @@ self.onmessage = async (event: MessageEvent<WaveformWorkerMessage>) => {
 
     let skippedPackets = false
     let decodeStoppedEarly = false
+    let successfulPackets = 0
 
     // Process samples — skip bad packets instead of aborting the whole decode.
     try {
@@ -313,6 +314,7 @@ self.onmessage = async (event: MessageEvent<WaveformWorkerMessage>) => {
               ),
             )
           self.postMessage({ type: 'progress', requestId, progress } as WaveformProgressResponse)
+          successfulPackets++
         } catch (err) {
           if (isAbortError(err)) {
             throw err
@@ -335,6 +337,10 @@ self.onmessage = async (event: MessageEvent<WaveformWorkerMessage>) => {
     self.postMessage({ type: 'progress', requestId, progress: 80 } as WaveformProgressResponse)
 
     flushTail()
+
+    if (successfulPackets === 0) {
+      throw new Error('No audio samples decoded')
+    }
 
     self.postMessage({ type: 'progress', requestId, progress: 90 } as WaveformProgressResponse)
     self.postMessage({ type: 'progress', requestId, progress: 95 } as WaveformProgressResponse)
