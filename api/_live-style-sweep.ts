@@ -9,7 +9,7 @@ import {
   listLiveStyleSessions,
   putLiveStyleSession,
 } from './_live-style-session-store.js'
-import { sweepStaleLiveStyleSessions } from '../src/features/live-style/lib/session-broker.ts'
+import { sweepStaleLiveStyleSessions } from './_live-style-lib/session-broker.js'
 
 export async function runLiveStyleSessionSweep(nowMs = Date.now()): Promise<{
   stoppedSessionIds: string[]

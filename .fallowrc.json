@@ -36,6 +36,8 @@
       "**/*.test.ts",
       "**/*.test.tsx",
       "scripts/check-fallow-*.mjs",
+      "scripts/check-api-src-imports.mjs",
+      "api/_live-style-lib/**",
       "headless/test.mjs",
       "src/runtime/composition-runtime/components/item-content.tsx",
       "src/features/preview/components/video-preview.tsx",
