@@ -6,7 +6,7 @@ import {
   erc20Abi,
   parseAbi,
 } from 'viem'
-import type { LiveStyleSpendAuthMethod } from './payment/types'
+import type { LiveStyleSpendAuthMethod } from './payment/types.js'
 
 export const PERMIT2_ADDRESS = '0x000000000022D473030F116dDEE9F6B43aC78BA3' as const
 

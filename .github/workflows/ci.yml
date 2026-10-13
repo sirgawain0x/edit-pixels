@@ -62,6 +62,9 @@ jobs:
       - name: Check api does not import from src
         run: vp run check:api-src-imports
 
+      - name: Test api import check
+        run: vp run test:api-imports-check
+
       - name: Check deps wrapper health
         run: vp run check:deps-wrapper-health
 

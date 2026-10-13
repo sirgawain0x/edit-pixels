@@ -1,5 +1,5 @@
 // fallow-ignore-file unused-export,complexity,code-duplication
-import type { LiveStyleTransportConnectInfo } from '../transport'
+import type { LiveStyleTransportConnectInfo } from '../transport.js'
 
 export interface LiveStyleProviderCreateParams {
   sessionId: string
