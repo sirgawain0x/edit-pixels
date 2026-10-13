@@ -160,6 +160,7 @@ describe('waveform-worker', () => {
     })
 
     expect(posted.some((message) => message.type === 'complete')).toBe(false)
+    expect(posted.some((message) => message.type === 'chunk')).toBe(false)
     const errorMessage = posted.find((message) => message.type === 'error')
     expect(errorMessage?.error).toBe('No audio samples decoded')
   })

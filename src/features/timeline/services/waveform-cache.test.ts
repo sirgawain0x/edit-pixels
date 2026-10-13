@@ -62,6 +62,36 @@ async function waitForWorkerGenerateRequestId(): Promise<string> {
   return getWorkerGenerateRequestId()
 }
 
+function dispatchFullTailChunkThenPartialComplete(requestId: string, totalSamples = 100): void {
+  workerMessageHandler?.({
+    data: {
+      type: 'init',
+      requestId,
+      duration: 3,
+      channels: 1,
+      stereo: false,
+      sampleRate: 500,
+      totalSamples,
+    },
+  } as MessageEvent)
+  workerMessageHandler?.({
+    data: {
+      type: 'chunk',
+      requestId,
+      startIndex: 0,
+      peaks: new Float32Array(totalSamples).fill(0.5),
+    },
+  } as MessageEvent)
+  workerMessageHandler?.({
+    data: {
+      type: 'complete',
+      requestId,
+      maxPeak: 0.5,
+      partial: true,
+    },
+  } as MessageEvent)
+}
+
 function dispatchPartialWorkerResult(requestId: string, totalSamples = 100): void {
   workerMessageHandler?.({
     data: {
@@ -169,6 +199,54 @@ describe('waveformCache', () => {
     expect(waveform?.duration).toBe(120)
   })
 
+  it('does not mark progressive updates complete before the worker complete message', async () => {
+    const { waveformCache } = await import('./waveform-cache')
+    const updates: Array<{ isComplete: boolean; loadedSamples: number }> = []
+    waveformCache.subscribe('media-tail-before-complete', (waveform) => {
+      updates.push({
+        isComplete: waveform.isComplete,
+        loadedSamples: waveform.loadedSamples,
+      })
+    })
+
+    const requestId = 'waveform-cache-tail-before-complete'
+    const promise = (
+      waveformCache as unknown as {
+        generateWaveformWithWorker: (
+          mediaId: string,
+          blobUrl: string,
+          requestId: string,
+          onProgress?: (progress: number) => void,
+          options?: {
+            persistBins?: boolean
+            persistOPFS?: boolean
+            updateMemoryCache?: boolean
+            isComplete?: boolean
+          },
+        ) => Promise<import('./waveform-cache').CachedWaveform>
+      }
+    ).generateWaveformWithWorker(
+      'media-tail-before-complete',
+      'blob:unused',
+      requestId,
+      undefined,
+      {
+        persistBins: false,
+        persistOPFS: false,
+        updateMemoryCache: true,
+        isComplete: true,
+      },
+    )
+    await vi.waitFor(() => workerMessageHandler !== null)
+    dispatchFullTailChunkThenPartialComplete(requestId, 100)
+
+    const waveform = await promise
+    expect(waveform.partial).toBe(true)
+    expect(waveform.isComplete).toBe(false)
+    expect(updates.some((update) => update.loadedSamples >= 100 && update.isComplete)).toBe(false)
+    expect(updates.at(-1)?.isComplete).toBe(false)
+  })
+
   it('keeps partial worker results incomplete in progressive cache updates', async () => {
     const { waveformCache } = await import('./waveform-cache')
     const updates: Array<{ isComplete: boolean; partial?: boolean }> = []
@@ -252,6 +330,58 @@ describe('waveformCache', () => {
       service.generateWaveform('media-zero-decode', 'blob:unused', 'waveform-cache-zero-decode'),
     ).rejects.toThrow('fallback invoked')
     expect(fallbackSpy).toHaveBeenCalledTimes(1)
+
+    fallbackSpy.mockRestore()
+  })
+
+  it('end-to-end: zero-decode worker error skips complete cache and uses fallback', async () => {
+    const { waveformCache } = await import('./waveform-cache')
+    const service = waveformCache as unknown as {
+      generateWaveform: (
+        mediaId: string,
+        blobUrl: string,
+        requestId: string,
+      ) => Promise<import('./waveform-cache').CachedWaveform>
+      generateWaveformFallback: (
+        mediaId: string,
+        blobUrl: string,
+        onProgress?: (progress: number) => void,
+        signal?: AbortSignal,
+      ) => Promise<import('./waveform-cache').CachedWaveform>
+    }
+
+    const fallbackSpy = vi
+      .spyOn(service, 'generateWaveformFallback')
+      .mockRejectedValue(new Error('fallback invoked'))
+
+    const mediaId = 'media-zero-decode-e2e'
+    const requestId = 'waveform-cache-zero-decode-e2e'
+    const promise = service.generateWaveform(mediaId, 'blob:unused', requestId)
+    await vi.waitFor(() => workerMessageHandler !== null)
+
+    workerMessageHandler?.({
+      data: {
+        type: 'init',
+        requestId,
+        duration: 3,
+        channels: 1,
+        stereo: false,
+        sampleRate: 500,
+        totalSamples: 1500,
+      },
+    } as MessageEvent)
+    workerMessageHandler?.({
+      data: {
+        type: 'error',
+        requestId,
+        error: 'No audio samples decoded',
+      },
+    } as MessageEvent)
+
+    await expect(promise).rejects.toThrow('fallback invoked')
+    expect(fallbackSpy).toHaveBeenCalledTimes(1)
+    const cached = waveformCache.getFromMemoryCacheSync(mediaId)
+    expect(cached?.isComplete).not.toBe(true)
 
     fallbackSpy.mockRestore()
   })

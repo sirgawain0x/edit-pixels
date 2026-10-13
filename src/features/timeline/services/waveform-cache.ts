@@ -715,6 +715,7 @@ class WaveformCacheService {
       let lastWaveformNotifyAt = 0
       let lastNotifiedLoadedSamples = 0
       let workerDecodePartial = false
+      let workerGenerationFinished = false
 
       const cleanup = () => {
         clearTimeout(timeout)
@@ -772,7 +773,10 @@ class WaveformCacheService {
         lastWaveformNotifyAt = now
         lastNotifiedLoadedSamples = loadedSamples
         const isComplete =
-          isCompleteResult && !workerDecodePartial && loadedSamples >= peaks.length
+          workerGenerationFinished &&
+          isCompleteResult &&
+          !workerDecodePartial &&
+          loadedSamples >= peaks.length
         const cached = this.makeCachedWaveform(
           peaks,
           duration,
@@ -861,6 +865,7 @@ class WaveformCacheService {
 
               const workerPartial = event.data.partial === true
               workerDecodePartial = workerPartial
+              workerGenerationFinished = true
               await Promise.all(pendingBinWrites)
               if (settled) {
                 break

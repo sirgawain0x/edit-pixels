@@ -334,13 +334,13 @@ self.onmessage = async (event: MessageEvent<WaveformWorkerMessage>) => {
 
     if (state.aborted) throw new Error('Aborted')
 
-    self.postMessage({ type: 'progress', requestId, progress: 80 } as WaveformProgressResponse)
-
-    flushTail()
-
     if (successfulPackets === 0) {
       throw new Error('No audio samples decoded')
     }
+
+    self.postMessage({ type: 'progress', requestId, progress: 80 } as WaveformProgressResponse)
+
+    flushTail()
 
     self.postMessage({ type: 'progress', requestId, progress: 90 } as WaveformProgressResponse)
     self.postMessage({ type: 'progress', requestId, progress: 95 } as WaveformProgressResponse)
