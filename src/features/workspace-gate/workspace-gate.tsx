@@ -21,15 +21,13 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { getWorkspaceHandleRecord } from '@/infrastructure/storage/handles-db'
+import { persistQaWorkspaceFallbackFromLocation } from '@/config/qa-workspace'
 import {
-  ensureKnownWorkspaceForCurrent,
-  getWorkspaceHandleRecord,
-  isFileSystemAccessSupported,
-  isLikelyMobileBrowser,
-  queryHandlePermission,
-  requestHandlePermission,
-  saveWorkspaceHandleRecord,
-} from '@/infrastructure/storage/handles-db'
+  bootstrapWorkspaceGate,
+  pickWorkspaceFolder,
+  reconnectWorkspaceFolder,
+} from './workspace-gate-init'
 import { onPermissionLost, setWorkspaceRoot } from '@/infrastructure/storage/workspace-fs/root'
 import { createLogger } from '@/shared/logging/logger'
 import { WorkspaceGateSplash } from './workspace-gate-splash'
@@ -60,6 +58,10 @@ export function WorkspaceGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const needsWorkspace = isStorageProtectedPath(pathname)
 
+  useEffect(() => {
+    persistQaWorkspaceFallbackFromLocation()
+  }, [])
+
   const activate = useCallback(async (handle: FileSystemDirectoryHandle) => {
     setWorkspaceRoot(handle)
     try {
@@ -83,36 +85,15 @@ export function WorkspaceGate({ children }: { children: React.ReactNode }) {
   // Initial load: check if we have a saved handle, check its permission.
   useEffect(() => {
     let cancelled = false
-    ;(async () => {
-      if (!isFileSystemAccessSupported()) {
-        if (!cancelled) setStatus({ kind: 'unavailable', reason: 'browser' })
-        return
-      }
-      if (isLikelyMobileBrowser()) {
-        if (!cancelled) setStatus({ kind: 'unavailable', reason: 'mobile' })
-        return
-      }
-      // Promote any legacy `workspace:current` into a proper known-workspace
-      // record before we read it, so the indicator's "known workspaces" list
-      // includes the one the user is about to use.
-      await ensureKnownWorkspaceForCurrent()
-      const record = await getWorkspaceHandleRecord()
-      if (!record) {
+    void bootstrapWorkspaceGate(activate)
+      .then((next) => {
+        if (cancelled) return
+        setStatus(next)
+      })
+      .catch((error) => {
+        logger.error('Gate initialization failed', error)
         if (!cancelled) setStatus({ kind: 'pick' })
-        return
-      }
-      const handle = record.handle as FileSystemDirectoryHandle
-      const permission = await queryHandlePermission(handle)
-      if (cancelled) return
-      if (permission === 'granted') {
-        await activate(handle)
-      } else {
-        setStatus({ kind: 'reconnect', handleName: record.name })
-      }
-    })().catch((error) => {
-      logger.error('Gate initialization failed', error)
-      if (!cancelled) setStatus({ kind: 'pick' })
-    })
+      })
     return () => {
       cancelled = true
     }
@@ -134,26 +115,21 @@ export function WorkspaceGate({ children }: { children: React.ReactNode }) {
   const handlePick = useCallback(async () => {
     setError(null)
     try {
-      const handle = await window.showDirectoryPicker({
-        id: 'pixels-workspace',
-        mode: 'readwrite',
-        startIn: 'documents',
-      })
-      const queryState = await queryHandlePermission(handle)
-      const finalState =
-        queryState === 'granted' ? queryState : await requestHandlePermission(handle)
-      if (finalState !== 'granted') {
-        setError(t('projects.workspaceGate.folderPermissionDenied'))
-        setStatus({ kind: 'reconnect', handleName: handle.name })
-        return
+      const result = await pickWorkspaceFolder(activate)
+      switch (result.kind) {
+        case 'ready':
+        case 'cancelled':
+          return
+        case 'reconnect':
+          setError(t('projects.workspaceGate.folderPermissionDenied'))
+          setStatus({ kind: 'reconnect', handleName: result.handleName })
+          return
+        default: {
+          const _exhaustive: never = result
+          return _exhaustive
+        }
       }
-      await saveWorkspaceHandleRecord(handle)
-      await activate(handle)
     } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') {
-        // User cancelled the picker; stay on splash.
-        return
-      }
       logger.error('Folder pick failed', error)
       setError(t('projects.workspaceGate.folderPickFailed'))
     }
@@ -161,18 +137,21 @@ export function WorkspaceGate({ children }: { children: React.ReactNode }) {
 
   const handleReconnect = useCallback(async () => {
     setError(null)
-    const record = await getWorkspaceHandleRecord()
-    if (!record) {
-      setStatus({ kind: 'pick' })
-      return
+    const result = await reconnectWorkspaceFolder(activate)
+    switch (result.kind) {
+      case 'ready':
+        return
+      case 'pick':
+        setStatus({ kind: 'pick' })
+        return
+      case 'denied':
+        setError(t('projects.workspaceGate.reconnectPermissionDenied'))
+        return
+      default: {
+        const _exhaustive: never = result
+        return _exhaustive
+      }
     }
-    const handle = record.handle as FileSystemDirectoryHandle
-    const permission = await requestHandlePermission(handle)
-    if (permission === 'granted') {
-      await activate(handle)
-      return
-    }
-    setError(t('projects.workspaceGate.reconnectPermissionDenied'))
   }, [activate, t])
 
   // Routes that don't touch storage never wait on the gate — no splash, no

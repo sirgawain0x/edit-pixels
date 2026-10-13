@@ -3,7 +3,7 @@
  */
 // fallow-ignore-file complexity
 
-import { getBearerToken, verifyPrivyAccessToken } from './_wallet-auth.js'
+import { authenticateGenerativePost } from './_pixels-generate-route-auth.js'
 import { quoteSeedanceSpend } from './_seedance-billing.js'
 import { isSeedanceGenerateEnabled, type SeedanceResolution } from './_seedance-pricing.js'
 import {
@@ -23,29 +23,9 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'feature_disabled' }, { status: 404 })
   }
 
-  let body: Record<string, unknown>
-  try {
-    const parsed = await request.json()
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      return Response.json({ error: 'invalid body' }, { status: 400 })
-    }
-    body = parsed as Record<string, unknown>
-  } catch {
-    return Response.json({ error: 'invalid body' }, { status: 400 })
-  }
-
-  const token = getBearerToken(request) || (typeof body.token === 'string' ? body.token : null)
-  if (!token) {
-    return Response.json({ error: 'missing authorization' }, { status: 401 })
-  }
-
-  const auth = await verifyPrivyAccessToken(
-    token,
-    typeof body.walletAddress === 'string' ? body.walletAddress : undefined,
-  )
-  if (!auth) {
-    return Response.json({ error: 'invalid authorization' }, { status: 401 })
-  }
+  const authenticated = await authenticateGenerativePost(request)
+  if (!authenticated.ok) return authenticated.response
+  const { body } = authenticated
 
   const durationRaw = typeof body.duration === 'number' ? body.duration : 5
   const resolution: SeedanceResolution = body.resolution === '480p' ? '480p' : '720p'
@@ -58,7 +38,7 @@ export async function POST(request: Request): Promise<Response> {
     stillCount: 1,
     stillQuality: PIXELS_STILL_QUALITY,
   })
-  const veoQuote = quoteFlowCreditsUsdc6(veoCredits)
+  const veoQuote = await quoteFlowCreditsUsdc6(veoCredits)
   if (!veoQuote) {
     return Response.json({ error: 'invalid veo quote' }, { status: 400 })
   }

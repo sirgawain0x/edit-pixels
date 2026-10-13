@@ -1,0 +1,44 @@
+{
+  "liveLooks": {
+    "title": "Live Looks",
+    "subtitle": "Arka plan ve stil efektleri, cihazınızda işlenir.",
+    "toolbarAria": "Live Looks",
+    "toolbarTooltip": "Live Looks",
+    "previewIdle": "Efektleri önizlemek için kamerayı başlatın.",
+    "privacy": "Yalnızca cihazda. Kamera görüntüleriniz yüklenmez.",
+    "startCamera": "Kamerayı başlat",
+    "stopCamera": "Kamerayı durdur",
+    "starting": "Başlatılıyor…",
+    "background": {
+      "label": "Arka plan",
+      "blurAmount": "Bulanıklık gücü",
+      "solidColor": "Arka plan rengi",
+      "pickImage": "Görsel seç",
+      "modes": {
+        "none": "Orijinal",
+        "blur": "Bulanıklık",
+        "solid": "Düz renk",
+        "preset": "Hazır sahne",
+        "custom": "Kendi görseliniz"
+      },
+      "presets": {
+        "studio": "Stüdyo",
+        "sunset": "Gün batımı",
+        "forest": "Orman"
+      }
+    },
+    "style": {
+      "label": "Stil",
+      "backend": "Stil motoru: {{backend}}",
+      "filters": {
+        "none": "Yok",
+        "mono": "Mono",
+        "warm": "Sıcak",
+        "cool": "Soğuk",
+        "highContrast": "Yüksek kontrast",
+        "comic": "Çizgi roman",
+        "vhs": "VHS"
+      }
+    }
+  }
+}

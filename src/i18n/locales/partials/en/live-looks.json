@@ -1,0 +1,44 @@
+{
+  "liveLooks": {
+    "title": "Live Looks",
+    "subtitle": "Background and style effects, processed on your device.",
+    "toolbarAria": "Live Looks",
+    "toolbarTooltip": "Live Looks",
+    "previewIdle": "Start the camera to preview effects.",
+    "privacy": "On-device only. Your camera frames are not uploaded.",
+    "startCamera": "Start camera",
+    "stopCamera": "Stop camera",
+    "starting": "Starting…",
+    "background": {
+      "label": "Background",
+      "blurAmount": "Blur strength",
+      "solidColor": "Background color",
+      "pickImage": "Choose image",
+      "modes": {
+        "none": "Original",
+        "blur": "Blur",
+        "solid": "Solid color",
+        "preset": "Bundled scene",
+        "custom": "Your image"
+      },
+      "presets": {
+        "studio": "Studio",
+        "sunset": "Sunset",
+        "forest": "Forest"
+      }
+    },
+    "style": {
+      "label": "Style",
+      "backend": "Style engine: {{backend}}",
+      "filters": {
+        "none": "None",
+        "mono": "Mono",
+        "warm": "Warm",
+        "cool": "Cool",
+        "highContrast": "High contrast",
+        "comic": "Comic",
+        "vhs": "VHS"
+      }
+    }
+  }
+}

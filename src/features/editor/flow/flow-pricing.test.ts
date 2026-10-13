@@ -13,7 +13,7 @@ describe('quoteFlowGeneration', () => {
     expect(quote.videoCredits).toBe(32)
     expect(quote.totalCredits).toBe(quote.videoCredits)
     expect(quote.estimatedUsdc6).toBe(quote.totalCredits * 100_000)
-    expect(quote.crtvaiWei).toBeGreaterThan(0n)
+    expect(quote.crtvaiWei).toBe(0n)
   })
 
   it('adds Gemini still credits', () => {

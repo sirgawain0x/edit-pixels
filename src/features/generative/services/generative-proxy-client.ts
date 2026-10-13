@@ -2,6 +2,10 @@
 import { createLogger } from '@/shared/logging/logger'
 import { quoteNanobananaCredits, quoteVeoCredits, normalizeVeoQuality } from '@/config/credits'
 import type { GenerativeTaskDetail, NanobananaQuality, VeoQuality, VeoTier } from '../types'
+import {
+  pixelsIdentityHeaders,
+  withPixelsIdentityBody,
+} from '@/features/generative/pixels-api-identity'
 
 const log = createLogger('GenerativeProxy')
 
@@ -18,7 +22,10 @@ export class GenerativeApiError extends Error {
 
 export interface SignedRequestParams {
   getAccessToken: () => Promise<string | null>
-  walletAddress: `0x${string}`
+  /** Privy-linked signer EOA (identity for auth, quotes, job ownership). */
+  signerAddress: `0x${string}`
+  /** CRTVAI payer — smart account or signer EOA. */
+  payerAddress: `0x${string}`
 }
 
 async function withAuth<T extends Record<string, unknown>>(
@@ -32,22 +39,27 @@ async function withAuth<T extends Record<string, unknown>>(
     extra?: string
     timestamp: number
     requestId: string
-    walletAddress: `0x${string}`
+    signerAddress: `0x${string}`
+    payerAddress: `0x${string}`
     token: string
   }
 > {
-  const token = await params.getAccessToken()
-  if (!token) {
-    throw new GenerativeApiError('Not authenticated', 401, 'not_authenticated')
-  }
-  return {
+  const signed = await withPixelsIdentityBody(params, {
     ...payload,
     action,
     ...(extra ? { extra } : {}),
     timestamp: Date.now(),
     requestId: crypto.randomUUID(),
-    walletAddress: params.walletAddress,
-    token,
+    payerAddress: params.payerAddress,
+  })
+  return signed as T & {
+    action: string
+    extra?: string
+    timestamp: number
+    requestId: string
+    signerAddress: `0x${string}`
+    payerAddress: `0x${string}`
+    token: string
   }
 }
 
@@ -114,7 +126,7 @@ export async function proxySubmitVideo(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
+      ...(await pixelsIdentityHeaders(auth)),
     },
     body: JSON.stringify(payload),
     signal,
@@ -165,7 +177,7 @@ export async function proxySubmitImage(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
+      ...(await pixelsIdentityHeaders(auth)),
     },
     body: JSON.stringify(payload),
     signal,
@@ -192,8 +204,8 @@ export async function proxyGetTask(
 ): Promise<GenerativeTaskDetail> {
   const url = new URL('/api/generate-task', window.location.origin)
   url.searchParams.set('id', taskId)
-  if (auth?.walletAddress) {
-    url.searchParams.set('wallet', auth.walletAddress)
+  if (auth?.signerAddress) {
+    url.searchParams.set('signer', auth.signerAddress)
   }
   const headers: Record<string, string> = {}
   if (auth) {
@@ -201,7 +213,7 @@ export async function proxyGetTask(
     if (!token) {
       throw new GenerativeApiError('Not authenticated', 401, 'not_authenticated')
     }
-    headers.Authorization = `Bearer ${token}`
+    Object.assign(headers, await pixelsIdentityHeaders(auth))
   }
   const response = await fetch(url.toString(), { signal, headers })
   if (!response.ok) {
@@ -231,6 +243,12 @@ export async function proxyFlowRun(
     endPrompt?: string
     stillQuality?: NanobananaQuality
     paymentTxHash?: string
+    quoteId?: string
+    quoteSignature?: string
+    quoteExpiresAtMs?: number
+    quoteSlippageBps?: number
+    quoteEstimatedUsdc6?: number
+    quoteCrtvaiRequired?: string
   },
   signal?: AbortSignal,
 ): Promise<
@@ -251,7 +269,7 @@ export async function proxyFlowRun(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
+      ...(await pixelsIdentityHeaders(auth)),
     },
     body: JSON.stringify(payload),
     signal,

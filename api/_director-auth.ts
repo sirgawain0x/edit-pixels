@@ -16,21 +16,24 @@ function normalizeHost(value: string | null): string | null {
   }
 }
 
+/** True when the request presents DIRECTOR_API_SECRET (server automation bypass). */
+export function isDirectorSecretAuthorized(request: Request): boolean {
+  const secret = process.env.DIRECTOR_API_SECRET?.trim()
+  if (!secret) return false
+  const auth = request.headers.get('authorization')
+  const headerSecret = request.headers.get('x-director-secret')
+  const bearer = auth?.startsWith('Bearer ') ? auth.slice(7).trim() : null
+  return bearer === secret || headerSecret === secret
+}
+
 /**
- * Block unauthenticated abuse of the Vertex proxy on Vercel.
- * - Production: same-origin browser requests, or DIRECTOR_API_SECRET bearer/header
- * - Local dev: open (no VERCEL env)
+ * @deprecated Browser traffic must use Privy via `authorizePixelsGeneratePost` on `/api/director`.
+ * Kept for routes that still gate on same-origin only.
  */
 // fallow-ignore-next-line complexity
 export function assertDirectorAuthorized(request: Request): Response | null {
-  const secret = process.env.DIRECTOR_API_SECRET?.trim()
-  if (secret) {
-    const auth = request.headers.get('authorization')
-    const headerSecret = request.headers.get('x-director-secret')
-    const bearer = auth?.startsWith('Bearer ') ? auth.slice(7).trim() : null
-    if (bearer === secret || headerSecret === secret) {
-      return null
-    }
+  if (isDirectorSecretAuthorized(request)) {
+    return null
   }
 
   if (process.env.VERCEL) {

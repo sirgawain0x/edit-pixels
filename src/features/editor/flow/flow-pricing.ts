@@ -1,5 +1,5 @@
 /**
- * Flow (start/end → video) pricing — credits → USDC6 → CRTVAI wei.
+ * Flow (start/end → video) pricing — credits → USDC6 list price (server quotes meToken at checkout).
  */
 // fallow-ignore-file unused-export
 
@@ -11,7 +11,6 @@ import {
   type VeoQuality,
   type VeoTier,
 } from '@/config/credits'
-import { usdc6ToMetokenWei } from '@/config/metoken'
 import { clampFlowDuration } from '@/config/flow'
 
 /** $0.10 USDC per credit (legacy Flow retail). */
@@ -32,9 +31,14 @@ export interface FlowQuote {
   stillCredits: number
   totalCredits: number
   estimatedUsdc6: number
+  /** Populated from server responses only. */
   crtvaiWei: bigint
   crtvaiDisplay: number
   formattedUsd: string
+  quoteId?: string
+  signature?: string
+  expiresAtMs?: number
+  slippageBps?: number
 }
 
 export function quoteFlowGeneration(input: FlowQuoteInput): FlowQuote {
@@ -50,8 +54,6 @@ export function quoteFlowGeneration(input: FlowQuoteInput): FlowQuote {
   const stillCredits = stillCount > 0 ? stillCount * quoteNanobananaCredits(stillQuality) : 0
   const totalCredits = videoCredits + stillCredits
   const estimatedUsdc6 = totalCredits * FLOW_USDC6_PER_CREDIT
-  const crtvaiWei = usdc6ToMetokenWei(estimatedUsdc6)
-  const crtvaiDisplay = Number(crtvaiWei) / 1e18
 
   return {
     duration,
@@ -59,8 +61,8 @@ export function quoteFlowGeneration(input: FlowQuoteInput): FlowQuote {
     stillCredits,
     totalCredits,
     estimatedUsdc6,
-    crtvaiWei,
-    crtvaiDisplay,
+    crtvaiWei: 0n,
+    crtvaiDisplay: 0,
     formattedUsd: `$${(estimatedUsdc6 / 1_000_000).toFixed(2)}`,
   }
 }

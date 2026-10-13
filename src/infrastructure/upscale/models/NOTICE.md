@@ -23,7 +23,7 @@ node exceeds the limit.
 
 ## Attribution
 
-Both upstream projects are MIT licensed, as is FreeCut. Their copyright notices are retained here.
+Both upstream projects are MIT licensed, as is Creative Pixels. Their copyright notices are retained here.
 
 ### bloc97/Anime4K — https://github.com/bloc97/Anime4K
 

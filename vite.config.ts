@@ -6,9 +6,11 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { POST as directorPost } from './api/director'
+import { POST as directorQuotePost } from './api/director-quote'
 import { GET as directorSessionsGet } from './api/director-sessions'
 import { GET as generateTaskGet } from './api/generate-task'
 import { POST as flowFramePost } from './api/flow-frame'
+import { POST as flowQuotePost } from './api/flow-quote'
 import { POST as flowRunPost } from './api/flow-run'
 import { POST as generateImagePost } from './api/generate-image'
 import { POST as generateVideoPost } from './api/generate-video'
@@ -32,6 +34,8 @@ import { GET as pixelsGenerateTaskGet } from './api/pixels-generate-task'
 import { POST as pixelsGenerateCancelPost } from './api/pixels-generate-cancel'
 import { POST as pixelsDirectorBatchQuotePost } from './api/pixels-director-batch-quote'
 import { POST as pixelsDirectorBatchConfirmPost } from './api/pixels-director-batch-confirm'
+import { POST as liveStyleSessionPost } from './api/live-style-session'
+import { POST as liveStyleSweepPost } from './api/live-style-sweep'
 import { isMipdStoreModule } from './src/vendor/mipd-store-id.ts'
 
 // Stamps public/sw.js with the hashed entry-chunk filename at build time so the service
@@ -136,6 +140,7 @@ async function handleDirectorDevRequest(
 void generateTaskGet
 void directorSessionsGet
 void flowFramePost
+void flowQuotePost
 void flowRunPost
 void generateImagePost
 void generateVideoPost
@@ -262,6 +267,50 @@ function directorApiDevPlugin(): Plugin {
               res.statusCode = 500
               res.setHeader('Content-Type', 'application/json')
               res.end(JSON.stringify({ error: 'Seedance plan proxy failed' }))
+            }
+          })
+          return
+        }
+        if (path === '/api/director-quote' && req.method === 'POST') {
+          void proxyEarnDevRequest(req, res, directorQuotePost).catch((error) => {
+            console.error('Director quote API middleware error', error)
+            if (!res.headersSent) {
+              res.statusCode = 500
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Director quote proxy failed' }))
+            }
+          })
+          return
+        }
+        if (path === '/api/flow-quote' && req.method === 'POST') {
+          void proxyEarnDevRequest(req, res, flowQuotePost).catch((error) => {
+            console.error('Flow quote API middleware error', error)
+            if (!res.headersSent) {
+              res.statusCode = 500
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Flow quote proxy failed' }))
+            }
+          })
+          return
+        }
+        if (path === '/api/live-style-session' && req.method === 'POST') {
+          void proxyEarnDevRequest(req, res, liveStyleSessionPost).catch((error) => {
+            console.error('Live Style session API middleware error', error)
+            if (!res.headersSent) {
+              res.statusCode = 500
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Live Style session proxy failed' }))
+            }
+          })
+          return
+        }
+        if (path === '/api/live-style-sweep' && req.method === 'POST') {
+          void proxyEarnDevRequest(req, res, liveStyleSweepPost).catch((error) => {
+            console.error('Live Style sweep API middleware error', error)
+            if (!res.headersSent) {
+              res.statusCode = 500
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Live Style sweep proxy failed' }))
             }
           })
           return
@@ -440,8 +489,16 @@ function mipdStorePatchPlugin(): Plugin {
   }
 }
 
+/** Vercel's `VERCEL_ENV` is server/build-only; expose a client-safe copy for QA gates. */
+function buildViteVercelEnvDefine(_mode: string): Record<string, string> {
+  return {
+    'import.meta.env.VITE_VERCEL_ENV': JSON.stringify(process.env.VERCEL_ENV ?? ''),
+  }
+}
+
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+  define: buildViteVercelEnvDefine(mode),
   lint: {
     ...oxlintConfig,
     ignorePatterns: toolIgnorePatterns,
@@ -724,4 +781,4 @@ export default defineConfig({
       'lucide-react',
     ],
   },
-})
+}))

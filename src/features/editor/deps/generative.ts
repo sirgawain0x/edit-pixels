@@ -7,6 +7,9 @@ export {
   proxyFlowRun,
   proxyGetTask,
   useGenerativeAuth,
+  PIXELS_SIGNER_HEADER,
+  pixelsIdentityHeaders,
+  withPixelsIdentityBody,
   type SignedRequestParams,
   type GenerativeTaskDetail,
 } from './generative-contract'

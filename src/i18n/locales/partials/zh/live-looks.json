@@ -1,0 +1,44 @@
+{
+  "liveLooks": {
+    "title": "Live Looks",
+    "subtitle": "背景与风格效果在您的设备上本地处理。",
+    "toolbarAria": "Live Looks",
+    "toolbarTooltip": "Live Looks",
+    "previewIdle": "启动摄像头以预览效果。",
+    "privacy": "仅在设备上处理。摄像头画面不会上传。",
+    "startCamera": "启动摄像头",
+    "stopCamera": "停止摄像头",
+    "starting": "正在启动…",
+    "background": {
+      "label": "背景",
+      "blurAmount": "模糊强度",
+      "solidColor": "背景颜色",
+      "pickImage": "选择图片",
+      "modes": {
+        "none": "原始",
+        "blur": "模糊",
+        "solid": "纯色",
+        "preset": "内置场景",
+        "custom": "自定义图片"
+      },
+      "presets": {
+        "studio": "工作室",
+        "sunset": "日落",
+        "forest": "森林"
+      }
+    },
+    "style": {
+      "label": "风格",
+      "backend": "风格引擎：{{backend}}",
+      "filters": {
+        "none": "无",
+        "mono": "单色",
+        "warm": "暖色",
+        "cool": "冷色",
+        "highContrast": "高对比度",
+        "comic": "漫画",
+        "vhs": "VHS"
+      }
+    }
+  }
+}

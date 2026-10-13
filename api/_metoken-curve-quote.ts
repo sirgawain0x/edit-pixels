@@ -1,0 +1,356 @@
+/**
+ * Server-side CRTVAI curve quotes: live Diamond reads, signed quote IDs, slippage at settlement.
+ */
+// fallow-ignore-file complexity,unused-export
+
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto'
+import {
+  BaseError,
+  ContractFunctionRevertedError,
+  createPublicClient,
+  ExecutionRevertedError,
+  http,
+  HttpRequestError,
+  parseAbi,
+  RpcRequestError,
+  SocketClosedError,
+  TimeoutError,
+  type Hex,
+} from 'viem'
+import { base } from 'viem/chains'
+import {
+  CRTVAI_METOKEN_ADDRESS,
+  METOKENS_DIAMOND_ADDRESS,
+  METOKEN_CURVE_RPC_TIMEOUT_MS,
+  METOKEN_QUOTE_EXPIRY_SECONDS,
+  METOKEN_QUOTE_SETTLEMENT_GRACE_SECONDS,
+  METOKEN_QUOTE_SLIPPAGE_BPS,
+} from './_metoken-curve-config.js'
+import { type CurveState, isWithinSlippageBand } from './_metoken-curve-math.js'
+
+export {
+  METOKEN_QUOTE_EXPIRY_SECONDS,
+  METOKEN_QUOTE_SETTLEMENT_GRACE_SECONDS,
+  METOKEN_QUOTE_SLIPPAGE_BPS,
+} from './_metoken-curve-config.js'
+
+const DIAMOND_ABI = parseAbi([
+  'function calculateMeTokensMinted(address meToken, uint256 assetsDeposited) view returns (uint256 meTokensMinted)',
+])
+
+const METOKEN_ABI = parseAbi(['function totalSupply() view returns (uint256)'])
+
+export interface MetokenUsdQuote {
+  quoteId: string
+  signature: string
+  estimatedUsdc6: number
+  minCrtvaiWei: bigint
+  expiresAtMs: number
+  slippageBps: number
+  curve: CurveState
+}
+
+export type MetokenQuoteErrorCode =
+  | 'quote_unpayable'
+  | 'quote_expired'
+  | 'quote_slippage'
+  | 'quote_invalid'
+
+export class MetokenQuoteError extends Error {
+  readonly code: MetokenQuoteErrorCode
+
+  constructor(code: MetokenQuoteErrorCode, message: string) {
+    super(message)
+    this.code = code
+  }
+}
+
+function alchemyRpcUrl(): string {
+  const key = process.env.ALCHEMY_API_KEY?.trim() || process.env.VITE_ALCHEMY_API_KEY?.trim() || ''
+  return key ? `https://base-mainnet.g.alchemy.com/v2/${key}` : 'https://mainnet.base.org'
+}
+
+const RPC_TRANSPORT_CAUSE_MAX_DEPTH = 32
+
+function isAbortError(error: unknown): boolean {
+  if (typeof DOMException !== 'undefined' && error instanceof DOMException) {
+    return error.name === 'AbortError'
+  }
+  return error instanceof Error && error.name === 'AbortError'
+}
+
+/** ABI revert return data: `0x` + at least a 4-byte selector (see viem `getContractError`). */
+const REVERT_RETURN_DATA_HEX = /^0x[0-9a-fA-F]{8,}$/
+
+function rpcRevertReturnData(data: unknown): boolean {
+  if (typeof data === 'string') return REVERT_RETURN_DATA_HEX.test(data)
+  if (data && typeof data === 'object' && 'data' in data) {
+    const nested = (data as { data?: unknown }).data
+    return typeof nested === 'string' && REVERT_RETURN_DATA_HEX.test(nested)
+  }
+  return false
+}
+
+function rpcRequestLooksLikeExecutionRevert(error: RpcRequestError): boolean {
+  if (error.code === ExecutionRevertedError.code) return true
+
+  const details = error.details ?? ''
+  const message = error.shortMessage ?? error.message ?? ''
+  if (
+    ExecutionRevertedError.nodeMessage.test(details) ||
+    ExecutionRevertedError.nodeMessage.test(message)
+  ) {
+    return true
+  }
+
+  if (
+    error.code === -32_000 &&
+    details === 'execution reverted' &&
+    rpcRevertReturnData(error.data)
+  ) {
+    return true
+  }
+
+  return rpcRevertReturnData(error.data)
+}
+
+function isContractRevertError(error: unknown): boolean {
+  if (error instanceof ContractFunctionRevertedError) return true
+  if (error instanceof ExecutionRevertedError) return true
+  if (error instanceof RpcRequestError) return rpcRequestLooksLikeExecutionRevert(error)
+  return false
+}
+
+function isTransportErrorNode(error: unknown): boolean {
+  if (isContractRevertError(error)) return false
+  if (error instanceof TimeoutError) return true
+  if (error instanceof HttpRequestError) return true
+  if (error instanceof SocketClosedError) return true
+  if (isAbortError(error)) return true
+  if (error instanceof RpcRequestError) return true
+  return false
+}
+
+function readErrorCause(error: unknown): unknown {
+  if (!error || typeof error !== 'object' || !('cause' in error)) return undefined
+  return (error as { cause?: unknown }).cause
+}
+
+/** True when an RPC/HTTP failure should fail closed as `quote_unpayable` (not contract reverts). */
+export function isRpcTransportError(error: unknown): boolean {
+  if (error instanceof BaseError) {
+    if (error.walk((e) => isContractRevertError(e))) return false
+    if (error.walk((e) => isTransportErrorNode(e))) return true
+    return false
+  }
+
+  let current: unknown = error
+  for (let depth = 0; depth < RPC_TRANSPORT_CAUSE_MAX_DEPTH && current != null; depth++) {
+    if (current instanceof BaseError) return isRpcTransportError(current)
+    if (isContractRevertError(current)) return false
+    if (isTransportErrorNode(current)) return true
+    current = readErrorCause(current)
+  }
+  return false
+}
+
+function curveRpcFetch(url: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const timeoutMs = METOKEN_CURVE_RPC_TIMEOUT_MS
+  return fetch(url, {
+    ...init,
+    signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
+  })
+}
+
+function getClient() {
+  return createPublicClient({
+    chain: base,
+    transport: http(alchemyRpcUrl(), {
+      timeout: METOKEN_CURVE_RPC_TIMEOUT_MS,
+      fetchFn: curveRpcFetch,
+    }),
+  })
+}
+
+async function withCurveRpcFailClosed<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn()
+  } catch (error) {
+    if (error instanceof MetokenQuoteError) throw error
+    if (isRpcTransportError(error)) {
+      throw new MetokenQuoteError(
+        'quote_unpayable',
+        `CRTVAI curve pricing is temporarily unavailable (${label}).`,
+      )
+    }
+    throw error
+  }
+}
+
+export async function readCurveState(): Promise<CurveState> {
+  return withCurveRpcFailClosed('readCurveState', async () => {
+    const client = getClient()
+    const supplyWei = await client.readContract({
+      address: CRTVAI_METOKEN_ADDRESS,
+      abi: METOKEN_ABI,
+      functionName: 'totalSupply',
+    })
+    return { supplyWei, balancePooledUsdc6: 0n }
+  })
+}
+
+export async function readMeTokensMintedForDeposit(assetsUsdc6: bigint): Promise<bigint> {
+  return withCurveRpcFailClosed('readMeTokensMintedForDeposit', async () => {
+    const client = getClient()
+    return client.readContract({
+      address: METOKENS_DIAMOND_ADDRESS,
+      abi: DIAMOND_ABI,
+      functionName: 'calculateMeTokensMinted',
+      args: [CRTVAI_METOKEN_ADDRESS, assetsUsdc6],
+    })
+  })
+}
+
+function signingSecret(): string | null {
+  const raw = process.env.PIXELS_QUOTE_SIGNING_SECRET?.trim()
+  return raw && raw.length >= 16 ? raw : null
+}
+
+export function isQuoteSigningConfigured(): boolean {
+  return signingSecret() !== null
+}
+
+function signPayload(payload: string): string {
+  const secret = signingSecret()
+  if (!secret) {
+    return `unsigned:${Buffer.from(payload).toString('base64url')}`
+  }
+  return createHmac('sha256', secret).update(payload).digest('base64url')
+}
+
+function buildPayload(parts: {
+  quoteId: string
+  estimatedUsdc6: number
+  minCrtvaiWei: string
+  expiresAtMs: number
+  slippageBps: number
+  tier?: string
+}): string {
+  return [
+    parts.quoteId,
+    String(parts.estimatedUsdc6),
+    parts.minCrtvaiWei,
+    String(parts.expiresAtMs),
+    String(parts.slippageBps),
+    parts.tier ?? '',
+  ].join('|')
+}
+
+export function verifyQuoteSignature(quote: {
+  quoteId: string
+  signature: string
+  estimatedUsdc6: number
+  minCrtvaiWei: bigint
+  expiresAtMs: number
+  slippageBps: number
+  tier?: string
+}): boolean {
+  const payload = buildPayload({
+    quoteId: quote.quoteId,
+    estimatedUsdc6: quote.estimatedUsdc6,
+    minCrtvaiWei: quote.minCrtvaiWei.toString(),
+    expiresAtMs: quote.expiresAtMs,
+    slippageBps: quote.slippageBps,
+    tier: quote.tier,
+  })
+  const expected = signPayload(payload)
+  try {
+    const a = Buffer.from(quote.signature)
+    const b = Buffer.from(expected)
+    return a.length === b.length && timingSafeEqual(a, b)
+  } catch {
+    return quote.signature === expected
+  }
+}
+
+async function assertPayable(minCrtvaiWei: bigint, usdc6: number): Promise<void> {
+  if (minCrtvaiWei <= 0n) {
+    throw new MetokenQuoteError('quote_unpayable', 'Quote amount is zero')
+  }
+  let deposit = BigInt(usdc6)
+  let minted = await readMeTokensMintedForDeposit(deposit)
+  let attempts = 0
+  while (minted < minCrtvaiWei && attempts < 24) {
+    deposit *= 2n
+    minted = await readMeTokensMintedForDeposit(deposit)
+    attempts += 1
+  }
+  if (minted < minCrtvaiWei) {
+    throw new MetokenQuoteError(
+      'quote_unpayable',
+      'This purchase requires more meToken liquidity than the curve can support right now.',
+    )
+  }
+}
+
+/** Price a USD list amount in CRTVAI wei using the live curve. */
+export async function quoteCrtvaiForUsdc6(
+  estimatedUsdc6: number,
+  options?: { tier?: string; quoteId?: string },
+): Promise<MetokenUsdQuote> {
+  if (!Number.isFinite(estimatedUsdc6) || estimatedUsdc6 <= 0) {
+    throw new MetokenQuoteError('quote_unpayable', 'Invalid USD amount')
+  }
+
+  const state = await readCurveState()
+  const minCrtvaiWei = await readMeTokensMintedForDeposit(BigInt(estimatedUsdc6))
+  await assertPayable(minCrtvaiWei, estimatedUsdc6)
+
+  const quoteId = options?.quoteId ?? randomUUID()
+  const expiresAtMs = Date.now() + METOKEN_QUOTE_EXPIRY_SECONDS * 1000
+  const slippageBps = METOKEN_QUOTE_SLIPPAGE_BPS
+  const signature = signPayload(
+    buildPayload({
+      quoteId,
+      estimatedUsdc6,
+      minCrtvaiWei: minCrtvaiWei.toString(),
+      expiresAtMs,
+      slippageBps,
+      tier: options?.tier,
+    }),
+  )
+
+  return {
+    quoteId,
+    signature,
+    estimatedUsdc6,
+    minCrtvaiWei,
+    expiresAtMs,
+    slippageBps,
+    curve: state,
+  }
+}
+
+export async function validateSettlementAgainstQuote(stored: {
+  estimatedUsdc6: number
+  minCrtvaiWei: bigint
+  expiresAtMs: number
+  slippageBps: number
+}): Promise<{ minAmountWei: bigint }> {
+  const settlementDeadlineMs =
+    stored.expiresAtMs + METOKEN_QUOTE_SETTLEMENT_GRACE_SECONDS * 1000
+  if (Date.now() > settlementDeadlineMs) {
+    throw new MetokenQuoteError('quote_expired', 'Quote expired — request a new price.')
+  }
+
+  const freshWei = await readMeTokensMintedForDeposit(BigInt(stored.estimatedUsdc6))
+  if (!isWithinSlippageBand(stored.minCrtvaiWei, freshWei, METOKEN_QUOTE_SLIPPAGE_BPS)) {
+    throw new MetokenQuoteError(
+      'quote_slippage',
+      'Price moved beyond the quoted band — request a new quote.',
+    )
+  }
+
+  // Treasury transfer is for the signed quote amount; slippage only gates rejection.
+  return { minAmountWei: stored.minCrtvaiWei }
+}

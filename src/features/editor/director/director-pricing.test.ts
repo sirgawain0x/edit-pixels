@@ -62,7 +62,7 @@ describe('quoteDirectorBrief', () => {
     )
     expect(quote!.estimatedUsdc6).toBe(208_333)
     expect(quote!.formattedUsd).toBe('$0.21')
-    expect(quote!.crtvaiDisplay).toBeCloseTo(0.208333, 5)
+    expect(quote!.crtvaiDisplay).toBe(0)
   })
 
   it('applies premium rate when requested', () => {

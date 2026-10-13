@@ -3,8 +3,6 @@
  */
 // fallow-ignore-file unused-export
 
-import { usdc6ToMetokenWei } from '@/config/metoken'
-
 export const SEEDANCE_MODEL_ID = 'bytedance/seedance-2.5/text-to-video'
 
 export const SEEDANCE_DEFAULT_DURATION_SEC = 5
@@ -45,20 +43,19 @@ export interface SeedanceQuote {
   formattedUsd: string
 }
 
+/** USD list price only — request `/api/seedance-quote` for live meToken amounts. */
 export function quoteSeedanceGeneration(input: SeedanceQuoteInput): SeedanceQuote {
   const duration = clampSeedanceDuration(input.duration)
   const resolution = input.resolution === '480p' ? '480p' : '720p'
   const usd = duration * SEEDANCE_USD_PER_SEC[resolution]
   const estimatedUsdc6 = Math.max(1, Math.ceil(usd * 1_000_000))
-  const crtvaiWei = usdc6ToMetokenWei(estimatedUsdc6)
-  const crtvaiDisplay = Number(crtvaiWei) / 1e18
 
   return {
     duration,
     resolution,
     estimatedUsdc6,
-    crtvaiWei,
-    crtvaiDisplay,
+    crtvaiWei: 0n,
+    crtvaiDisplay: 0,
     formattedUsd: `$${(estimatedUsdc6 / 1_000_000).toFixed(2)}`,
   }
 }

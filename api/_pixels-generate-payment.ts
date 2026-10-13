@@ -19,9 +19,9 @@ export interface PixelsGenerateJobError {
 /** Release a consumed treasury tx once (idempotent). */
 export async function releasePixelsGenerateJobPayment(jobId: string): Promise<boolean> {
   const job = await getPixelsGenerateJob(jobId)
-  if (!job?.paymentTxHash || job.paymentReleased) return false
+  if (!job?.paymentTxHash || job.paymentReleased || job.paymentLogIndex == null) return false
 
-  await releaseFlowPayment(job.paymentTxHash)
+  await releaseFlowPayment(job.paymentTxHash, job.paymentLogIndex)
   await updatePixelsGenerateJob(jobId, { paymentReleased: true })
   return true
 }

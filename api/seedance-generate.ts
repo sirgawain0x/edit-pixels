@@ -3,16 +3,18 @@
  */
 // fallow-ignore-file complexity,code-duplication
 
-import { getBearerToken, verifyPrivyAccessToken } from './_wallet-auth.js'
+import { authenticateGenerativePost } from './_pixels-generate-route-auth.js'
 import { checkMetokenSufficient } from './_metoken-server.js'
 import { bindSeedanceQuote } from './_pixels-generate-billing-core.js'
 import {
   getSeedanceQuote,
   isSeedanceBillingEnforced,
+  resolveSeedanceSettlementMinWei,
   reserveSeedanceSpend,
   settleSeedanceSpend,
   verifySeedancePayment,
 } from './_seedance-billing.js'
+import { MetokenQuoteError } from './_metoken-curve-quote.js'
 import { generateSeedanceVideo, isHiggsfieldConfigured } from './_higgsfield-seedance.js'
 import { registerPixelsGenerateJob, updatePixelsGenerateJob } from './_pixels-generate-jobs.js'
 import { failPixelsGenerateJob } from './_pixels-generate-payment.js'
@@ -40,29 +42,9 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'service unavailable' }, { status: 503 })
   }
 
-  let body: Record<string, unknown>
-  try {
-    const parsed = await request.json()
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      return Response.json({ error: 'invalid body' }, { status: 400 })
-    }
-    body = parsed as Record<string, unknown>
-  } catch {
-    return Response.json({ error: 'invalid body' }, { status: 400 })
-  }
-
-  const token = getBearerToken(request) || (typeof body.token === 'string' ? body.token : null)
-  if (!token) {
-    return Response.json({ error: 'missing authorization' }, { status: 401 })
-  }
-
-  const auth = await verifyPrivyAccessToken(
-    token,
-    typeof body.walletAddress === 'string' ? body.walletAddress : undefined,
-  )
-  if (!auth) {
-    return Response.json({ error: 'invalid authorization' }, { status: 401 })
-  }
+  const authenticated = await authenticateGenerativePost(request)
+  if (!authenticated.ok) return authenticated.response
+  const { signer, payer, body } = authenticated
 
   const requestId =
     typeof body.requestId === 'string' && body.requestId.trim().length > 0
@@ -108,7 +90,7 @@ export async function POST(request: Request): Promise<Response> {
       batchConfirmId,
       shotId: batchShotId,
       requestId,
-      wallet: auth.address,
+      wallet: signer,
     })
     if (!batchAuth.ok) {
       return Response.json({ error: batchAuth.error }, { status: 400 })
@@ -138,7 +120,7 @@ export async function POST(request: Request): Promise<Response> {
 
   await registerPixelsGenerateJob({
     id: requestId,
-    wallet: auth.address,
+    wallet: signer,
     provider: 'seedance',
     status: 'processing',
     progress: 0,
@@ -147,7 +129,7 @@ export async function POST(request: Request): Promise<Response> {
     crtvaiRequired: quote.minCrtvaiWei.toString(),
   })
 
-  const reservation = await reserveSeedanceSpend(quote.quoteId, auth.address)
+  const reservation = await reserveSeedanceSpend(quote.quoteId, signer)
 
   if (isSeedanceBillingEnforced()) {
     if (skipBatchPaymentVerify && batchPaymentTxHash) {
@@ -166,10 +148,30 @@ export async function POST(request: Request): Promise<Response> {
         )
         return Response.json({ error: 'payment_required' }, { status: 402 })
       }
+      let minAmountWei: bigint
+      try {
+        minAmountWei = await resolveSeedanceSettlementMinWei(quote)
+      } catch (error) {
+        const message =
+          error instanceof MetokenQuoteError
+            ? error.message
+            : 'Quote validation failed'
+        await failPixelsGenerateJob(
+          requestId,
+          {
+            code: 'quote_invalid',
+            message,
+            type: 'billing',
+          },
+          { releasePayment: false },
+        )
+        return Response.json({ error: message }, { status: 402 })
+      }
       const verified = await verifySeedancePayment({
         txHash: paymentTxHash,
-        from: auth.address,
-        minAmountWei: quote.minCrtvaiWei,
+        from: payer,
+        minAmountWei,
+        verifiedSignerAddress: signer,
       })
       if (!verified.ok) {
         await failPixelsGenerateJob(
@@ -183,11 +185,14 @@ export async function POST(request: Request): Promise<Response> {
         )
         return Response.json({ error: verified.reason }, { status: 402 })
       }
-      await updatePixelsGenerateJob(requestId, { paymentTxHash })
+      await updatePixelsGenerateJob(requestId, {
+        paymentTxHash,
+        paymentLogIndex: verified.logIndex,
+      })
     }
   } else {
     try {
-      const balanceCheck = await checkMetokenSufficient(auth.address, quote.estimatedUsdc6)
+      const balanceCheck = await checkMetokenSufficient(payer, quote.estimatedUsdc6)
       if (!balanceCheck.sufficient) {
         await failPixelsGenerateJob(
           requestId,

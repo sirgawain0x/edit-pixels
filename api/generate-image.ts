@@ -4,12 +4,15 @@
 // fallow-ignore-file complexity,code-duplication
 
 import { randomUUID } from 'node:crypto'
-import { getBearerToken, verifyPrivyAccessToken } from './_wallet-auth.js'
+import {
+  authenticateGenerativePost,
+  verifyGenerativeCrtvaiPayment,
+} from './_pixels-generate-route-auth.js'
 import { checkMetokenSufficient } from './_metoken-server.js'
 import { quoteNanobananaCredits, type NanobananaQuality } from './_generative-pricing.js'
 import { completedImageTask } from './_generative-task-response.js'
 import { generateGeminiImage, isVertexGenerativeConfigured } from './_vertex-generative.js'
-import { isFlowBillingEnforced, quoteFlowCreditsUsdc6, verifyFlowPayment } from './flow-billing.js'
+import { isFlowBillingEnforced, quoteFlowCreditsUsdc6 } from './flow-billing.js'
 
 // fallow-ignore-next-line complexity
 export async function POST(request: Request): Promise<Response> {
@@ -17,29 +20,9 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'service unavailable' }, { status: 503 })
   }
 
-  let body: Record<string, unknown>
-  try {
-    const parsed = await request.json()
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      return Response.json({ error: 'invalid body' }, { status: 400 })
-    }
-    body = parsed as Record<string, unknown>
-  } catch {
-    return Response.json({ error: 'invalid body' }, { status: 400 })
-  }
-
-  const token = getBearerToken(request) || (typeof body.token === 'string' ? body.token : null)
-  if (!token) {
-    return Response.json({ error: 'missing authorization' }, { status: 401 })
-  }
-
-  const auth = await verifyPrivyAccessToken(
-    token,
-    typeof body.walletAddress === 'string' ? body.walletAddress : undefined,
-  )
-  if (!auth) {
-    return Response.json({ error: 'invalid authorization' }, { status: 401 })
-  }
+  const authenticated = await authenticateGenerativePost(request)
+  if (!authenticated.ok) return authenticated.response
+  const { signer, payer, body } = authenticated
 
   const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
   if (!prompt) {
@@ -55,7 +38,7 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const quality = (typeof body.quality === 'string' ? body.quality : '2K') as NanobananaQuality
-  const quote = quoteFlowCreditsUsdc6(quoteNanobananaCredits(quality))
+  const quote = await quoteFlowCreditsUsdc6(quoteNanobananaCredits(quality))
   if (!quote) {
     return Response.json({ error: 'invalid quote' }, { status: 400 })
   }
@@ -65,10 +48,11 @@ export async function POST(request: Request): Promise<Response> {
     if (!paymentTxHash) {
       return Response.json({ error: 'payment_required' }, { status: 402 })
     }
-    const verified = await verifyFlowPayment({
-      txHash: paymentTxHash,
-      from: auth.address,
-      minAmountWei: quote.minCrtvaiWei,
+    const verified = await verifyGenerativeCrtvaiPayment({
+      paymentTxHash,
+      signer,
+      payer,
+      quote,
       purpose: 'generate-image',
     })
     if (!verified.ok) {
@@ -76,7 +60,7 @@ export async function POST(request: Request): Promise<Response> {
     }
   } else {
     try {
-      const balanceCheck = await checkMetokenSufficient(auth.address, quote.estimatedUsdc6)
+      const balanceCheck = await checkMetokenSufficient(payer, quote.estimatedUsdc6)
       if (!balanceCheck.sufficient) {
         return Response.json(
           {

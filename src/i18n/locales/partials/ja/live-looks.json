@@ -1,0 +1,44 @@
+{
+  "liveLooks": {
+    "title": "Live Looks",
+    "subtitle": "背景とスタイルのエフェクトを、お使いのデバイス上で処理します。",
+    "toolbarAria": "Live Looks",
+    "toolbarTooltip": "Live Looks",
+    "previewIdle": "カメラを開始してエフェクトをプレビューします。",
+    "privacy": "デバイス内のみ。カメラの映像はアップロードされません。",
+    "startCamera": "カメラを開始",
+    "stopCamera": "カメラを停止",
+    "starting": "開始中…",
+    "background": {
+      "label": "背景",
+      "blurAmount": "ぼかしの強さ",
+      "solidColor": "背景色",
+      "pickImage": "画像を選択",
+      "modes": {
+        "none": "オリジナル",
+        "blur": "ぼかし",
+        "solid": "単色",
+        "preset": "同梱シーン",
+        "custom": "自分の画像"
+      },
+      "presets": {
+        "studio": "スタジオ",
+        "sunset": "夕焼け",
+        "forest": "森"
+      }
+    },
+    "style": {
+      "label": "スタイル",
+      "backend": "スタイルエンジン: {{backend}}",
+      "filters": {
+        "none": "なし",
+        "mono": "モノ",
+        "warm": "ウォーム",
+        "cool": "クール",
+        "highContrast": "ハイコントラスト",
+        "comic": "コミック",
+        "vhs": "VHS"
+      }
+    }
+  }
+}

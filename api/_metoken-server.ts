@@ -13,13 +13,12 @@
 
 import { createPublicClient, http, parseAbi, type Hex } from 'viem'
 import { base } from 'viem/chains'
+import { readMeTokensMintedForDeposit } from './_metoken-curve-quote.js'
 
 const CRTVAI_DIAMOND_ADDRESS = '0xecb695544a3d2a64d579b3828f3f60f6932f4846' as const
 
 const METOKEN_ABI = parseAbi([
   'function balanceOf(address account) view returns (uint256)',
-  'function getCurrentPrice() view returns (uint256)',
-  'function getSellPrice(uint256 amount) view returns (uint256)',
 ])
 
 function getBaseRpcUrl(): string {
@@ -46,19 +45,12 @@ export interface MetokenBalanceResult {
  */
 export async function getMetokenBalance(address: string): Promise<MetokenBalanceResult> {
   const client = getClient()
-  const [balance, price] = await Promise.all([
-    client.readContract({
-      address: CRTVAI_DIAMOND_ADDRESS,
-      abi: METOKEN_ABI,
-      functionName: 'balanceOf',
-      args: [address as Hex],
-    }),
-    client.readContract({
-      address: CRTVAI_DIAMOND_ADDRESS,
-      abi: METOKEN_ABI,
-      functionName: 'getCurrentPrice',
-    }),
-  ])
+  const balance = await client.readContract({
+    address: CRTVAI_DIAMOND_ADDRESS,
+    abi: METOKEN_ABI,
+    functionName: 'balanceOf',
+    args: [address as Hex],
+  })
 
   const balanceStr = balance.toString()
   const formatted = (Number(balance) / 1e18).toLocaleString(undefined, {
@@ -66,7 +58,11 @@ export async function getMetokenBalance(address: string): Promise<MetokenBalance
     maximumFractionDigits: 2,
   })
 
-  return { balance: balanceStr, formatted, price: price.toString() }
+  const oneUsdcMinted = await readMeTokensMintedForDeposit(1_000_000n)
+  const price =
+    oneUsdcMinted > 0n ? ((1_000_000n * 10n ** 18n) / oneUsdcMinted).toString() : '0'
+
+  return { balance: balanceStr, formatted, price }
 }
 
 /**
@@ -79,27 +75,17 @@ export async function checkMetokenSufficient(
   costUsdc6: number,
 ): Promise<{ sufficient: boolean; balance: bigint; requiredMetoken: bigint }> {
   const client = getClient()
-  const [balance, price] = await Promise.all([
-    client.readContract({
-      address: CRTVAI_DIAMOND_ADDRESS,
-      abi: METOKEN_ABI,
-      functionName: 'balanceOf',
-      args: [address as Hex],
-    }),
-    client.readContract({
-      address: CRTVAI_DIAMOND_ADDRESS,
-      abi: METOKEN_ABI,
-      functionName: 'getCurrentPrice',
-    }),
-  ])
+  const balance = await client.readContract({
+    address: CRTVAI_DIAMOND_ADDRESS,
+    abi: METOKEN_ABI,
+    functionName: 'balanceOf',
+    args: [address as Hex],
+  })
 
-  // price is in USDC per meToken (raw units: USDC 6 dec / meToken 18 dec)
-  // requiredMetoken = costUsdc6 * 1e18 / price (where price is in USDC 6 dec per meToken 18 dec)
-  // Simplify: if price = P (USDC6 per meToken18), then required = costUsdc6 * 1e18 / P
-  const requiredMetoken = price > 0n ? (BigInt(costUsdc6) * 10n ** 18n) / price : 0n
+  const requiredMetoken = await readMeTokensMintedForDeposit(BigInt(costUsdc6))
 
   return {
-    sufficient: price > 0n && balance >= requiredMetoken,
+    sufficient: requiredMetoken > 0n && balance >= requiredMetoken,
     balance,
     requiredMetoken,
   }

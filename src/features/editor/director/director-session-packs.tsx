@@ -6,8 +6,7 @@ import { DIRECTOR_SESSION_PACKS } from '@/config/credits'
 import { formatUsdc6 } from '@/features/editor/deps/credits-contract'
 
 /**
- * Optional Director session packs — mint CRTVAI sized for ~N minutes of retail
- * Director audio. Settles via the same Buy CRTVAI curve (not a separate ledger).
+ * Optional Director session packs — USDC top-ups sized for multiple briefs.
  */
 export function DirectorSessionPacks() {
   const { t } = useTranslation()
@@ -21,7 +20,7 @@ export function DirectorSessionPacks() {
       </p>
       <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
         {t('director.packs.blurb', {
-          defaultValue: 'Top up CRTVAI for multiple Director briefs.',
+          defaultValue: 'Top up credits for multiple Director briefs.',
         })}
       </p>
       <ul className="mt-2.5 space-y-1.5">

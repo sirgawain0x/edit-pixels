@@ -41,6 +41,7 @@ import { LanguageSwitcher } from '@/shared/ui/language-switcher'
 import { useDebugStore } from '@/features/editor/stores/debug-store'
 import { useItemsStore, useTimelineStore } from '@/features/editor/deps/timeline-store'
 import { useMediaLibraryStore } from '@/features/editor/deps/media-library'
+import { LiveLooksToolbarEntry } from '../deps/live-looks'
 import { LiveAiPopover } from '../deps/live-ai'
 import { WalletConnectButton } from '@/components/wallet-connect-button'
 
@@ -352,7 +353,8 @@ export const Toolbar = memo(function Toolbar({
 
         <WalletConnectButton size="sm" compact className="h-7 min-h-0" />
 
-        <LiveAiPopover />
+        <LiveLooksToolbarEntry />
+        {import.meta.env.VITE_SHOW_LIVE_AI === '1' ? <LiveAiPopover /> : null}
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

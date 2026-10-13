@@ -1,0 +1,44 @@
+{
+  "liveLooks": {
+    "title": "Live Looks",
+    "subtitle": "Hintergrund- und Stileffekte, direkt auf deinem Gerät verarbeitet.",
+    "toolbarAria": "Live Looks",
+    "toolbarTooltip": "Live Looks",
+    "previewIdle": "Starte die Kamera, um Effekte zu sehen.",
+    "privacy": "Nur auf dem Gerät. Deine Kamerabilder werden nicht hochgeladen.",
+    "startCamera": "Kamera starten",
+    "stopCamera": "Kamera stoppen",
+    "starting": "Wird gestartet…",
+    "background": {
+      "label": "Hintergrund",
+      "blurAmount": "Unschärfe",
+      "solidColor": "Hintergrundfarbe",
+      "pickImage": "Bild wählen",
+      "modes": {
+        "none": "Original",
+        "blur": "Unschärfe",
+        "solid": "Einfarbig",
+        "preset": "Vorgegebene Szene",
+        "custom": "Eigenes Bild"
+      },
+      "presets": {
+        "studio": "Studio",
+        "sunset": "Sonnenuntergang",
+        "forest": "Wald"
+      }
+    },
+    "style": {
+      "label": "Stil",
+      "backend": "Stil-Engine: {{backend}}",
+      "filters": {
+        "none": "Keiner",
+        "mono": "Mono",
+        "warm": "Warm",
+        "cool": "Kühl",
+        "highContrast": "Hoher Kontrast",
+        "comic": "Comic",
+        "vhs": "VHS"
+      }
+    }
+  }
+}

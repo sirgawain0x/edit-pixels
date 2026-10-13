@@ -12,11 +12,13 @@ import {
   useItemsStore,
   useTimelineSettingsStore,
 } from '@/features/editor/deps/timeline-store-contract'
+import { useGenerativeAuth } from '@/features/editor/deps/generative'
 import { usePremiumMembership } from '@/features/editor/deps/live-ai'
+import { isLiveStyleEnabledClient } from '@/features/editor/deps/live-style'
 import { useSmartWalletOps } from '@/hooks/use-smart-wallet-ops'
 import { getDirectorTreasuryAddress } from './build-director-payment'
 import { confirmDirectorInvoice } from './confirm-director-invoice'
-import { quoteDirectorBrief } from './director-pricing'
+import { fetchDirectorServerQuote } from './fetch-director-server-quote'
 import { DirectorInvoiceCard, type PendingDirectorInvoice } from './director-invoice-card'
 import { DirectorSessionPacks } from './director-session-packs'
 import { DirectorPastBriefs } from './director-past-briefs'
@@ -164,9 +166,12 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
 
   const { projectId } = useParams({ from: '/editor/$projectId' })
 
-  const { account, connect, authenticated, configured: walletConfigured } = useWalletContext()
+  const { account, connect, authenticated, configured: walletConfigured, getAccessToken } =
+    useWalletContext()
+  const generativeAuth = useGenerativeAuth()
   const { balance, refreshBalance } = useCredits()
   const { isPremiumMember } = usePremiumMembership(account)
+  const liveStyleFeatureReady = isLiveStyleEnabledClient()
   const { sendOps, ready: walletOpsReady } = useSmartWalletOps()
   const canPayOnChain = Boolean(getDirectorTreasuryAddress() && walletOpsReady)
   const hasCrtvai = balance > 0
@@ -247,7 +252,7 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
 
   const queueInvoice = useCallback(
     // fallow-ignore-next-line complexity
-    (text: string) => {
+    async (text: string) => {
       stopListening()
       const trimmed = text.trim()
       if (!trimmed) return
@@ -280,10 +285,30 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
         return
       }
 
-      const quote = quoteDirectorBrief({
-        audioDurationSeconds: audioContext.primary.durationSeconds,
-        isPremium: isPremiumMember,
-      })
+      const token = generativeAuth ? await generativeAuth.getAccessToken() : null
+      if (!token) {
+        if (walletConfigured) connect()
+        reportLocalError(
+          t('director.error.connectWallet', {
+            defaultValue: 'Connect your wallet to pay for the Director in CRTVAI.',
+          }),
+        )
+        return
+      }
+
+      if (!generativeAuth?.signerAddress) {
+        reportLocalError(
+          t('director.error.connectWallet', {
+            defaultValue: 'Connect your wallet to pay for the Director in CRTVAI.',
+          }),
+        )
+        return
+      }
+
+      const quote = await fetchDirectorServerQuote(
+        { token, signerAddress: generativeAuth.signerAddress },
+        { audioDurationSeconds: audioContext.primary.durationSeconds },
+      )
       if (!quote) {
         reportLocalError(
           t('director.error.noQuote', {
@@ -306,6 +331,7 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
       audioContext,
       authenticated,
       connect,
+      generativeAuth,
       hasCrtvai,
       hasTimelineAudio,
       isPremiumMember,
@@ -314,6 +340,7 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
       t,
       walletConfigured,
       projectId,
+      account,
     ],
   )
 
@@ -331,6 +358,8 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
         balance,
         canPayOnChain,
         account,
+        signerAddress: generativeAuth?.signerAddress,
+        getAccessToken,
         sendOps,
         refreshBalance,
         submit,
@@ -346,6 +375,8 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
     account,
     balance,
     canPayOnChain,
+    generativeAuth?.signerAddress,
+    getAccessToken,
     paying,
     pendingInvoice,
     refreshBalance,
@@ -365,7 +396,10 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
   )
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col overflow-hidden">
+    <div
+      className="relative flex h-full min-h-0 flex-col overflow-hidden"
+      data-live-style-ready={liveStyleFeatureReady ? 'true' : 'false'}
+    >
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_-10%,oklch(0.68_0.19_45_/_0.14),transparent_55%),linear-gradient(180deg,oklch(0.14_0_0)_0%,oklch(0.12_0_0)_100%)]"

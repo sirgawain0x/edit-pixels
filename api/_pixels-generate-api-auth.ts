@@ -3,10 +3,13 @@
  */
 // fallow-ignore-file complexity
 
-import { getBearerToken, verifyPrivyAccessToken } from './_wallet-auth.js'
+import { resolvePixelsIdentity } from './_pixels-identity.js'
+import { parseJsonObjectBody } from './_pixels-json-body.js'
 
 export interface PixelsGenerateAuthContext {
+  /** Active Privy-linked signer EOA (identity). */
   address: string
+  signer: string
 }
 
 export type AuthorizePixelsGenerateResult =
@@ -16,35 +19,12 @@ export type AuthorizePixelsGenerateResult =
 export async function authorizePixelsGeneratePost(
   request: Request,
 ): Promise<AuthorizePixelsGenerateResult> {
-  let body: Record<string, unknown>
-  try {
-    const parsed = await request.json()
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      return { ok: false, response: Response.json({ error: 'invalid body' }, { status: 400 }) }
-    }
-    body = parsed as Record<string, unknown>
-  } catch {
-    return { ok: false, response: Response.json({ error: 'invalid body' }, { status: 400 }) }
+  const resolved = await resolvePixelsIdentity(request)
+  if (!resolved.ok) return resolved
+  const signer = resolved.identity.signer
+  return {
+    ok: true,
+    auth: { address: signer, signer },
+    body: resolved.body,
   }
-
-  const token = getBearerToken(request) || (typeof body.token === 'string' ? body.token : null)
-  if (!token) {
-    return {
-      ok: false,
-      response: Response.json({ error: 'missing authorization' }, { status: 401 }),
-    }
-  }
-
-  const auth = await verifyPrivyAccessToken(
-    token,
-    typeof body.walletAddress === 'string' ? body.walletAddress : undefined,
-  )
-  if (!auth) {
-    return {
-      ok: false,
-      response: Response.json({ error: 'invalid authorization' }, { status: 401 }),
-    }
-  }
-
-  return { ok: true, auth, body }
 }

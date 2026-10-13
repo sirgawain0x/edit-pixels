@@ -37,6 +37,7 @@ export function quoteSeedanceUsdc6(input: {
   return Math.max(1, Math.ceil(usd * 1_000_000))
 }
 
+/** @deprecated Use live curve quotes via `_metoken-curve-quote` / `quoteSeedanceSpend`. */
 export function quoteSeedanceMinCrtvaiWei(estimatedUsdc6: number): bigint {
   return BigInt(estimatedUsdc6) * 10n ** 12n
 }

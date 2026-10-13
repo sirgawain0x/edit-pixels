@@ -11,29 +11,91 @@ import {
   type DirectorBillingQuote,
   type PaymentVerifyResult,
 } from './director-billing.js'
+import {
+  isQuoteSigningConfigured,
+  METOKEN_QUOTE_SLIPPAGE_BPS,
+  MetokenQuoteError,
+  quoteCrtvaiForUsdc6,
+  validateSettlementAgainstQuote,
+  verifyQuoteSignature,
+} from './_metoken-curve-quote.js'
 
 export { isDirectorBillingEnforced as isFlowBillingEnforced, type PaymentVerifyResult }
 
-/** Convert legacy Flow credits ($0.10/credit) to usdc6 + min CRTVAI wei. */
-export function quoteFlowCreditsUsdc6(credits: number): {
+export interface FlowCreditsQuote {
+  quoteId: string
+  signature: string
+  expiresAtMs: number
+  slippageBps: number
   estimatedUsdc6: number
   minCrtvaiWei: bigint
-} | null {
+}
+
+/** Convert legacy Flow credits ($0.10/credit) to usdc6 + live-curve CRTVAI wei. */
+export async function resolveFlowSettlementMinWei(quote: FlowCreditsQuote): Promise<bigint> {
+  if (isFlowBillingEnforced()) {
+    if (!isQuoteSigningConfigured()) {
+      throw new MetokenQuoteError(
+        'quote_invalid',
+        'Quote signing is not configured for enforced billing.',
+      )
+    }
+    if (quote.signature.startsWith('unsigned:')) {
+      throw new MetokenQuoteError('quote_invalid', 'Invalid quote signature')
+    }
+    if (quote.slippageBps !== METOKEN_QUOTE_SLIPPAGE_BPS) {
+      throw new MetokenQuoteError('quote_invalid', 'Invalid quote slippage')
+    }
+  }
+  if (
+    !verifyQuoteSignature({
+      quoteId: quote.quoteId,
+      signature: quote.signature,
+      estimatedUsdc6: quote.estimatedUsdc6,
+      minCrtvaiWei: quote.minCrtvaiWei,
+      expiresAtMs: quote.expiresAtMs,
+      slippageBps: quote.slippageBps,
+    })
+  ) {
+    throw new MetokenQuoteError('quote_invalid', 'Invalid quote signature')
+  }
+  const { minAmountWei } = await validateSettlementAgainstQuote({
+    estimatedUsdc6: quote.estimatedUsdc6,
+    minCrtvaiWei: quote.minCrtvaiWei,
+    expiresAtMs: quote.expiresAtMs,
+    slippageBps: quote.slippageBps,
+  })
+  return minAmountWei
+}
+
+export async function quoteFlowCreditsUsdc6(credits: number): Promise<FlowCreditsQuote | null> {
   if (!Number.isFinite(credits) || credits <= 0) return null
   const estimatedUsdc6 = Math.max(1, Math.ceil(credits)) * 100_000
-  return {
-    estimatedUsdc6,
-    minCrtvaiWei: BigInt(estimatedUsdc6) * 10n ** 12n,
+  try {
+    const curve = await quoteCrtvaiForUsdc6(estimatedUsdc6)
+    return {
+      quoteId: curve.quoteId,
+      signature: curve.signature,
+      expiresAtMs: curve.expiresAtMs,
+      slippageBps: curve.slippageBps,
+      estimatedUsdc6,
+      minCrtvaiWei: curve.minCrtvaiWei,
+    }
+  } catch (error) {
+    if (error instanceof MetokenQuoteError) return null
+    throw error
   }
 }
 
-export function quoteDirectorForReuse(audioDurationSeconds: number): DirectorBillingQuote | null {
+export async function quoteDirectorForReuse(
+  audioDurationSeconds: number,
+): Promise<DirectorBillingQuote | null> {
   return quoteDirectorRetail(audioDurationSeconds)
 }
 
 /** Undo a consumed payment hash after a pre-delivery generative failure. */
-export async function releaseFlowPayment(txHash: string): Promise<void> {
-  await releaseDirectorPayment(txHash)
+export async function releaseFlowPayment(txHash: string, logIndex: number): Promise<void> {
+  await releaseDirectorPayment(txHash, logIndex)
 }
 
 /** Verify treasury transfer and mark tx consumed for `purpose`. */
@@ -42,11 +104,13 @@ export async function verifyFlowPayment(options: {
   from: string
   minAmountWei: bigint
   purpose?: string
+  verifiedSignerAddress: string
 }): Promise<PaymentVerifyResult> {
   return verifyAndConsumeDirectorPayment({
     txHash: options.txHash,
     from: options.from,
     minAmountWei: options.minAmountWei,
     purpose: options.purpose ?? 'flow',
+    verifiedSignerAddress: options.verifiedSignerAddress,
   })
 }

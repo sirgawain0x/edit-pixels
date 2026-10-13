@@ -11,7 +11,6 @@ import { randomUUID } from 'node:crypto'
 import { getRedis, isRedisConfigured } from './_redis-client.js'
 import {
   clampSeedanceDuration,
-  quoteSeedanceMinCrtvaiWei,
   quoteSeedanceUsdc6,
   type SeedanceResolution,
 } from './_seedance-pricing.js'
@@ -20,13 +19,26 @@ import {
   verifyFlowPayment,
   type PaymentVerifyResult,
 } from './flow-billing.js'
+import {
+  METOKEN_BATCH_LINKED_SEEDANCE_QUOTE_TTL_SECONDS,
+  METOKEN_QUOTE_EXPIRY_SECONDS,
+} from './_metoken-curve-config.js'
+import {
+  MetokenQuoteError,
+  quoteCrtvaiForUsdc6,
+  validateSettlementAgainstQuote,
+  verifyQuoteSignature,
+} from './_metoken-curve-quote.js'
 
 export interface SeedanceBillingQuote {
   quoteId: string
+  signature: string
   duration: number
   resolution: SeedanceResolution
   estimatedUsdc6: number
   minCrtvaiWei: bigint
+  expiresAtMs: number
+  slippageBps: number
 }
 
 export interface SeedanceBillingReservation {
@@ -39,40 +51,52 @@ export interface SeedanceBillingReservation {
 
 const QUOTE_KEY_PREFIX = 'pixels:seedance:quote:'
 const RESERVATION_KEY_PREFIX = 'pixels:seedance:reservation:'
-const QUOTE_TTL_SECONDS = 15 * 60
+const DEFAULT_QUOTE_TTL_SECONDS = METOKEN_QUOTE_EXPIRY_SECONDS
 
 const memoryQuotes = new Map<string, SeedanceBillingQuote>()
 const memoryReservations = new Map<string, SeedanceBillingReservation>()
 
 interface StoredQuote {
   quoteId: string
+  signature: string
   duration: number
   resolution: SeedanceResolution
   estimatedUsdc6: number
   minCrtvaiWei: string
+  expiresAtMs: number
+  slippageBps: number
 }
 
 function toStoredQuote(quote: SeedanceBillingQuote): StoredQuote {
   return {
     quoteId: quote.quoteId,
+    signature: quote.signature,
     duration: quote.duration,
     resolution: quote.resolution,
     estimatedUsdc6: quote.estimatedUsdc6,
     minCrtvaiWei: quote.minCrtvaiWei.toString(),
+    expiresAtMs: quote.expiresAtMs,
+    slippageBps: quote.slippageBps,
   }
 }
 
 function fromStoredQuote(stored: StoredQuote): SeedanceBillingQuote {
   return {
     quoteId: stored.quoteId,
+    signature: stored.signature,
     duration: stored.duration,
     resolution: stored.resolution,
     estimatedUsdc6: stored.estimatedUsdc6,
     minCrtvaiWei: BigInt(stored.minCrtvaiWei),
+    expiresAtMs: stored.expiresAtMs,
+    slippageBps: stored.slippageBps,
   }
 }
 
-async function persistQuote(quote: SeedanceBillingQuote): Promise<void> {
+async function persistQuote(
+  quote: SeedanceBillingQuote,
+  redisTtlSeconds = DEFAULT_QUOTE_TTL_SECONDS,
+): Promise<void> {
   memoryQuotes.set(quote.quoteId, quote)
   if (!isRedisConfigured()) return
 
@@ -80,7 +104,7 @@ async function persistQuote(quote: SeedanceBillingQuote): Promise<void> {
   if (!redis) return
 
   await redis.set(`${QUOTE_KEY_PREFIX}${quote.quoteId}`, JSON.stringify(toStoredQuote(quote)), {
-    ex: QUOTE_TTL_SECONDS,
+    ex: redisTtlSeconds,
   })
 }
 
@@ -147,22 +171,56 @@ async function loadReservation(reservationId: string): Promise<SeedanceBillingRe
 }
 
 /** Price a Seedance job at undiscounted Higgsfield list rates. */
-export async function quoteSeedanceSpend(input: {
-  duration: number
-  resolution: SeedanceResolution
-}): Promise<SeedanceBillingQuote> {
+export async function quoteSeedanceSpend(
+  input: {
+    duration: number
+    resolution: SeedanceResolution
+  },
+  options?: { batchLinked?: boolean },
+): Promise<SeedanceBillingQuote> {
   const duration = clampSeedanceDuration(input.duration)
   const resolution = input.resolution === '480p' ? '480p' : '720p'
   const estimatedUsdc6 = quoteSeedanceUsdc6({ duration, resolution })
+  const curve = await quoteCrtvaiForUsdc6(estimatedUsdc6)
   const quote: SeedanceBillingQuote = {
-    quoteId: randomUUID(),
+    quoteId: curve.quoteId,
+    signature: curve.signature,
     duration,
     resolution,
     estimatedUsdc6,
-    minCrtvaiWei: quoteSeedanceMinCrtvaiWei(estimatedUsdc6),
+    minCrtvaiWei: curve.minCrtvaiWei,
+    expiresAtMs: curve.expiresAtMs,
+    slippageBps: curve.slippageBps,
   }
-  await persistQuote(quote)
+  const redisTtlSeconds = options?.batchLinked
+    ? METOKEN_BATCH_LINKED_SEEDANCE_QUOTE_TTL_SECONDS
+    : DEFAULT_QUOTE_TTL_SECONDS
+  await persistQuote(quote, redisTtlSeconds)
   return quote
+}
+
+export async function resolveSeedanceSettlementMinWei(
+  quote: SeedanceBillingQuote,
+): Promise<bigint> {
+  if (
+    !verifyQuoteSignature({
+      quoteId: quote.quoteId,
+      signature: quote.signature,
+      estimatedUsdc6: quote.estimatedUsdc6,
+      minCrtvaiWei: quote.minCrtvaiWei,
+      expiresAtMs: quote.expiresAtMs,
+      slippageBps: quote.slippageBps,
+    })
+  ) {
+    throw new MetokenQuoteError('quote_invalid', 'Invalid quote signature')
+  }
+  const { minAmountWei } = await validateSettlementAgainstQuote({
+    estimatedUsdc6: quote.estimatedUsdc6,
+    minCrtvaiWei: quote.minCrtvaiWei,
+    expiresAtMs: quote.expiresAtMs,
+    slippageBps: quote.slippageBps,
+  })
+  return minAmountWei
 }
 
 export async function reserveSeedanceSpend(
@@ -176,7 +234,7 @@ export async function reserveSeedanceSpend(
     reservationId: randomUUID(),
     quoteId: quote.quoteId,
     wallet: wallet.trim().toLowerCase(),
-    expiresAtMs: Date.now() + QUOTE_TTL_SECONDS * 1000,
+    expiresAtMs: quote.expiresAtMs,
   }
   await persistReservation(reservation)
   return reservation
@@ -203,6 +261,21 @@ export async function getSeedanceQuote(quoteId: string): Promise<SeedanceBilling
   return loadQuote(quoteId)
 }
 
+/** Align batch-linked Seedance Redis TTLs with the batch quote expiry (loop skew). */
+export async function syncBatchLinkedSeedanceQuoteExpiry(
+  quoteIds: string[],
+  batchExpiresAtMs: number,
+): Promise<void> {
+  const ttlSeconds = Math.max(60, Math.ceil((batchExpiresAtMs - Date.now()) / 1000))
+  const unique = [...new Set(quoteIds.map((id) => id.trim()).filter(Boolean))]
+
+  for (const quoteId of unique) {
+    const quote = await loadQuote(quoteId)
+    if (!quote) continue
+    await persistQuote(quote, ttlSeconds)
+  }
+}
+
 export function isSeedanceBillingEnforced(): boolean {
   return isFlowBillingEnforced()
 }
@@ -211,11 +284,13 @@ export async function verifySeedancePayment(options: {
   txHash: string
   from: string
   minAmountWei: bigint
+  verifiedSignerAddress: string
 }): Promise<PaymentVerifyResult> {
   return verifyFlowPayment({
     txHash: options.txHash,
     from: options.from,
     minAmountWei: options.minAmountWei,
     purpose: 'seedance-generate',
+    verifiedSignerAddress: options.verifiedSignerAddress,
   })
 }

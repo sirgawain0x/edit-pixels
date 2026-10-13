@@ -123,6 +123,8 @@ async function listHandlesByKind(kind: HandleKind): Promise<HandleRecord[]> {
  *    (`getWorkspaceHandleRecord`) keep working without changes.
  */
 const WORKSPACE_ID = 'current'
+/** OPFS QA fallback workspace — never overwrites `workspace:current`. */
+const QA_OPFS_WORKSPACE_STORAGE_ID = 'qa-opfs'
 
 export async function getWorkspaceHandleRecord(): Promise<HandleRecord | null> {
   return getHandle('workspace', WORKSPACE_ID)
@@ -134,7 +136,29 @@ export async function getWorkspaceHandleRecord(): Promise<HandleRecord | null> {
  */
 export async function listKnownWorkspaces(): Promise<HandleRecord[]> {
   const all = await listHandlesByKind('workspace')
-  return all.filter((r) => r.id !== WORKSPACE_ID).sort((a, b) => b.pickedAt - a.pickedAt)
+  return all
+    .filter((r) => r.id !== WORKSPACE_ID && r.id !== QA_OPFS_WORKSPACE_STORAGE_ID)
+    .sort((a, b) => b.pickedAt - a.pickedAt)
+}
+
+export async function getQaOpfsWorkspaceHandleRecord(): Promise<HandleRecord | null> {
+  return getHandle('workspace', QA_OPFS_WORKSPACE_STORAGE_ID)
+}
+
+/**
+ * Persist the OPFS QA workspace handle without touching the user's real
+ * `workspace:current` folder selection.
+ */
+export async function saveQaOpfsWorkspaceHandleRecord(
+  handle: FileSystemDirectoryHandle,
+): Promise<void> {
+  await saveHandle({
+    kind: 'workspace',
+    id: QA_OPFS_WORKSPACE_STORAGE_ID,
+    handle,
+    name: handle.name,
+    pickedAt: Date.now(),
+  })
 }
 
 async function findKnownWorkspaceByHandle(
