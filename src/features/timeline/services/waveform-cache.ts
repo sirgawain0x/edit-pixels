@@ -75,6 +75,8 @@ export interface CachedWaveform {
   sizeBytes: number
   lastAccessed: number
   isComplete: boolean
+  /** Set when worker decode skipped packets; callers may retry full generation. */
+  partial?: boolean
 }
 
 /**
@@ -373,6 +375,7 @@ class WaveformCacheService {
     maxPeak = 1,
     loadedSamples = peaks.length,
     sampleRate = SAMPLES_PER_SECOND,
+    partial?: boolean,
   ): CachedWaveform {
     return {
       peaks,
@@ -385,6 +388,7 @@ class WaveformCacheService {
       sizeBytes: peaks.byteLength,
       lastAccessed: Date.now(),
       isComplete,
+      partial: partial || undefined,
     }
   }
 
@@ -851,11 +855,15 @@ class WaveformCacheService {
                 break
               }
 
+              const workerPartial = event.data.partial === true
               await Promise.all(pendingBinWrites)
               if (settled) {
                 break
               }
-              if (persistBins) {
+              const isComplete =
+                isCompleteResult && !workerPartial && loadedSamples >= peaks.length
+
+              if (persistBins && isComplete) {
                 const metaBinSamples = WAVEFORM_BIN_SAMPLES * (stereo ? 2 : 1)
                 await saveWaveformMetaToIndexedDB({
                   id: mediaId,
@@ -879,17 +887,18 @@ class WaveformCacheService {
                 peaks,
                 duration,
                 channels,
-                isCompleteResult,
+                isComplete,
                 stereo,
                 maxPeak,
                 loadedSamples,
                 samplesPerSecond,
+                workerPartial,
               )
-              if (persistOPFS) {
+              if (persistOPFS && isComplete) {
                 void this.persistToOPFS(mediaId, peaks, duration, channels, samplesPerSecond)
               }
 
-              reportProgress(100, true)
+              reportProgress(isComplete ? 100 : 95, true)
               resolveOnce(cached)
               break
             }

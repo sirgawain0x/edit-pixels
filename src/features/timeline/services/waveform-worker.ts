@@ -49,6 +49,8 @@ export interface WaveformCompleteResponse {
   type: 'complete'
   requestId: string
   maxPeak: number
+  /** True when decode skipped packets or stopped before the requested range ended. */
+  partial?: boolean
 }
 
 export interface WaveformErrorResponse {
@@ -199,125 +201,152 @@ self.onmessage = async (event: MessageEvent<WaveformWorkerMessage>) => {
       )
     }
 
-    // Process samples
-    for await (const sample of sink.samples(decodeStartTime, decodeEndTime)) {
-      try {
-        if (state.aborted) {
-          throw new Error('Aborted')
-        }
-
-        // Avoid toAudioBuffer() in workers (AudioBuffer is not available in worker globals).
-        const frameCount = sample.numberOfFrames
-        const channelCount = Math.max(1, sample.numberOfChannels)
-        const sampleData = sample as {
-          sampleRate?: number
-          timestamp?: number
-          duration?: number
-        }
-        const sampleRate =
-          sampleData.sampleRate && sampleData.sampleRate > 0
-            ? sampleData.sampleRate
-            : fallbackSampleRate
-        const sampleDurationSec =
-          sampleData.duration && sampleData.duration > 0
-            ? sampleData.duration
-            : frameCount / sampleRate
-        const sampleTimestampSec = Number.isFinite(sampleData.timestamp)
-          ? Math.max(0, sampleData.timestamp as number)
-          : processedEndTimeSec
-        const channelsToCopy = stereo ? Math.min(2, channelCount) : channelCount
-        const channelData: Float32Array[] = []
-        for (let c = 0; c < channelsToCopy; c++) {
-          const ch = new Float32Array(frameCount)
-          sample.copyTo(ch, { planeIndex: c, format: 'f32-planar' })
-          channelData.push(ch)
-        }
-
-        for (let i = 0; i < frameCount; i++) {
-          const frameTimeSec = sampleTimestampSec + i / sampleRate
-          if (frameTimeSec < decodeStartTime || frameTimeSec >= decodeEndTime) {
-            continue
-          }
-          const outputIndex = Math.min(
-            numOutputSamples - 1,
-            Math.floor(frameTimeSec * samplesPerSecond),
-          )
-
-          if (stereo) {
-            // Timeline stereo display only needs the first two channels. Avoid
-            // copying surround channels for 5.1/7.1 sources during waveform prep.
-            const lPeak = Math.abs(channelData[0]![i] ?? 0)
-            const rPeak = Math.abs(channelData[Math.min(1, channelsToCopy - 1)]![i] ?? 0)
-            const lIdx = outputIndex * 2
-            const rIdx = outputIndex * 2 + 1
-            if (lPeak > peaks[lIdx]!) {
-              peaks[lIdx] = lPeak
-              if (lPeak > maxPeak) maxPeak = lPeak
-            }
-            if (rPeak > peaks[rIdx]!) {
-              peaks[rIdx] = rPeak
-              if (rPeak > maxPeak) maxPeak = rPeak
-            }
-          } else {
-            // Mono: mix all channels
-            let sum = 0
-            for (let c = 0; c < channelCount; c++) {
-              sum += channelData[c]![i] ?? 0
-            }
-            const peak = Math.abs(sum / channelCount)
-            if (peak > peaks[outputIndex]!) {
-              peaks[outputIndex] = peak
-              if (peak > maxPeak) maxPeak = peak
-            }
-          }
-        }
-
-        processedEndTimeSec = Math.max(processedEndTimeSec, sampleTimestampSec + sampleDurationSec)
-
-        // Flush full bins that can no longer change.
-        const completedOutputExclusive = Math.min(
-          rangeOutputEnd,
-          Math.floor(processedEndTimeSec * samplesPerSecond) * outputChannelCount,
-        )
-        while (nextChunkStart + binSampleCount <= completedOutputExclusive) {
-          const end = nextChunkStart + binSampleCount
-          emitChunk(nextChunkStart, end)
-          nextChunkStart = end
-        }
-
-        // Update progress (20-80% range for sample extraction)
-        const progress =
-          20 +
-          Math.min(
-            60,
-            Math.round(
-              ((processedEndTimeSec - decodeStartTime) / Math.max(decodeDuration, 0.001)) * 60,
-            ),
-          )
-        self.postMessage({ type: 'progress', requestId, progress } as WaveformProgressResponse)
-      } finally {
-        // Always close the sample to prevent resource leaks
-        sample.close()
+    const flushTail = () => {
+      if (nextChunkStart < rangeOutputEnd) {
+        emitChunk(nextChunkStart, rangeOutputEnd)
       }
+    }
+
+    const isAbortError = (err: unknown): boolean =>
+      err instanceof Error && err.message === 'Aborted'
+
+    let skippedPackets = false
+    let decodeStoppedEarly = false
+
+    // Process samples — skip bad packets instead of aborting the whole decode.
+    try {
+      for await (const sample of sink.samples(decodeStartTime, decodeEndTime)) {
+        try {
+          if (state.aborted) {
+            throw new Error('Aborted')
+          }
+
+          // Avoid toAudioBuffer() in workers (AudioBuffer is not available in worker globals).
+          const frameCount = sample.numberOfFrames
+          const channelCount = Math.max(1, sample.numberOfChannels)
+          const sampleData = sample as {
+            sampleRate?: number
+            timestamp?: number
+            duration?: number
+          }
+          const sampleRate =
+            sampleData.sampleRate && sampleData.sampleRate > 0
+              ? sampleData.sampleRate
+              : fallbackSampleRate
+          const sampleDurationSec =
+            sampleData.duration && sampleData.duration > 0
+              ? sampleData.duration
+              : frameCount / sampleRate
+          const sampleTimestampSec = Number.isFinite(sampleData.timestamp)
+            ? Math.max(0, sampleData.timestamp as number)
+            : processedEndTimeSec
+          const channelsToCopy = stereo ? Math.min(2, channelCount) : channelCount
+          const channelData: Float32Array[] = []
+          for (let c = 0; c < channelsToCopy; c++) {
+            const ch = new Float32Array(frameCount)
+            sample.copyTo(ch, { planeIndex: c, format: 'f32-planar' })
+            channelData.push(ch)
+          }
+
+          for (let i = 0; i < frameCount; i++) {
+            const frameTimeSec = sampleTimestampSec + i / sampleRate
+            if (frameTimeSec < decodeStartTime || frameTimeSec >= decodeEndTime) {
+              continue
+            }
+            const outputIndex = Math.min(
+              numOutputSamples - 1,
+              Math.floor(frameTimeSec * samplesPerSecond),
+            )
+
+            if (stereo) {
+              // Timeline stereo display only needs the first two channels. Avoid
+              // copying surround channels for 5.1/7.1 sources during waveform prep.
+              const lPeak = Math.abs(channelData[0]![i] ?? 0)
+              const rPeak = Math.abs(channelData[Math.min(1, channelsToCopy - 1)]![i] ?? 0)
+              const lIdx = outputIndex * 2
+              const rIdx = outputIndex * 2 + 1
+              if (lPeak > peaks[lIdx]!) {
+                peaks[lIdx] = lPeak
+                if (lPeak > maxPeak) maxPeak = lPeak
+              }
+              if (rPeak > peaks[rIdx]!) {
+                peaks[rIdx] = rPeak
+                if (rPeak > maxPeak) maxPeak = rPeak
+              }
+            } else {
+              // Mono: mix all channels
+              let sum = 0
+              for (let c = 0; c < channelCount; c++) {
+                sum += channelData[c]![i] ?? 0
+              }
+              const peak = Math.abs(sum / channelCount)
+              if (peak > peaks[outputIndex]!) {
+                peaks[outputIndex] = peak
+                if (peak > maxPeak) maxPeak = peak
+              }
+            }
+          }
+
+          processedEndTimeSec = Math.max(
+            processedEndTimeSec,
+            sampleTimestampSec + sampleDurationSec,
+          )
+
+          // Flush full bins that can no longer change.
+          const completedOutputExclusive = Math.min(
+            rangeOutputEnd,
+            Math.floor(processedEndTimeSec * samplesPerSecond) * outputChannelCount,
+          )
+          while (nextChunkStart + binSampleCount <= completedOutputExclusive) {
+            const end = nextChunkStart + binSampleCount
+            emitChunk(nextChunkStart, end)
+            nextChunkStart = end
+          }
+
+          // Update progress (20-80% range for sample extraction)
+          const progress =
+            20 +
+            Math.min(
+              60,
+              Math.round(
+                ((processedEndTimeSec - decodeStartTime) / Math.max(decodeDuration, 0.001)) * 60,
+              ),
+            )
+          self.postMessage({ type: 'progress', requestId, progress } as WaveformProgressResponse)
+        } catch (err) {
+          if (isAbortError(err)) {
+            throw err
+          }
+          skippedPackets = true
+        } finally {
+          // Always close the sample to prevent resource leaks
+          sample.close()
+        }
+      }
+    } catch (err) {
+      if (isAbortError(err)) {
+        throw err
+      }
+      decodeStoppedEarly = true
     }
 
     if (state.aborted) throw new Error('Aborted')
 
     self.postMessage({ type: 'progress', requestId, progress: 80 } as WaveformProgressResponse)
 
-    // Flush remaining tail.
-    if (nextChunkStart < rangeOutputEnd) {
-      emitChunk(nextChunkStart, rangeOutputEnd)
-    }
+    flushTail()
 
     self.postMessage({ type: 'progress', requestId, progress: 90 } as WaveformProgressResponse)
     self.postMessage({ type: 'progress', requestId, progress: 95 } as WaveformProgressResponse)
+
+    const partial = skippedPackets || decodeStoppedEarly
 
     // Send completion marker with peak stats.
     const response: WaveformCompleteResponse = {
       type: 'complete',
       requestId,
       maxPeak,
+      partial: partial || undefined,
     }
     self.postMessage(response)
   } catch (err) {
