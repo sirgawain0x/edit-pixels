@@ -48,6 +48,7 @@ describe('content security policy', () => {
     for (const required of [
       "default-src 'self'",
       'https://auth.privy.io',
+      'https://*.privy.io',
       'https://privy.create.creativeplatform.xyz',
       'https://explorer-api.walletconnect.com',
       'https://verify.walletconnect.com',
