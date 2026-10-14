@@ -31,6 +31,7 @@ import {
   type SeedanceAspectRatio,
   type SeedanceResolution,
 } from './_seedance-pricing.js'
+import { checkPixelsRateLimits } from './_rate-limit.js'
 
 const SEEDANCE_MODEL = 'bytedance/seedance-2.5/text-to-video'
 
@@ -42,9 +43,18 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'service unavailable' }, { status: 503 })
   }
 
+  const ipLimited = await checkPixelsRateLimits(request, 'render')
+  if (ipLimited) return ipLimited
+
   const authenticated = await authenticateGenerativePost(request)
   if (!authenticated.ok) return authenticated.response
   const { signer, payer, body } = authenticated
+
+  const identityLimited = await checkPixelsRateLimits(request, 'render', {
+    ip: false,
+    identity: signer,
+  })
+  if (identityLimited) return identityLimited
 
   const requestId =
     typeof body.requestId === 'string' && body.requestId.trim().length > 0

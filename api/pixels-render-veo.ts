@@ -34,6 +34,7 @@ import {
 import { isSeedanceGenerateEnabled } from './_seedance-pricing.js'
 import { registerPixelsGenerateJob, updatePixelsGenerateJob } from './_pixels-generate-jobs.js'
 import { failPixelsGenerateJob } from './_pixels-generate-payment.js'
+import { checkPixelsRateLimits } from './_rate-limit.js'
 
 const PIXELS_VEO_TIER: VeoTier = 'standard'
 const PIXELS_STILL_QUALITY: NanobananaQuality = '2K'
@@ -54,9 +55,18 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'service unavailable' }, { status: 503 })
   }
 
+  const ipLimited = await checkPixelsRateLimits(request, 'render')
+  if (ipLimited) return ipLimited
+
   const authenticated = await authenticateGenerativePost(request)
   if (!authenticated.ok) return authenticated.response
   const { signer, payer, body } = authenticated
+
+  const identityLimited = await checkPixelsRateLimits(request, 'render', {
+    ip: false,
+    identity: signer,
+  })
+  if (identityLimited) return identityLimited
 
   const requestId =
     typeof body.requestId === 'string' && body.requestId.trim().length > 0

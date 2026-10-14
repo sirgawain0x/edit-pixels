@@ -5,7 +5,7 @@
 // fallow-ignore-file complexity
 
 import { PrivyClient } from '@privy-io/server-auth'
-import { isDirectorSecretAuthorized } from './_director-auth.js'
+import { isDirectorSecretAllowlistedSigner, isDirectorSecretAuthorized } from './_director-auth.js'
 import { getBearerToken, getPrivyAuth } from './_wallet-auth.js'
 import { parseJsonObjectBody } from './_pixels-json-body.js'
 
@@ -151,26 +151,57 @@ export async function resolvePrivySignerFromToken(
   }
 }
 
+async function resolveDirectorSecretIdentity(
+  request: Request,
+  body: Record<string, unknown>,
+): Promise<ResolvePixelsIdentityResult> {
+  const signerRaw =
+    typeof body.signerAddress === 'string'
+      ? body.signerAddress
+      : typeof body.signer_address === 'string'
+        ? body.signer_address
+        : readSignerHint(request, body) ?? null
+  const signer = signerRaw ? normalizeSignerAddress(signerRaw) : null
+  if (!signer) {
+    return {
+      ok: false,
+      response: Response.json({ error: 'signerAddress required' }, { status: 400 }),
+    }
+  }
+
+  if (isDirectorSecretAllowlistedSigner(signer)) {
+    return { ok: true, identity: { signer, source: 'secret' }, body }
+  }
+
+  const token = getBearerToken(request) || (typeof body.token === 'string' ? body.token : null)
+  if (!token) {
+    console.warn('director secret path rejected: missing privy token for non-allowlisted signer')
+    return {
+      ok: false,
+      response: Response.json({ error: 'invalid authorization' }, { status: 403 }),
+    }
+  }
+
+  const privy = await resolvePrivySignerFromToken(token, signerRaw ?? undefined)
+  if (!privy.ok) return privy
+  if (privy.signer !== signer) {
+    console.warn('director secret path rejected: signer not linked to privy account')
+    return {
+      ok: false,
+      response: Response.json({ error: 'signer not linked to this account' }, { status: 403 }),
+    }
+  }
+
+  return { ok: true, identity: { signer, source: 'secret' }, body }
+}
+
 async function resolvePixelsIdentityFromBody(
   request: Request,
   body: Record<string, unknown>,
   options: { allowDirectorSecret?: boolean } = {},
 ): Promise<ResolvePixelsIdentityResult> {
   if (options.allowDirectorSecret && isDirectorSecretAuthorized(request)) {
-    const signerRaw =
-      typeof body.signerAddress === 'string'
-        ? body.signerAddress
-        : typeof body.signer_address === 'string'
-          ? body.signer_address
-          : null
-    const signer = signerRaw ? normalizeSignerAddress(signerRaw) : null
-    if (!signer) {
-      return {
-        ok: false,
-        response: Response.json({ error: 'signerAddress required' }, { status: 400 }),
-      }
-    }
-    return { ok: true, identity: { signer, source: 'secret' }, body }
+    return resolveDirectorSecretIdentity(request, body)
   }
 
   const token = getBearerToken(request) || (typeof body.token === 'string' ? body.token : null)

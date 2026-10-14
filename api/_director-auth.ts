@@ -3,6 +3,16 @@
  * Shared authorization for Creative Director API routes.
  */
 
+import { timingSafeEqual } from 'node:crypto'
+
+function timingSafeSecretMatch(provided: string | null | undefined, expected: string): boolean {
+  if (!provided) return false
+  const a = Buffer.from(provided)
+  const b = Buffer.from(expected)
+  if (a.length !== b.length) return false
+  return timingSafeEqual(a, b)
+}
+
 // fallow-ignore-next-line complexity
 function normalizeHost(value: string | null): string | null {
   if (!value) return null
@@ -23,7 +33,25 @@ export function isDirectorSecretAuthorized(request: Request): boolean {
   const auth = request.headers.get('authorization')
   const headerSecret = request.headers.get('x-director-secret')
   const bearer = auth?.startsWith('Bearer ') ? auth.slice(7).trim() : null
-  return bearer === secret || headerSecret === secret
+  return timingSafeSecretMatch(bearer, secret) || timingSafeSecretMatch(headerSecret, secret)
+}
+
+const ALLOWLIST_ENV = 'PIXELS_DIRECTOR_SECRET_SIGNER_ALLOWLIST'
+
+function parseDirectorSecretSignerAllowlist(): Set<string> {
+  const raw = process.env[ALLOWLIST_ENV]?.trim()
+  if (!raw) return new Set()
+  return new Set(
+    raw
+      .split(',')
+      .map((entry) => entry.trim().toLowerCase())
+      .filter((entry) => entry.startsWith('0x') && entry.length >= 42),
+  )
+}
+
+/** Automation signers that may be asserted with DIRECTOR_API_SECRET alone (no Privy). */
+export function isDirectorSecretAllowlistedSigner(signer: `0x${string}`): boolean {
+  return parseDirectorSecretSignerAllowlist().has(signer.toLowerCase())
 }
 
 /**

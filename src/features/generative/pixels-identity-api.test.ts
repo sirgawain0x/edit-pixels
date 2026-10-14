@@ -15,6 +15,8 @@ vi.mock('@privy-io/server-auth', () => ({
 vi.mock('../../../api/_director-auth.js', () => ({
   isDirectorSecretAuthorized: (request: Request) =>
     request.headers.get('x-director-secret') === 'test-secret',
+  isDirectorSecretAllowlistedSigner: (signer: string) =>
+    signer.toLowerCase() === '0xcccccccccccccccccccccccccccccccccccccccc',
 }))
 
 const SIGNER_A = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' as `0x${string}`
@@ -138,7 +140,47 @@ describe('resolvePixelsIdentity', () => {
     if (!result.ok) expect(result.response.status).toBe(400)
   })
 
-  it('trusts signerAddress on director secret path', async () => {
+  it('trusts allowlisted signerAddress on director secret path without privy', async () => {
+    const ALLOWLISTED = '0xcccccccccccccccccccccccccccccccccccccccc' as `0x${string}`
+    const { resolvePixelsIdentity } = await import('../../../api/_pixels-identity.js')
+    const result = await resolvePixelsIdentity(
+      new Request('http://localhost/api/director', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-director-secret': 'test-secret',
+        },
+        body: JSON.stringify({ prompt: 'hi', signerAddress: ALLOWLISTED }),
+      }),
+      { allowDirectorSecret: true },
+    )
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.identity.signer).toBe(ALLOWLISTED)
+      expect(result.identity.source).toBe('secret')
+    }
+  })
+
+  it('requires privy for director secret path when signer is not allowlisted', async () => {
+    linkedUser([SIGNER_A])
+    const { resolvePixelsIdentity } = await import('../../../api/_pixels-identity.js')
+    const result = await resolvePixelsIdentity(
+      new Request('http://localhost/api/director', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer good',
+          'x-director-secret': 'test-secret',
+        },
+        body: JSON.stringify({ prompt: 'hi', signerAddress: SIGNER_A, token: 'good' }),
+      }),
+      { allowDirectorSecret: true },
+    )
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.identity.signer).toBe(SIGNER_A)
+  })
+
+  it('rejects director secret impersonation without privy or allowlist', async () => {
     const { resolvePixelsIdentity } = await import('../../../api/_pixels-identity.js')
     const result = await resolvePixelsIdentity(
       new Request('http://localhost/api/director', {
@@ -151,11 +193,8 @@ describe('resolvePixelsIdentity', () => {
       }),
       { allowDirectorSecret: true },
     )
-    expect(result.ok).toBe(true)
-    if (result.ok) {
-      expect(result.identity.signer).toBe(SIGNER_A)
-      expect(result.identity.source).toBe('secret')
-    }
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.response.status).toBe(403)
   })
 })
 

@@ -15,8 +15,12 @@ import {
   isServiceAccountImpersonationDenied,
   vertexAuthFailureMessage,
 } from './_vertex-auth.js'
+import { rateLimitDirectorSessionGet } from './_rate-limit.js'
 
 export async function GET(request: Request): Promise<Response> {
+  const rateLimited = await rateLimitDirectorSessionGet(request)
+  if (rateLimited) return rateLimited
+
   const authError = assertDirectorAuthorized(request)
   if (authError) return authError
 

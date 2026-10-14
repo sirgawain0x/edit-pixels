@@ -6,11 +6,21 @@
 import { quoteDirectorForWallet } from './director-billing.js'
 import { MetokenQuoteError } from './_metoken-curve-quote.js'
 import { authorizePixelsGeneratePost } from './_pixels-generate-api-auth.js'
+import { checkPixelsRateLimits } from './_rate-limit.js'
 
 export async function POST(request: Request): Promise<Response> {
+  const ipLimited = await checkPixelsRateLimits(request, 'quote')
+  if (ipLimited) return ipLimited
+
   const authorized = await authorizePixelsGeneratePost(request)
   if (!authorized.ok) return authorized.response
   const { auth, body } = authorized
+
+  const identityLimited = await checkPixelsRateLimits(request, 'quote', {
+    ip: false,
+    identity: auth.signer,
+  })
+  if (identityLimited) return identityLimited
 
   const audioDurationSeconds =
     typeof body.audioDurationSeconds === 'number' ? body.audioDurationSeconds : NaN
