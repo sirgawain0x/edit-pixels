@@ -8,7 +8,10 @@
  */
 // fallow-ignore-file complexity
 
-import { assertDirectorAuthorized } from './_director-auth.js'
+import {
+  authorizeDirectorSessionsGet,
+  normalizeDirectorSessionsWallet,
+} from './_director-sessions-auth.js'
 import { listDirectorSessions } from './_director-firestore.js'
 import { isDirectorFirestoreEnabled } from './_firestore-client.js'
 import {
@@ -17,17 +20,18 @@ import {
 } from './_vertex-auth.js'
 
 export async function GET(request: Request): Promise<Response> {
-  const authError = assertDirectorAuthorized(request)
-  if (authError) return authError
+  const url = new URL(request.url)
+  const walletRaw = url.searchParams.get('wallet')?.trim()
+  const walletAddress = walletRaw ? normalizeDirectorSessionsWallet(walletRaw) : null
+  if (!walletAddress) {
+    return Response.json({ error: 'wallet query param required' }, { status: 400 })
+  }
+
+  const auth = await authorizeDirectorSessionsGet(request, walletAddress)
+  if (!auth.ok) return auth.response
 
   if (!isDirectorFirestoreEnabled()) {
     return Response.json({ sessions: [] })
-  }
-
-  const url = new URL(request.url)
-  const walletAddress = url.searchParams.get('wallet')?.trim()
-  if (!walletAddress?.startsWith('0x')) {
-    return Response.json({ error: 'wallet query param required' }, { status: 400 })
   }
 
   const projectId = url.searchParams.get('projectId')?.trim() || undefined
