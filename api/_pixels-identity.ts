@@ -160,7 +160,11 @@ async function resolveDirectorSecretIdentity(
       ? body.signerAddress
       : typeof body.signer_address === 'string'
         ? body.signer_address
-        : readSignerHint(request, body) ?? null
+        : typeof body.walletAddress === 'string'
+          ? body.walletAddress
+          : typeof body.wallet_address === 'string'
+            ? body.wallet_address
+            : readSignerHint(request, body) ?? null
   const signer = signerRaw ? normalizeSignerAddress(signerRaw) : null
   if (!signer) {
     return {

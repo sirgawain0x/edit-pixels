@@ -28,6 +28,24 @@ function cacheKey(routeClass: RateLimitRouteClass, dimension: 'ip' | 'identity')
   return `${routeClass}:${dimension}:${rule.limit}:${rule.window}`
 }
 
+async function buildSlidingWindowLimiter(
+  routeClass: RateLimitRouteClass,
+  dimension: 'ip' | 'identity',
+): Promise<Ratelimit | null> {
+  const redis = await getRedis()
+  if (!redis) return null
+  const rule = PIXELS_RATE_LIMIT_RULES[routeClass][dimension]
+  const { Ratelimit: RatelimitCtor } = await import('@upstash/ratelimit')
+  return new RatelimitCtor({
+    redis,
+    limiter: RatelimitCtor.slidingWindow(rule.limit, rule.window),
+    prefix: `pixels:rl:${routeClass}:${dimension}`,
+    analytics: false,
+    timeout: 1000,
+    ephemeralCache: new Map(),
+  })
+}
+
 async function getSlidingWindowLimiter(
   routeClass: RateLimitRouteClass,
   dimension: 'ip' | 'identity',
@@ -35,32 +53,29 @@ async function getSlidingWindowLimiter(
   const key = cacheKey(routeClass, dimension)
   let pending = limiterCache.get(key)
   if (!pending) {
-    pending = (async () => {
-      const redis = await getRedis()
-      if (!redis) return null
-      const rule = PIXELS_RATE_LIMIT_RULES[routeClass][dimension]
-      const { Ratelimit: RatelimitCtor } = await import('@upstash/ratelimit')
-      return new RatelimitCtor({
-        redis,
-        limiter: RatelimitCtor.slidingWindow(rule.limit, rule.window),
-        prefix: `pixels:rl:${routeClass}:${dimension}`,
-        analytics: false,
-      })
-    })()
+    pending = buildSlidingWindowLimiter(routeClass, dimension)
     limiterCache.set(key, pending)
   }
-  return pending
+  const limiter = await pending
+  if (!limiter) {
+    limiterCache.delete(key)
+  }
+  return limiter
 }
 
-/** First hop of x-forwarded-for, else x-real-ip, else a stable fallback for counting. */
+/** Vercel client IP: x-vercel-forwarded-for, x-real-ip, then first x-forwarded-for hop. */
 export function getClientIp(request: Request): string {
+  const vercelForwarded = request.headers.get('x-vercel-forwarded-for')?.trim()
+  if (vercelForwarded) return vercelForwarded.split(',')[0]?.trim() || vercelForwarded
+
+  const realIp = request.headers.get('x-real-ip')?.trim()
+  if (realIp) return realIp
+
   const xff = request.headers.get('x-forwarded-for')
   if (xff) {
     const firstHop = xff.split(',')[0]?.trim()
     if (firstHop) return firstHop
   }
-  const realIp = request.headers.get('x-real-ip')?.trim()
-  if (realIp) return realIp
   return 'unknown'
 }
 
@@ -95,6 +110,73 @@ function tooManyRequestsResponse(result: LimitResult): Response {
   )
 }
 
+function allowDespiteBackendFailure(routeClass: RateLimitRouteClass): boolean {
+  if (getRateLimitMode() === 'observe') return true
+  return rateLimitFailsOpen(routeClass)
+}
+
+function logRateLimitBackendWarning(
+  reason: 'redis_unavailable' | 'limiter_init_failed' | 'limit_failed',
+  routeClass: RateLimitRouteClass,
+  dimension: 'ip' | 'identity',
+  error?: unknown,
+): void {
+  console.warn('pixels rate limit backend failure — allowing request', {
+    reason,
+    routeClass,
+    dimension,
+    mode: getRateLimitMode(),
+    error: error instanceof Error ? error.message : error,
+  })
+}
+
+function backendFailureOutcome(
+  routeClass: RateLimitRouteClass,
+): { outcome: 'allow' } | { outcome: 'backend_failed' } {
+  if (allowDespiteBackendFailure(routeClass)) {
+    return { outcome: 'allow' }
+  }
+  return { outcome: 'backend_failed' }
+}
+
+async function loadLimiterForRequest(
+  routeClass: RateLimitRouteClass,
+  dimension: 'ip' | 'identity',
+): Promise<
+  | { ok: true; limiter: Ratelimit }
+  | { ok: false; outcome: 'allow' | 'backend_failed' }
+> {
+  try {
+    const limiter = await getSlidingWindowLimiter(routeClass, dimension)
+    if (limiter) return { ok: true, limiter }
+    logRateLimitBackendWarning('redis_unavailable', routeClass, dimension)
+    const failed = backendFailureOutcome(routeClass)
+    return { ok: false, outcome: failed.outcome === 'allow' ? 'allow' : 'backend_failed' }
+  } catch (error) {
+    logRateLimitBackendWarning('limiter_init_failed', routeClass, dimension, error)
+    const failed = backendFailureOutcome(routeClass)
+    return { ok: false, outcome: failed.outcome === 'allow' ? 'allow' : 'backend_failed' }
+  }
+}
+
+function outcomeWhenOverQuota(
+  routeClass: RateLimitRouteClass,
+  dimension: 'ip' | 'identity',
+  identifier: string,
+  result: LimitResult,
+): { outcome: 'allow' } | { outcome: 'block'; response: Response } {
+  if (getRateLimitMode() === 'observe') {
+    console.warn('pixels rate limit would block', {
+      routeClass,
+      dimension,
+      identifier: dimension === 'ip' ? identifier : `${identifier.slice(0, 10)}…`,
+      mode: 'observe',
+    })
+    return { outcome: 'allow' }
+  }
+  return { outcome: 'block', response: tooManyRequestsResponse(result) }
+}
+
 async function runLimit(
   routeClass: RateLimitRouteClass,
   dimension: 'ip' | 'identity',
@@ -102,19 +184,26 @@ async function runLimit(
 ): Promise<
   | { outcome: 'allow' }
   | { outcome: 'block'; response: Response }
-  | { outcome: 'redis_down' }
+  | { outcome: 'backend_failed' }
 > {
   if (!isRateLimitEnabled()) {
     return { outcome: 'allow' }
   }
 
-  const limiter = await getSlidingWindowLimiter(routeClass, dimension)
-  if (!limiter) {
-    return { outcome: 'redis_down' }
+  const loaded = await loadLimiterForRequest(routeClass, dimension)
+  if (!loaded.ok) {
+    return loaded.outcome === 'allow' ? { outcome: 'allow' } : { outcome: 'backend_failed' }
   }
 
   const rule = PIXELS_RATE_LIMIT_RULES[routeClass][dimension]
-  const raw = await limiter.limit(identifier)
+  let raw: Awaited<ReturnType<Ratelimit['limit']>>
+  try {
+    raw = await loaded.limiter.limit(identifier)
+  } catch (error) {
+    logRateLimitBackendWarning('limit_failed', routeClass, dimension, error)
+    return backendFailureOutcome(routeClass)
+  }
+
   const result: LimitResult = {
     success: raw.success,
     limit: rule.limit,
@@ -122,25 +211,15 @@ async function runLimit(
     reset: raw.reset,
   }
 
-  const mode = getRateLimitMode()
   if (!result.success) {
-    if (mode === 'observe') {
-      console.warn('pixels rate limit would block', {
-        routeClass,
-        dimension,
-        identifier: dimension === 'ip' ? identifier : `${identifier.slice(0, 10)}…`,
-        mode,
-      })
-      return { outcome: 'allow' }
-    }
-    return { outcome: 'block', response: tooManyRequestsResponse(result) }
+    return outcomeWhenOverQuota(routeClass, dimension, identifier, result)
   }
 
   return { outcome: 'allow' }
 }
 
-function handleRedisDown(routeClass: RateLimitRouteClass): Response | null {
-  if (rateLimitFailsOpen(routeClass)) {
+function handleBackendFailure(routeClass: RateLimitRouteClass): Response | null {
+  if (allowDespiteBackendFailure(routeClass)) {
     return null
   }
   return redisUnavailableResponse(routeClass)
@@ -154,7 +233,7 @@ export async function rateLimitByClientIp(
   const ip = getClientIp(request)
   const verdict = await runLimit(routeClass, 'ip', ip)
   if (verdict.outcome === 'block') return verdict.response
-  if (verdict.outcome === 'redis_down') return handleRedisDown(routeClass)
+  if (verdict.outcome === 'backend_failed') return handleBackendFailure(routeClass)
   return null
 }
 
@@ -170,20 +249,7 @@ export async function rateLimitByIdentity(
   }
   const verdict = await runLimit(routeClass, 'identity', normalized)
   if (verdict.outcome === 'block') return verdict.response
-  if (verdict.outcome === 'redis_down') return handleRedisDown(routeClass)
-  return null
-}
-
-/** Director session list: IP + optional wallet query identity. */
-export async function rateLimitDirectorSessionGet(request: Request): Promise<Response | null> {
-  const ipBlocked = await rateLimitByClientIp(request, 'director')
-  if (ipBlocked) return ipBlocked
-
-  const url = new URL(request.url)
-  const wallet = url.searchParams.get('wallet')?.trim().toLowerCase()
-  if (wallet?.startsWith('0x')) {
-    return rateLimitByIdentity(request, 'director', wallet)
-  }
+  if (verdict.outcome === 'backend_failed') return handleBackendFailure(routeClass)
   return null
 }
 

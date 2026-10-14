@@ -15,11 +15,11 @@ import {
   isServiceAccountImpersonationDenied,
   vertexAuthFailureMessage,
 } from './_vertex-auth.js'
-import { rateLimitDirectorSessionGet } from './_rate-limit.js'
+import { rateLimitByClientIp, rateLimitByIdentity } from './_rate-limit.js'
 
 export async function GET(request: Request): Promise<Response> {
-  const rateLimited = await rateLimitDirectorSessionGet(request)
-  if (rateLimited) return rateLimited
+  const ipLimited = await rateLimitByClientIp(request, 'director')
+  if (ipLimited) return ipLimited
 
   const authError = assertDirectorAuthorized(request)
   if (authError) return authError
@@ -33,6 +33,9 @@ export async function GET(request: Request): Promise<Response> {
   if (!walletAddress?.startsWith('0x')) {
     return Response.json({ error: 'wallet query param required' }, { status: 400 })
   }
+
+  const identityLimited = await rateLimitByIdentity(request, 'director', walletAddress)
+  if (identityLimited) return identityLimited
 
   const projectId = url.searchParams.get('projectId')?.trim() || undefined
   const limitRaw = url.searchParams.get('limit')

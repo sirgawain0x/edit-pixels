@@ -25,18 +25,32 @@ import {
 } from '../../../api/_rate-limit.js'
 
 describe('getClientIp', () => {
-  it('uses the first x-forwarded-for hop', () => {
+  it('prefers x-vercel-forwarded-for', () => {
+    const request = new Request('http://localhost/api/test', {
+      headers: {
+        'x-vercel-forwarded-for': '198.51.100.8',
+        'x-real-ip': '10.0.0.1',
+        'x-forwarded-for': '203.0.113.1, 10.0.0.2',
+      },
+    })
+    expect(getClientIp(request)).toBe('198.51.100.8')
+  })
+
+  it('falls back to x-real-ip before x-forwarded-for', () => {
+    const request = new Request('http://localhost/api/test', {
+      headers: {
+        'x-real-ip': '198.51.100.4',
+        'x-forwarded-for': '203.0.113.1, 10.0.0.2',
+      },
+    })
+    expect(getClientIp(request)).toBe('198.51.100.4')
+  })
+
+  it('uses the first x-forwarded-for hop when Vercel headers are absent', () => {
     const request = new Request('http://localhost/api/test', {
       headers: { 'x-forwarded-for': '203.0.113.1, 10.0.0.2' },
     })
     expect(getClientIp(request)).toBe('203.0.113.1')
-  })
-
-  it('falls back to x-real-ip', () => {
-    const request = new Request('http://localhost/api/test', {
-      headers: { 'x-real-ip': '198.51.100.4' },
-    })
-    expect(getClientIp(request)).toBe('198.51.100.4')
   })
 })
 
@@ -66,7 +80,7 @@ describe('rateLimitByClientIp', () => {
     expect(response?.headers.get('RateLimit-Limit')).toBe('30')
   })
 
-  it('fail-opens quote routes when Redis is unavailable', async () => {
+  it('fail-opens quote routes when Redis is unavailable in enforce mode', async () => {
     process.env.PIXELS_RATE_LIMIT_MODE = 'enforce'
     getRedis.mockResolvedValue(null)
 
@@ -74,7 +88,7 @@ describe('rateLimitByClientIp', () => {
     expect(response).toBeNull()
   })
 
-  it('fail-closes render routes when Redis is unavailable', async () => {
+  it('fail-closes render routes when Redis is unavailable in enforce mode', async () => {
     process.env.PIXELS_RATE_LIMIT_MODE = 'enforce'
     getRedis.mockResolvedValue(null)
 
@@ -84,6 +98,43 @@ describe('rateLimitByClientIp', () => {
     )
     expect(response?.status).toBe(503)
     expect(response?.headers.get('Retry-After')).toBe('60')
+  })
+
+  it('allows render routes in observe mode when Redis is unavailable', async () => {
+    process.env.PIXELS_RATE_LIMIT_MODE = 'observe'
+    getRedis.mockResolvedValue(null)
+
+    const response = await rateLimitByClientIp(
+      new Request('http://localhost/api/flow-run'),
+      'render',
+    )
+    expect(response).toBeNull()
+  })
+
+  it('allows render routes in observe mode when limit() throws', async () => {
+    process.env.PIXELS_RATE_LIMIT_MODE = 'observe'
+    getRedis.mockResolvedValue({})
+    limitMock.mockRejectedValue(new Error('upstash timeout'))
+
+    const response = await rateLimitByClientIp(
+      new Request('http://localhost/api/flow-run'),
+      'render',
+    )
+    expect(response).toBeNull()
+  })
+
+  it('recovers after an initial null Redis client', async () => {
+    process.env.PIXELS_RATE_LIMIT_MODE = 'enforce'
+    getRedis.mockResolvedValueOnce(null).mockResolvedValueOnce({})
+    limitMock.mockResolvedValue({ success: true, remaining: 9, reset: Date.now() + 60_000 })
+
+    const first = await rateLimitByClientIp(new Request('http://localhost/api/flow-quote'), 'quote')
+    expect(first).toBeNull()
+
+    const second = await rateLimitByClientIp(new Request('http://localhost/api/flow-quote'), 'quote')
+    expect(second).toBeNull()
+    expect(getRedis).toHaveBeenCalledTimes(2)
+    expect(limitMock).toHaveBeenCalled()
   })
 })
 

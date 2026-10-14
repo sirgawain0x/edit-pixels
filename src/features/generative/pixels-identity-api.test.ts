@@ -161,6 +161,29 @@ describe('resolvePixelsIdentity', () => {
     }
   })
 
+  it('accepts walletAddress on director secret path with privy (Director payload shape)', async () => {
+    linkedUser([SIGNER_A])
+    const { resolvePixelsIdentity } = await import('../../../api/_pixels-identity.js')
+    const result = await resolvePixelsIdentity(
+      new Request('http://localhost/api/director', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer good',
+          'x-director-secret': 'test-secret',
+        },
+        body: JSON.stringify({
+          prompt: 'hi',
+          walletAddress: SIGNER_A,
+          token: 'good',
+        }),
+      }),
+      { allowDirectorSecret: true },
+    )
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.identity.signer).toBe(SIGNER_A)
+  })
+
   it('requires privy for director secret path when signer is not allowlisted', async () => {
     linkedUser([SIGNER_A])
     const { resolvePixelsIdentity } = await import('../../../api/_pixels-identity.js')
