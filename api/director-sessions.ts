@@ -18,8 +18,12 @@ import {
   isServiceAccountImpersonationDenied,
   vertexAuthFailureMessage,
 } from './_vertex-auth.js'
+import { rateLimitByClientIp, rateLimitByIdentity } from './_rate-limit.js'
 
 export async function GET(request: Request): Promise<Response> {
+  const ipLimited = await rateLimitByClientIp(request, 'director')
+  if (ipLimited) return ipLimited
+
   const url = new URL(request.url)
   const walletRaw = url.searchParams.get('wallet')?.trim()
   const walletAddress = walletRaw ? normalizeDirectorSessionsWallet(walletRaw) : null
@@ -29,6 +33,9 @@ export async function GET(request: Request): Promise<Response> {
 
   const auth = await authorizeDirectorSessionsGet(request, walletAddress)
   if (!auth.ok) return auth.response
+
+  const identityLimited = await rateLimitByIdentity(request, 'director', auth.verifiedSigner)
+  if (identityLimited) return identityLimited
 
   if (!isDirectorFirestoreEnabled()) {
     return Response.json({ sessions: [] })
