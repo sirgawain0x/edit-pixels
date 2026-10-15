@@ -473,6 +473,8 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
         activeSessionId={sessionId}
         disabled={busy}
         onResume={resumeSession}
+        getAccessToken={getAccessToken}
+        signerAddress={generativeAuth?.signerAddress}
       />
 
       <div
