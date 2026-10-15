@@ -4,9 +4,10 @@
 // fallow-ignore-file complexity,duplicate-export
 
 import { authorizePixelsGeneratePost } from './_pixels-generate-api-auth.js'
-import { isSeedanceGenerateEnabled } from './_seedance-pricing.js'
+import { checkPixelsRateLimits } from './_rate-limit.js'
 import { quoteDirectorStoryboardBatch } from './_director-batch-quote-core.js'
 import type { DirectorStoryboardShotInput } from './_director-generate-map.js'
+import { guardSeedanceQuoteRequest } from './_pixels-generate-guards.js'
 
 function parseShots(raw: unknown): DirectorStoryboardShotInput[] | null {
   if (!Array.isArray(raw)) return null
@@ -34,13 +35,18 @@ function parseShots(raw: unknown): DirectorStoryboardShotInput[] | null {
 }
 
 export async function POST(request: Request): Promise<Response> {
-  if (!isSeedanceGenerateEnabled()) {
-    return Response.json({ error: 'feature_disabled' }, { status: 404 })
-  }
+  const guarded = await guardSeedanceQuoteRequest(request)
+  if (guarded) return guarded
 
   const authorized = await authorizePixelsGeneratePost(request)
   if (!authorized.ok) return authorized.response
   const { auth, body } = authorized
+
+  const identityLimited = await checkPixelsRateLimits(request, 'quote', {
+    ip: false,
+    identity: auth.signer,
+  })
+  if (identityLimited) return identityLimited
 
   const shots = parseShots(body.shots)
   if (!shots) {

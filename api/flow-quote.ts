@@ -14,6 +14,7 @@ import {
 } from './_generative-pricing.js'
 import { quoteFlowCreditsUsdc6 } from './flow-billing.js'
 import { MetokenQuoteError } from './_metoken-curve-quote.js'
+import { checkPixelsRateLimits } from './_rate-limit.js'
 
 function parseTier(body: Record<string, unknown>): VeoTier {
   const raw =
@@ -27,9 +28,18 @@ function parseTier(body: Record<string, unknown>): VeoTier {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  const ipLimited = await checkPixelsRateLimits(request, 'quote')
+  if (ipLimited) return ipLimited
+
   const authenticated = await authenticateGenerativePost(request)
   if (!authenticated.ok) return authenticated.response
-  const { body } = authenticated
+  const { body, signer } = authenticated
+
+  const identityLimited = await checkPixelsRateLimits(request, 'quote', {
+    ip: false,
+    identity: signer,
+  })
+  if (identityLimited) return identityLimited
 
   const tier = parseTier(body)
   const qualityRaw = typeof body.quality === 'string' ? body.quality : '720p'
