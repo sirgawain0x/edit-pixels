@@ -49,52 +49,34 @@ export function getCreditPack(packId: number): CreditPackDefinition | undefined 
   return CREDIT_PACKS.find((p) => p.id === packId)
 }
 
-/**
- * Director session packs — prepaid USDC top-ups for multiple Director briefs.
- * Minute estimates follow the live meToken curve at checkout, not a fixed ratio.
- */
-export const DIRECTOR_SESSION_PACKS: readonly CreditPackDefinition[] = [
+export interface DirectorSessionPackDefinition {
+  id: number
+  name: string
+  /** USDC amount with 6 decimals (e.g. 5_000_000 = $5). */
+  usdc6: number
+}
+
+/** Director session packs — prepaid USDC top-ups for multiple Director briefs. */
+export const DIRECTOR_SESSION_PACKS: readonly DirectorSessionPackDefinition[] = [
   {
     id: 10,
     name: 'Brief',
     usdc6: 5_000_000,
-    credits: 100,
-    description: '$5 top-up for Director briefs',
   },
   {
     id: 11,
     name: 'Session',
     usdc6: 15_000_000,
-    credits: 300,
-    description: '$15 top-up for Director briefs',
   },
   {
     id: 12,
     name: 'Production',
     usdc6: 40_000_000,
-    credits: 800,
-    description: '$40 top-up for Director briefs',
   },
 ] as const
 
-export function getDirectorSessionPack(packId: number): CreditPackDefinition | undefined {
+export function getDirectorSessionPack(packId: number): DirectorSessionPackDefinition | undefined {
   return DIRECTOR_SESSION_PACKS.find((p) => p.id === packId)
-}
-
-/** Estimated minutes at legacy Live AI credit rate (informational only). */
-export function creditsToLiveAiMinutes(credits: number): number {
-  if (credits <= 0) return 0
-  const milli = credits * MILLI_CREDITS_PER_CREDIT
-  return milli / LIVE_AI_MILLI_CREDITS_PER_MINUTE
-}
-
-export function formatLiveAiTimeFromCredits(credits: number): string {
-  const minutes = creditsToLiveAiMinutes(credits)
-  if (minutes < 1) return '<1 min'
-  if (minutes < 60) return `~${Math.round(minutes)} min`
-  const h = Math.floor(minutes / 60)
-  const m = Math.round(minutes % 60)
-  return m > 0 ? `~${h}h ${m}m` : `~${h}h`
 }
 
 export type VeoTier = 'standard' | 'fast' | 'lite'
