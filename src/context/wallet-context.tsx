@@ -23,6 +23,7 @@ import {
 } from '@alchemy/wallet-apis'
 import { swapActions, type SwapActions } from '@alchemy/wallet-apis/experimental'
 import { createWalletClient, custom, type Chain, type WalletClient, type Address } from 'viem'
+import { resolvePrivyApiUrl } from '@/config/privy-api-url'
 import { PIXELS_SMART_ACCOUNT_ID, PIXELS_SMART_ACCOUNT_TYPE } from '@/config/pixels-smart-account'
 import { ALCHEMY_API_KEY, ALCHEMY_POLICY_ID } from '@/config/alchemy'
 import { DEFAULT_CHAIN, getChainById } from '@/config/chains'
@@ -71,6 +72,7 @@ export function useWalletContext(): WalletContextValue {
 
 const PRIVY_APP_ID = import.meta.env.VITE_PRIVY_APP_ID
 const PRIVY_CLIENT_ID = import.meta.env.VITE_PRIVY_CLIENT_ID
+const PRIVY_API_URL = resolvePrivyApiUrl()
 const isPrivyConfigured = Boolean(PRIVY_APP_ID)
 
 /**
@@ -303,6 +305,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     <PrivyProvider
       appId={PRIVY_APP_ID as string}
       clientId={PRIVY_CLIENT_ID}
+      {...(PRIVY_API_URL ? { apiUrl: PRIVY_API_URL } : {})}
       config={{
         loginMethods: ['wallet', 'email', 'google', 'farcaster'],
         appearance: {
