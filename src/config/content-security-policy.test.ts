@@ -2,9 +2,12 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
+  HCAPTCHA_ORIGINS,
+  HCAPTCHA_SCRIPT_EVAL_SOURCE,
   PRODUCTION_CONTENT_SECURITY_POLICY_REPORT_ONLY,
   buildHcaptchaEnforcedContentSecurityPolicy,
   resolveContentSecurityPolicyHeaders,
+  shouldApplyHcaptchaEnforcedContentSecurityPolicy,
 } from './content-security-policy'
 
 interface HeaderEntry {
@@ -48,6 +51,10 @@ describe('content security policy', () => {
   })
 
   it('adds enforced hCaptcha allowances only for preview and staging deploys', () => {
+    expect(shouldApplyHcaptchaEnforcedContentSecurityPolicy({ vercelEnv: 'production', gitCommitRef: 'prod' })).toBe(
+      false,
+    )
+
     const production = resolveContentSecurityPolicyHeaders({ vercelEnv: 'production', gitCommitRef: 'prod' })
     expect(production.some((header) => header.key === 'Content-Security-Policy')).toBe(false)
     expect(production.find((header) => header.key === 'Content-Security-Policy-Report-Only')?.value).toBe(
@@ -58,15 +65,17 @@ describe('content security policy', () => {
       { vercelEnv: 'preview', gitCommitRef: 'agent/privy-hcaptcha-csp-preview-33fa' },
       { vercelEnv: 'production', gitCommitRef: 'staging' },
     ]) {
+      expect(shouldApplyHcaptchaEnforcedContentSecurityPolicy(input)).toBe(true)
       const headers = resolveContentSecurityPolicyHeaders(input)
       const enforced = headers.find((header) => header.key === 'Content-Security-Policy')
       expect(enforced?.value, JSON.stringify(input)).toEqual(expect.any(String))
       const directives = directiveMap(enforced?.value ?? '')
       for (const name of ['script-src', 'frame-src', 'connect-src']) {
-        expect(directives[name], name).toContain('https://hcaptcha.com')
-        expect(directives[name], name).toContain('https://*.hcaptcha.com')
+        for (const origin of HCAPTCHA_ORIGINS) {
+          expect(directives[name], name).toContain(origin)
+        }
       }
-      expect(directives['script-src']).toContain("'wasm-unsafe-eval'")
+      expect(directives['script-src']).toContain(HCAPTCHA_SCRIPT_EVAL_SOURCE)
     }
   })
 
