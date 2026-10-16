@@ -1,6 +1,11 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import {
+  PRODUCTION_CONTENT_SECURITY_POLICY_REPORT_ONLY,
+  buildHcaptchaEnforcedContentSecurityPolicy,
+  resolveContentSecurityPolicyHeaders,
+} from './content-security-policy'
 
 interface HeaderEntry {
   key: string
@@ -21,34 +26,56 @@ function siteHeaders(): HeaderEntry[] {
   return site.headers
 }
 
+function directiveMap(policy: string): Record<string, string> {
+  return Object.fromEntries(
+    policy
+      .split(';')
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => {
+        const [name, ...rest] = part.split(/\s+/)
+        return [name, rest.join(' ')]
+      }),
+  )
+}
+
 describe('content security policy', () => {
-  it('reports Privy, font, worker, and Coinbase origins without enforcing', () => {
+  it('keeps the committed production report-only policy byte-identical', () => {
     const headers = siteHeaders()
-    expect(headers.some((header) => header.key === 'Content-Security-Policy')).toBe(false)
-
     const policy = headers.find((header) => header.key === 'Content-Security-Policy-Report-Only')
-    expect(policy?.value).toEqual(expect.any(String))
-    const value = policy?.value ?? ''
+    expect(policy?.value).toBe(PRODUCTION_CONTENT_SECURITY_POLICY_REPORT_ONLY)
+    expect(headers.some((header) => header.key === 'Content-Security-Policy')).toBe(false)
+  })
 
-    const directives = Object.fromEntries(
-      value
-        .split(';')
-        .map((part) => part.trim())
-        .filter(Boolean)
-        .map((part) => {
-          const [name, ...rest] = part.split(/\s+/)
-          return [name, rest.join(' ')]
-        }),
+  it('adds enforced hCaptcha allowances only for preview and staging deploys', () => {
+    const production = resolveContentSecurityPolicyHeaders({ vercelEnv: 'production', gitCommitRef: 'prod' })
+    expect(production.some((header) => header.key === 'Content-Security-Policy')).toBe(false)
+    expect(production.find((header) => header.key === 'Content-Security-Policy-Report-Only')?.value).toBe(
+      PRODUCTION_CONTENT_SECURITY_POLICY_REPORT_ONLY,
     )
-    for (const name of ['script-src', 'style-src', 'frame-src', 'connect-src']) {
-      expect(directives[name], name).toContain('https://hcaptcha.com')
-      expect(directives[name], name).toContain('https://*.hcaptcha.com')
+
+    for (const input of [
+      { vercelEnv: 'preview', gitCommitRef: 'agent/privy-hcaptcha-csp-preview-33fa' },
+      { vercelEnv: 'production', gitCommitRef: 'staging' },
+    ]) {
+      const headers = resolveContentSecurityPolicyHeaders(input)
+      const enforced = headers.find((header) => header.key === 'Content-Security-Policy')
+      expect(enforced?.value, JSON.stringify(input)).toEqual(expect.any(String))
+      const directives = directiveMap(enforced?.value ?? '')
+      for (const name of ['script-src', 'frame-src', 'connect-src']) {
+        expect(directives[name], name).toContain('https://hcaptcha.com')
+        expect(directives[name], name).toContain('https://*.hcaptcha.com')
+      }
+      expect(directives['script-src']).toContain("'wasm-unsafe-eval'")
     }
+  })
+
+  it('reports Privy, font, worker, and Coinbase origins without enforcing in production config', () => {
+    const value = PRODUCTION_CONTENT_SECURITY_POLICY_REPORT_ONLY
 
     for (const required of [
       "default-src 'self'",
       'https://auth.privy.io',
-      'https://*.privy.io',
       'https://privy.create.creativeplatform.xyz',
       'https://explorer-api.walletconnect.com',
       'https://verify.walletconnect.com',
@@ -58,7 +85,6 @@ describe('content security policy', () => {
       'wss://relay.walletconnect.org',
       'wss://www.walletlink.org',
       'https://*.rpc.privy.systems',
-      'https://explorer-api.walletconnect.com',
       'https://accounts.google.com',
       'https://farcaster.xyz',
       'https://warpcast.com',
@@ -72,5 +98,9 @@ describe('content security policy', () => {
     ]) {
       expect(value, required).toContain(required)
     }
+
+    expect(buildHcaptchaEnforcedContentSecurityPolicy()).toContain(
+      PRODUCTION_CONTENT_SECURITY_POLICY_REPORT_ONLY.slice(0, 32),
+    )
   })
 })
