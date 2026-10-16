@@ -4,7 +4,7 @@ export const PRODUCTION_CONTENT_SECURITY_POLICY_REPORT_ONLY =
 
 /**
  * Report-only CSP previously committed on `origin/staging` before the preview/staging
- * enforcement split (includes `https://*.privy.io` on iframe/connect directives).
+ * report-only split (includes `https://*.privy.io` on iframe/connect directives).
  */
 export const LEGACY_STAGING_CONTENT_SECURITY_POLICY_REPORT_ONLY =
   "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://challenges.cloudflare.com https://hcaptcha.com https://*.hcaptcha.com https://esm.sh https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://hcaptcha.com https://*.hcaptcha.com; img-src 'self' data: blob: https://explorer-api.walletconnect.com; font-src 'self' data: https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; child-src https://auth.privy.io https://*.privy.io https://privy.create.creativeplatform.xyz https://verify.walletconnect.com https://verify.walletconnect.org https://pay.coinbase.com https://*.coinbase.com https://accounts.google.com https://farcaster.xyz https://*.farcaster.xyz https://warpcast.com https://*.warpcast.com; frame-src https://auth.privy.io https://*.privy.io https://privy.create.creativeplatform.xyz https://verify.walletconnect.com https://verify.walletconnect.org https://challenges.cloudflare.com https://hcaptcha.com https://*.hcaptcha.com https://pay.coinbase.com https://*.coinbase.com https://accounts.google.com https://farcaster.xyz https://*.farcaster.xyz https://warpcast.com https://*.warpcast.com; connect-src 'self' blob: data: https://auth.privy.io https://*.privy.io https://privy.create.creativeplatform.xyz wss://relay.walletconnect.com wss://relay.walletconnect.org wss://www.walletlink.org https://*.rpc.privy.systems https://explorer-api.walletconnect.com https://api.github.com https://*.g.alchemy.com https://arb1.arbitrum.io https://huggingface.co https://*.huggingface.co https://cdn.jsdelivr.net https://esm.sh https://*.esm.sh https://graphql.lottiefiles.com https://accounts.google.com https://farcaster.xyz https://*.farcaster.xyz https://warpcast.com https://*.warpcast.com https://hcaptcha.com https://*.hcaptcha.com; worker-src 'self' blob:; media-src 'self' blob: data:; manifest-src 'self'"
@@ -57,10 +57,10 @@ function appendUniqueSources(sources: string[], required: readonly string[]): st
 }
 
 /**
- * Preview/staging enforcing CSP: production base + staging Privy wildcard hosts +
+ * Preview/staging report-only CSP: production base + staging Privy wildcard hosts +
  * Privy-documented hCaptcha directives (including `style-src`).
  */
-export function buildPreviewStagingEnforcedContentSecurityPolicy(
+export function buildPreviewStagingReportOnlyContentSecurityPolicy(
   basePolicy: string = PRODUCTION_CONTENT_SECURITY_POLICY_REPORT_ONLY,
 ): string {
   const directives = parseContentSecurityPolicyDirectives(basePolicy)
@@ -82,7 +82,7 @@ export function buildPreviewStagingEnforcedContentSecurityPolicy(
   return serializeDirectives(directives)
 }
 
-export function shouldApplyHcaptchaEnforcedContentSecurityPolicy(
+export function shouldUsePreviewStagingReportOnlyContentSecurityPolicy(
   input: ResolveSiteSecurityHeadersInput,
 ): boolean {
   if (input.vercelEnv === 'preview') return true
@@ -93,19 +93,14 @@ export function shouldApplyHcaptchaEnforcedContentSecurityPolicy(
 export function resolveContentSecurityPolicyHeaders(
   input: ResolveSiteSecurityHeadersInput,
 ): SiteSecurityHeader[] {
-  const headers: SiteSecurityHeader[] = [
+  const reportOnlyValue = shouldUsePreviewStagingReportOnlyContentSecurityPolicy(input)
+    ? buildPreviewStagingReportOnlyContentSecurityPolicy()
+    : PRODUCTION_CONTENT_SECURITY_POLICY_REPORT_ONLY
+
+  return [
     {
       key: 'Content-Security-Policy-Report-Only',
-      value: PRODUCTION_CONTENT_SECURITY_POLICY_REPORT_ONLY,
+      value: reportOnlyValue,
     },
   ]
-
-  if (shouldApplyHcaptchaEnforcedContentSecurityPolicy(input)) {
-    headers.push({
-      key: 'Content-Security-Policy',
-      value: buildPreviewStagingEnforcedContentSecurityPolicy(),
-    })
-  }
-
-  return headers
 }

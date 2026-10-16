@@ -6,10 +6,10 @@ import {
   HCAPTCHA_SCRIPT_EVAL_SOURCE,
   LEGACY_STAGING_CONTENT_SECURITY_POLICY_REPORT_ONLY,
   PRODUCTION_CONTENT_SECURITY_POLICY_REPORT_ONLY,
-  buildPreviewStagingEnforcedContentSecurityPolicy,
+  buildPreviewStagingReportOnlyContentSecurityPolicy,
   parseContentSecurityPolicyDirectives,
   resolveContentSecurityPolicyHeaders,
-  shouldApplyHcaptchaEnforcedContentSecurityPolicy,
+  shouldUsePreviewStagingReportOnlyContentSecurityPolicy,
 } from './content-security-policy'
 
 interface HeaderEntry {
@@ -35,12 +35,12 @@ function directiveSources(policy: string, directive: string): string[] {
   return parseContentSecurityPolicyDirectives(policy).get(directive) ?? []
 }
 
-function assertDirectiveSuperset(enforced: string, legacy: string): void {
-  const enforcedDirectives = parseContentSecurityPolicyDirectives(enforced)
+function assertDirectiveSuperset(next: string, legacy: string): void {
+  const nextDirectives = parseContentSecurityPolicyDirectives(next)
   for (const [directive, legacySources] of parseContentSecurityPolicyDirectives(legacy)) {
-    const enforcedSources = new Set(enforcedDirectives.get(directive) ?? [])
+    const nextSources = new Set(nextDirectives.get(directive) ?? [])
     for (const source of legacySources) {
-      expect(enforcedSources.has(source), `${directive} missing ${source}`).toBe(true)
+      expect(nextSources.has(source), `${directive} missing ${source}`).toBe(true)
     }
   }
 }
@@ -53,40 +53,41 @@ describe('content security policy', () => {
     expect(headers.some((header) => header.key === 'Content-Security-Policy')).toBe(false)
   })
 
-  it('adds enforced hCaptcha allowances only for preview and staging deploys', () => {
-    expect(shouldApplyHcaptchaEnforcedContentSecurityPolicy({ vercelEnv: 'production', gitCommitRef: 'prod' })).toBe(
+  it('uses report-only (never enforcing) for preview and staging deploys', () => {
+    expect(shouldUsePreviewStagingReportOnlyContentSecurityPolicy({ vercelEnv: 'production', gitCommitRef: 'prod' })).toBe(
       false,
     )
 
     const production = resolveContentSecurityPolicyHeaders({ vercelEnv: 'production', gitCommitRef: 'prod' })
+    expect(production).toHaveLength(1)
     expect(production.some((header) => header.key === 'Content-Security-Policy')).toBe(false)
-    expect(production.find((header) => header.key === 'Content-Security-Policy-Report-Only')?.value).toBe(
-      PRODUCTION_CONTENT_SECURITY_POLICY_REPORT_ONLY,
-    )
+    expect(production[0]?.key).toBe('Content-Security-Policy-Report-Only')
+    expect(production[0]?.value).toBe(PRODUCTION_CONTENT_SECURITY_POLICY_REPORT_ONLY)
 
     for (const input of [
       { vercelEnv: 'preview', gitCommitRef: 'agent/privy-hcaptcha-csp-preview-33fa' },
       { vercelEnv: 'production', gitCommitRef: 'staging' },
     ]) {
-      expect(shouldApplyHcaptchaEnforcedContentSecurityPolicy(input)).toBe(true)
+      expect(shouldUsePreviewStagingReportOnlyContentSecurityPolicy(input)).toBe(true)
       const headers = resolveContentSecurityPolicyHeaders(input)
-      const enforced = headers.find((header) => header.key === 'Content-Security-Policy')?.value ?? ''
+      expect(headers.some((header) => header.key === 'Content-Security-Policy')).toBe(false)
+      const reportOnly = headers.find((header) => header.key === 'Content-Security-Policy-Report-Only')?.value ?? ''
       for (const name of ['script-src', 'frame-src', 'connect-src', 'style-src'] as const) {
         for (const origin of HCAPTCHA_ORIGINS) {
-          expect(directiveSources(enforced, name), name).toContain(origin)
+          expect(directiveSources(reportOnly, name), name).toContain(origin)
         }
       }
-      expect(directiveSources(enforced, 'script-src')).toContain(HCAPTCHA_SCRIPT_EVAL_SOURCE)
+      expect(directiveSources(reportOnly, 'script-src')).toContain(HCAPTCHA_SCRIPT_EVAL_SOURCE)
     }
   })
 
-  it('keeps preview/staging enforcing CSP as a superset of legacy staging report-only', () => {
-    const enforced = buildPreviewStagingEnforcedContentSecurityPolicy()
-    assertDirectiveSuperset(enforced, LEGACY_STAGING_CONTENT_SECURITY_POLICY_REPORT_ONLY)
+  it('keeps preview/staging report-only as a superset of legacy staging report-only', () => {
+    const reportOnly = buildPreviewStagingReportOnlyContentSecurityPolicy()
+    assertDirectiveSuperset(reportOnly, LEGACY_STAGING_CONTENT_SECURITY_POLICY_REPORT_ONLY)
 
     for (const origin of ['https://auth.privy.io', 'https://*.privy.io']) {
-      expect(directiveSources(enforced, 'connect-src')).toContain(origin)
-      expect(directiveSources(enforced, 'frame-src')).toContain(origin)
+      expect(directiveSources(reportOnly, 'connect-src')).toContain(origin)
+      expect(directiveSources(reportOnly, 'frame-src')).toContain(origin)
     }
     for (const origin of [
       'wss://relay.walletconnect.com',
@@ -94,11 +95,11 @@ describe('content security policy', () => {
       'wss://www.walletlink.org',
       'https://*.rpc.privy.systems',
     ]) {
-      expect(directiveSources(enforced, 'connect-src')).toContain(origin)
+      expect(directiveSources(reportOnly, 'connect-src')).toContain(origin)
     }
   })
 
-  it('reports Privy, font, worker, and Coinbase origins without enforcing in production config', () => {
+  it('reports Privy, font, worker, and Coinbase origins in production report-only config', () => {
     const value = PRODUCTION_CONTENT_SECURITY_POLICY_REPORT_ONLY
 
     for (const required of [
