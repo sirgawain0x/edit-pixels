@@ -4,8 +4,10 @@ import { describe, expect, it } from 'vitest'
 import {
   HCAPTCHA_ORIGINS,
   HCAPTCHA_SCRIPT_EVAL_SOURCE,
+  LEGACY_STAGING_CONTENT_SECURITY_POLICY_REPORT_ONLY,
   PRODUCTION_CONTENT_SECURITY_POLICY_REPORT_ONLY,
-  buildHcaptchaEnforcedContentSecurityPolicy,
+  buildPreviewStagingEnforcedContentSecurityPolicy,
+  parseContentSecurityPolicyDirectives,
   resolveContentSecurityPolicyHeaders,
   shouldApplyHcaptchaEnforcedContentSecurityPolicy,
 } from './content-security-policy'
@@ -29,17 +31,18 @@ function siteHeaders(): HeaderEntry[] {
   return site.headers
 }
 
-function directiveMap(policy: string): Record<string, string> {
-  return Object.fromEntries(
-    policy
-      .split(';')
-      .map((part) => part.trim())
-      .filter(Boolean)
-      .map((part) => {
-        const [name, ...rest] = part.split(/\s+/)
-        return [name, rest.join(' ')]
-      }),
-  )
+function directiveSources(policy: string, directive: string): string[] {
+  return parseContentSecurityPolicyDirectives(policy).get(directive) ?? []
+}
+
+function assertDirectiveSuperset(enforced: string, legacy: string): void {
+  const enforcedDirectives = parseContentSecurityPolicyDirectives(enforced)
+  for (const [directive, legacySources] of parseContentSecurityPolicyDirectives(legacy)) {
+    const enforcedSources = new Set(enforcedDirectives.get(directive) ?? [])
+    for (const source of legacySources) {
+      expect(enforcedSources.has(source), `${directive} missing ${source}`).toBe(true)
+    }
+  }
 }
 
 describe('content security policy', () => {
@@ -67,15 +70,31 @@ describe('content security policy', () => {
     ]) {
       expect(shouldApplyHcaptchaEnforcedContentSecurityPolicy(input)).toBe(true)
       const headers = resolveContentSecurityPolicyHeaders(input)
-      const enforced = headers.find((header) => header.key === 'Content-Security-Policy')
-      expect(enforced?.value, JSON.stringify(input)).toEqual(expect.any(String))
-      const directives = directiveMap(enforced?.value ?? '')
-      for (const name of ['script-src', 'frame-src', 'connect-src']) {
+      const enforced = headers.find((header) => header.key === 'Content-Security-Policy')?.value ?? ''
+      for (const name of ['script-src', 'frame-src', 'connect-src', 'style-src'] as const) {
         for (const origin of HCAPTCHA_ORIGINS) {
-          expect(directives[name], name).toContain(origin)
+          expect(directiveSources(enforced, name), name).toContain(origin)
         }
       }
-      expect(directives['script-src']).toContain(HCAPTCHA_SCRIPT_EVAL_SOURCE)
+      expect(directiveSources(enforced, 'script-src')).toContain(HCAPTCHA_SCRIPT_EVAL_SOURCE)
+    }
+  })
+
+  it('keeps preview/staging enforcing CSP as a superset of legacy staging report-only', () => {
+    const enforced = buildPreviewStagingEnforcedContentSecurityPolicy()
+    assertDirectiveSuperset(enforced, LEGACY_STAGING_CONTENT_SECURITY_POLICY_REPORT_ONLY)
+
+    for (const origin of ['https://auth.privy.io', 'https://*.privy.io']) {
+      expect(directiveSources(enforced, 'connect-src')).toContain(origin)
+      expect(directiveSources(enforced, 'frame-src')).toContain(origin)
+    }
+    for (const origin of [
+      'wss://relay.walletconnect.com',
+      'wss://relay.walletconnect.org',
+      'wss://www.walletlink.org',
+      'https://*.rpc.privy.systems',
+    ]) {
+      expect(directiveSources(enforced, 'connect-src')).toContain(origin)
     }
   })
 
@@ -107,9 +126,5 @@ describe('content security policy', () => {
     ]) {
       expect(value, required).toContain(required)
     }
-
-    expect(buildHcaptchaEnforcedContentSecurityPolicy()).toContain(
-      PRODUCTION_CONTENT_SECURITY_POLICY_REPORT_ONLY.slice(0, 32),
-    )
   })
 })

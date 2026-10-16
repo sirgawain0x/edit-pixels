@@ -2,15 +2,23 @@
 export const PRODUCTION_CONTENT_SECURITY_POLICY_REPORT_ONLY =
   "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://challenges.cloudflare.com https://hcaptcha.com https://*.hcaptcha.com https://esm.sh https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://hcaptcha.com https://*.hcaptcha.com; img-src 'self' data: blob: https://explorer-api.walletconnect.com; font-src 'self' data: https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; child-src https://auth.privy.io https://privy.create.creativeplatform.xyz https://verify.walletconnect.com https://verify.walletconnect.org https://pay.coinbase.com https://*.coinbase.com https://accounts.google.com https://farcaster.xyz https://*.farcaster.xyz https://warpcast.com https://*.warpcast.com; frame-src https://auth.privy.io https://privy.create.creativeplatform.xyz https://verify.walletconnect.com https://verify.walletconnect.org https://challenges.cloudflare.com https://hcaptcha.com https://*.hcaptcha.com https://pay.coinbase.com https://*.coinbase.com https://accounts.google.com https://farcaster.xyz https://*.farcaster.xyz https://warpcast.com https://*.warpcast.com; connect-src 'self' blob: data: https://auth.privy.io https://privy.create.creativeplatform.xyz wss://relay.walletconnect.com wss://relay.walletconnect.org wss://www.walletlink.org https://*.rpc.privy.systems https://explorer-api.walletconnect.com https://api.github.com https://*.g.alchemy.com https://arb1.arbitrum.io https://huggingface.co https://*.huggingface.co https://cdn.jsdelivr.net https://esm.sh https://*.esm.sh https://graphql.lottiefiles.com https://accounts.google.com https://farcaster.xyz https://*.farcaster.xyz https://warpcast.com https://*.warpcast.com https://hcaptcha.com https://*.hcaptcha.com; worker-src 'self' blob:; media-src 'self' blob: data:; manifest-src 'self'"
 
+/**
+ * Report-only CSP previously committed on `origin/staging` before the preview/staging
+ * enforcement split (includes `https://*.privy.io` on iframe/connect directives).
+ */
+export const LEGACY_STAGING_CONTENT_SECURITY_POLICY_REPORT_ONLY =
+  "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://challenges.cloudflare.com https://hcaptcha.com https://*.hcaptcha.com https://esm.sh https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://hcaptcha.com https://*.hcaptcha.com; img-src 'self' data: blob: https://explorer-api.walletconnect.com; font-src 'self' data: https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; child-src https://auth.privy.io https://*.privy.io https://privy.create.creativeplatform.xyz https://verify.walletconnect.com https://verify.walletconnect.org https://pay.coinbase.com https://*.coinbase.com https://accounts.google.com https://farcaster.xyz https://*.farcaster.xyz https://warpcast.com https://*.warpcast.com; frame-src https://auth.privy.io https://*.privy.io https://privy.create.creativeplatform.xyz https://verify.walletconnect.com https://verify.walletconnect.org https://challenges.cloudflare.com https://hcaptcha.com https://*.hcaptcha.com https://pay.coinbase.com https://*.coinbase.com https://accounts.google.com https://farcaster.xyz https://*.farcaster.xyz https://warpcast.com https://*.warpcast.com; connect-src 'self' blob: data: https://auth.privy.io https://*.privy.io https://privy.create.creativeplatform.xyz wss://relay.walletconnect.com wss://relay.walletconnect.org wss://www.walletlink.org https://*.rpc.privy.systems https://explorer-api.walletconnect.com https://api.github.com https://*.g.alchemy.com https://arb1.arbitrum.io https://huggingface.co https://*.huggingface.co https://cdn.jsdelivr.net https://esm.sh https://*.esm.sh https://graphql.lottiefiles.com https://accounts.google.com https://farcaster.xyz https://*.farcaster.xyz https://warpcast.com https://*.warpcast.com https://hcaptcha.com https://*.hcaptcha.com; worker-src 'self' blob:; media-src 'self' blob: data:; manifest-src 'self'"
+
 export const HCAPTCHA_SCRIPT_EVAL_SOURCE = "'wasm-unsafe-eval'" as const
 
 export const HCAPTCHA_ORIGINS = ['https://hcaptcha.com', 'https://*.hcaptcha.com'] as const
 
-const HCAPTCHA_SCRIPT_STYLE_FRAME_CONNECT = [
-  'script-src',
-  'frame-src',
-  'connect-src',
-] as const
+/** Staging-only Privy wildcard host used by preview/staging login flows. */
+export const STAGING_PREVIEW_EXTRA_PRIVY_ORIGINS = ['https://*.privy.io'] as const
+
+const STAGING_PREVIEW_PRIVY_DIRECTIVES = ['child-src', 'frame-src', 'connect-src'] as const
+
+const HCAPTCHA_DIRECTIVES = ['script-src', 'frame-src', 'connect-src', 'style-src'] as const
 
 export interface SiteSecurityHeader {
   key: string
@@ -22,7 +30,7 @@ export interface ResolveSiteSecurityHeadersInput {
   gitCommitRef?: string
 }
 
-function parseDirectives(policy: string): Map<string, string[]> {
+export function parseContentSecurityPolicyDirectives(policy: string): Map<string, string[]> {
   const entries: Array<[string, string[]]> = []
   for (const part of policy.split(';')) {
     const trimmed = part.trim()
@@ -49,26 +57,26 @@ function appendUniqueSources(sources: string[], required: readonly string[]): st
 }
 
 /**
- * Ensures Privy hCaptcha origins (and wasm eval for hCaptcha) are present on the
- * directives Privy documents for CAPTCHA providers.
+ * Preview/staging enforcing CSP: production base + staging Privy wildcard hosts +
+ * Privy-documented hCaptcha directives (including `style-src`).
  */
-export function buildHcaptchaEnforcedContentSecurityPolicy(
+export function buildPreviewStagingEnforcedContentSecurityPolicy(
   basePolicy: string = PRODUCTION_CONTENT_SECURITY_POLICY_REPORT_ONLY,
 ): string {
-  const directives = parseDirectives(basePolicy)
+  const directives = parseContentSecurityPolicyDirectives(basePolicy)
 
-  for (const directive of HCAPTCHA_SCRIPT_STYLE_FRAME_CONNECT) {
+  for (const directive of STAGING_PREVIEW_PRIVY_DIRECTIVES) {
+    const sources = directives.get(directive) ?? []
+    directives.set(directive, appendUniqueSources(sources, STAGING_PREVIEW_EXTRA_PRIVY_ORIGINS))
+  }
+
+  for (const directive of HCAPTCHA_DIRECTIVES) {
     const sources = directives.get(directive) ?? []
     let next = appendUniqueSources(sources, HCAPTCHA_ORIGINS)
     if (directive === 'script-src') {
       next = appendUniqueSources(next, [HCAPTCHA_SCRIPT_EVAL_SOURCE])
     }
     directives.set(directive, next)
-  }
-
-  for (const directive of ['style-src'] as const) {
-    const sources = directives.get(directive) ?? []
-    directives.set(directive, appendUniqueSources(sources, HCAPTCHA_ORIGINS))
   }
 
   return serializeDirectives(directives)
@@ -95,7 +103,7 @@ export function resolveContentSecurityPolicyHeaders(
   if (shouldApplyHcaptchaEnforcedContentSecurityPolicy(input)) {
     headers.push({
       key: 'Content-Security-Policy',
-      value: buildHcaptchaEnforcedContentSecurityPolicy(),
+      value: buildPreviewStagingEnforcedContentSecurityPolicy(),
     })
   }
 
