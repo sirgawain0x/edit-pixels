@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import {
   HCAPTCHA_ORIGINS,
   HCAPTCHA_SCRIPT_EVAL_SOURCE,
+  STAGING_PREVIEW_EXTRA_PRIVY_ORIGINS,
   LEGACY_STAGING_CONTENT_SECURITY_POLICY_REPORT_ONLY,
   PRODUCTION_CONTENT_SECURITY_POLICY_REPORT_ONLY,
   buildPreviewStagingReportOnlyContentSecurityPolicy,
@@ -85,7 +86,7 @@ describe('content security policy', () => {
     const reportOnly = buildPreviewStagingReportOnlyContentSecurityPolicy()
     assertDirectiveSuperset(reportOnly, LEGACY_STAGING_CONTENT_SECURITY_POLICY_REPORT_ONLY)
 
-    for (const origin of ['https://auth.privy.io', 'https://*.privy.io']) {
+    for (const origin of ['https://auth.privy.io', ...STAGING_PREVIEW_EXTRA_PRIVY_ORIGINS]) {
       expect(directiveSources(reportOnly, 'connect-src')).toContain(origin)
       expect(directiveSources(reportOnly, 'frame-src')).toContain(origin)
     }
