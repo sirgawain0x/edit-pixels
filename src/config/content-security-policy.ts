@@ -23,16 +23,15 @@ export interface ResolveSiteSecurityHeadersInput {
 }
 
 function parseDirectives(policy: string): Map<string, string[]> {
-  return new Map(
-    policy
-      .split(';')
-      .map((part) => part.trim())
-      .filter(Boolean)
-      .map((part) => {
-        const [name, ...rest] = part.split(/\s+/)
-        return [name, rest] as const
-      }),
-  )
+  const entries: Array<[string, string[]]> = []
+  for (const part of policy.split(';')) {
+    const trimmed = part.trim()
+    if (!trimmed) continue
+    const [name, ...rest] = trimmed.split(/\s+/)
+    if (!name) continue
+    entries.push([name, rest])
+  }
+  return new Map(entries)
 }
 
 function serializeDirectives(directives: Map<string, string[]>): string {
