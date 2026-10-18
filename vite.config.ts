@@ -37,6 +37,7 @@ import { POST as pixelsDirectorBatchConfirmPost } from './api/pixels-director-ba
 import { POST as liveStyleSessionPost } from './api/live-style-session'
 import { POST as liveStyleSweepPost } from './api/live-style-sweep'
 import { isMipdStoreModule } from './src/vendor/mipd-store-id.ts'
+import { resolveReportOnlyContentSecurityPolicyForDeployment } from './src/config/content-security-policy.ts'
 
 // Stamps public/sw.js with the hashed entry-chunk filename at build time so the service
 // worker's CACHE_VERSION — and the sw.js bytes — change on every deploy. Without this the
@@ -458,7 +459,14 @@ function vercelSiteHeaders(): Record<string, string> {
     headers?: Array<{ source: string; headers: Array<{ key: string; value: string }> }>
   }
   const site = vercel.headers?.find((entry) => entry.source === '/(.*)')
-  return Object.fromEntries((site?.headers ?? []).map((header) => [header.key, header.value]))
+  const staticHeaders = Object.fromEntries((site?.headers ?? []).map((header) => [header.key, header.value]))
+  return {
+    ...staticHeaders,
+    'Content-Security-Policy-Report-Only': resolveReportOnlyContentSecurityPolicyForDeployment({
+      vercelEnv: process.env.VERCEL_ENV,
+      gitCommitRef: process.env.VERCEL_GIT_COMMIT_REF,
+    }),
+  }
 }
 
 const oxlintConfig = JSON.parse(readFileSync(new URL('./.oxlintrc.json', import.meta.url), 'utf8'))

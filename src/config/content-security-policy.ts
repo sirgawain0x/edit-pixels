@@ -90,17 +90,21 @@ export function shouldUsePreviewStagingReportOnlyContentSecurityPolicy(
   return false
 }
 
+export function resolveReportOnlyContentSecurityPolicyForDeployment(
+  input: ResolveSiteSecurityHeadersInput = {},
+): string {
+  return shouldUsePreviewStagingReportOnlyContentSecurityPolicy(input)
+    ? buildPreviewStagingReportOnlyContentSecurityPolicy()
+    : PRODUCTION_CONTENT_SECURITY_POLICY_REPORT_ONLY
+}
+
 export function resolveContentSecurityPolicyHeaders(
   input: ResolveSiteSecurityHeadersInput,
 ): SiteSecurityHeader[] {
-  const reportOnlyValue = shouldUsePreviewStagingReportOnlyContentSecurityPolicy(input)
-    ? buildPreviewStagingReportOnlyContentSecurityPolicy()
-    : PRODUCTION_CONTENT_SECURITY_POLICY_REPORT_ONLY
-
   return [
     {
       key: 'Content-Security-Policy-Report-Only',
-      value: reportOnlyValue,
+      value: resolveReportOnlyContentSecurityPolicyForDeployment(input),
     },
   ]
 }

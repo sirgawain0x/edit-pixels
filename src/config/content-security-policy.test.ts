@@ -10,6 +10,7 @@ import {
   buildPreviewStagingReportOnlyContentSecurityPolicy,
   parseContentSecurityPolicyDirectives,
   resolveContentSecurityPolicyHeaders,
+  resolveReportOnlyContentSecurityPolicyForDeployment,
   shouldUsePreviewStagingReportOnlyContentSecurityPolicy,
 } from './content-security-policy'
 
@@ -47,11 +48,34 @@ function assertDirectiveSuperset(next: string, legacy: string): void {
 }
 
 describe('content security policy', () => {
-  it('keeps the committed production report-only policy byte-identical', () => {
+  it('keeps CSP out of committed vercel.json so middleware owns report-only headers', () => {
     const headers = siteHeaders()
-    const policy = headers.find((header) => header.key === 'Content-Security-Policy-Report-Only')
-    expect(policy?.value).toBe(PRODUCTION_CONTENT_SECURITY_POLICY_REPORT_ONLY)
+    expect(headers.some((header) => header.key === 'Content-Security-Policy-Report-Only')).toBe(false)
     expect(headers.some((header) => header.key === 'Content-Security-Policy')).toBe(false)
+    expect(headers.map((header) => header.key).sort()).toEqual([
+      'X-Content-Type-Options',
+      'X-Frame-Options',
+      'X-XSS-Protection',
+    ])
+  })
+
+  it('resolves report-only CSP from VERCEL_ENV and git ref (middleware contract)', () => {
+    expect(
+      resolveReportOnlyContentSecurityPolicyForDeployment({ vercelEnv: 'production', gitCommitRef: 'prod' }),
+    ).toBe(PRODUCTION_CONTENT_SECURITY_POLICY_REPORT_ONLY)
+
+    const previewPolicy = resolveReportOnlyContentSecurityPolicyForDeployment({
+      vercelEnv: 'preview',
+      gitCommitRef: 'agent/privy-hcaptcha-csp-preview-33fa',
+    })
+    expect(previewPolicy).toBe(buildPreviewStagingReportOnlyContentSecurityPolicy())
+    expect(directiveSources(previewPolicy, 'connect-src')).toContain('https://*.privy.io')
+
+    const stagingBranchPolicy = resolveReportOnlyContentSecurityPolicyForDeployment({
+      vercelEnv: 'production',
+      gitCommitRef: 'staging',
+    })
+    expect(stagingBranchPolicy).toBe(buildPreviewStagingReportOnlyContentSecurityPolicy())
   })
 
   it('uses report-only (never enforcing) for preview and staging deploys', () => {
