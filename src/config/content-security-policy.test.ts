@@ -12,7 +12,7 @@ import {
   resolveContentSecurityPolicyHeaders,
   resolveReportOnlyContentSecurityPolicyForDeployment,
   shouldUsePreviewStagingReportOnlyContentSecurityPolicy,
-} from './content-security-policy'
+} from '../../content-security-policy.ts'
 
 interface HeaderEntry {
   key: string
