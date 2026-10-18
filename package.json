@@ -101,6 +101,7 @@
     "@tanstack/react-virtual": "3.13.24",
     "@upstash/ratelimit": "2.2.0",
     "@upstash/redis": "^1.37.0",
+    "@vercel/functions": "3.10.1",
     "@vercel/oidc": "3.8.5",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
