@@ -1,5 +1,5 @@
 import { next } from '@vercel/functions'
-import { resolveReportOnlyContentSecurityPolicyForDeployment } from './content-security-policy.ts'
+import { resolveReportOnlyContentSecurityPolicyForDeployment } from './content-security-policy.js'
 
 export default async function middleware(request: Request): Promise<Response> {
   const response = await next({ request })
