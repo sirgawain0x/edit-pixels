@@ -153,7 +153,7 @@
     "playwright": "1.60.0",
     "tailwindcss": "4.2.2",
     "typescript": "5.9.3",
-    "vite-plus": "0.3.3"
+    "vite-plus": "1.1.0"
   },
   "optionalDependencies": {
     "@esbuild/linux-x64": "0.28.1",
