@@ -1,0 +1,7 @@
+{
+  "director": {
+    "packs": {
+      "minutesEstimate": "约 {{retailMinutes}} 分钟（会员 {{premiumMinutes}}）"
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "director": {
+    "packs": {
+      "minutesEstimate": "約 {{retailMinutes}} 分（会員は {{premiumMinutes}}）"
+    }
+  }
+}
