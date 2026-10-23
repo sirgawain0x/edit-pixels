@@ -4,7 +4,17 @@ All notable changes to Creative Pixels. Weekly CalVer: `YYYY.MM.DD` = the Monday
 
 <!-- Entries below are generated via the `changelog` skill. Newest first. -->
 
-## [Current] — week of 2026-10-12
+## [Current] — week of 2026-10-19
+
+Director session packs now show how many minutes each top-up buys, and past briefs stay private to your signed-in account.
+
+### Fixed
+- Director session packs show estimated minutes instead of outdated credit counts
+
+### Improved
+- Past Director briefs load only when you're signed in to your account
+
+## [2026.10.12] — week of 2026-10-12 to 2026-10-18
 
 Live Looks brings free on-device camera backgrounds and style filters. Director and render checkout now follow the live CRTVAI rate, and Director pack copy is corrected.
 
