@@ -8,10 +8,12 @@
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { i18n, changeAppLanguage, loadLanguageResources } from './index'
+import { SUPPORTED_LANGUAGE_CODES } from './languages'
 
 // A key that lives only in partials (not in the base locale files), so it
 // exercises the partial-merge path for every language tested.
 const PARTIAL_ONLY_KEY = 'editor.tts.kokoroOption'
+const DIRECTOR_PACK_MINUTES_KEY = 'director.packs.minutesEstimate'
 const EN_VALUE = 'Kokoro (English, WebGPU)'
 const DE_VALUE = 'Kokoro (Englisch, WebGPU)'
 
@@ -71,5 +73,16 @@ describe('lazy locale loading', () => {
     await expect(loadLanguageResources('en')).resolves.toBeUndefined()
     // English still works
     expect(i18n.t(PARTIAL_ONLY_KEY)).toBe(EN_VALUE)
+  })
+
+  it('every locale defines director.packs.minutesEstimate with interpolation', async () => {
+    const sample = { retailMinutes: 12, premiumMinutes: 34 }
+    for (const lang of SUPPORTED_LANGUAGE_CODES) {
+      await changeAppLanguage(lang)
+      const value = i18n.t(DIRECTOR_PACK_MINUTES_KEY, sample)
+      expect(value, lang).not.toBe(DIRECTOR_PACK_MINUTES_KEY)
+      expect(value, lang).toContain(String(sample.retailMinutes))
+      expect(value, lang).toContain(String(sample.premiumMinutes))
+    }
   })
 })
