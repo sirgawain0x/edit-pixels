@@ -4,7 +4,10 @@
       "signInPrompt": "Inicia sesión para pagar en cadena con CRTVAI.",
       "signIn": "Iniciar sesión",
       "connectingWallet": "Conectando tu monedero…",
-      "treasuryNotConfigured": "Los pagos no están configurados en esta versión"
+      "treasuryNotConfigured": "Los pagos no están configurados en esta versión",
+      "loadingWallet": "Cargando tu monedero…",
+      "walletError": "No pudimos conectar tu monedero. Inténtalo de nuevo.",
+      "retryWallet": "Reintentar conexión del monedero"
     }
   }
 }

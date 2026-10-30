@@ -4,7 +4,10 @@
       "signInPrompt": "Melden Sie sich an, um on-chain mit CRTVAI zu bezahlen.",
       "signIn": "Anmelden",
       "connectingWallet": "Wallet wird verbunden…",
-      "treasuryNotConfigured": "Zahlungen sind in diesem Build nicht konfiguriert"
+      "treasuryNotConfigured": "Zahlungen sind in diesem Build nicht konfiguriert",
+      "loadingWallet": "Wallet wird geladen…",
+      "walletError": "Ihre Wallet konnte nicht verbunden werden. Versuchen Sie es erneut.",
+      "retryWallet": "Wallet erneut verbinden"
     }
   }
 }

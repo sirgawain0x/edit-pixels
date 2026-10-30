@@ -87,7 +87,14 @@ export const FlowPanel = memo(function FlowPanel() {
   const fileStartRef = useRef<HTMLInputElement>(null)
   const fileEndRef = useRef<HTMLInputElement>(null)
 
-  const { connect, authenticated, configured: walletConfigured } = useWalletContext()
+  const {
+    connect,
+    authenticated,
+    configured: walletConfigured,
+    ready: walletReady,
+    smartAccountStatus,
+    retrySmartAccount,
+  } = useWalletContext()
   const { balance, refreshBalance } = useCredits()
   const { sendOps, ready: walletOpsReady } = useSmartWalletOps()
   const auth = useGenerativeAuth()
@@ -175,8 +182,7 @@ export const FlowPanel = memo(function FlowPanel() {
     [baseQuote, serverCrtvai],
   )
 
-  const insufficient =
-    quote.crtvaiDisplay > 0 ? balance < quote.crtvaiDisplay : balance <= 0
+  const insufficient = quote.crtvaiDisplay > 0 ? balance < quote.crtvaiDisplay : balance <= 0
 
   const onTierChange = useCallback((next: FlowTier) => {
     setTier(next)
@@ -573,10 +579,13 @@ export const FlowPanel = memo(function FlowPanel() {
           <FlowSoftPayNotice
             canPayOnChain={canPayOnChain}
             walletConfigured={walletConfigured}
+            walletReady={walletReady}
             authenticated={authenticated}
             walletOpsReady={walletOpsReady}
+            smartAccountStatus={smartAccountStatus}
             hasTreasury={hasTreasury}
             onSignIn={connect}
+            onRetryWallet={retrySmartAccount}
           />
           {insufficient && (
             <Button

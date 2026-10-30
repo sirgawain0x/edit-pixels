@@ -1,17 +1,16 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vite-plus/test'
 import { fireEvent, render, screen } from '@testing-library/react'
-import {
-  FlowSoftPayNotice,
-  resolveFlowSoftPayState,
-} from './flow-soft-pay-notice'
+import { FlowSoftPayNotice, resolveFlowSoftPayState } from './flow-soft-pay-notice'
 
 describe('resolveFlowSoftPayState', () => {
   const ready = {
     canPayOnChain: false,
     walletConfigured: true,
+    walletReady: true,
     authenticated: true,
     walletOpsReady: true,
+    smartAccountStatus: 'ready' as const,
     hasTreasury: true,
   }
 
@@ -33,6 +32,28 @@ describe('resolveFlowSoftPayState', () => {
         authenticated: false,
       }),
     ).toBe('sign-in')
+  })
+
+  it('waits for session hydration before offering sign-in', () => {
+    expect(
+      resolveFlowSoftPayState({
+        ...ready,
+        walletReady: false,
+        authenticated: false,
+        walletOpsReady: false,
+      }),
+    ).toBe('initializing-wallet')
+  })
+
+  it('shows a wallet error after failed provisioning, even without a treasury', () => {
+    expect(
+      resolveFlowSoftPayState({
+        ...ready,
+        walletOpsReady: false,
+        smartAccountStatus: 'error',
+        hasTreasury: false,
+      }),
+    ).toBe('wallet-error')
   })
 
   it('returns connecting-wallet when signed in but smart wallet is not ready', () => {
@@ -75,10 +96,71 @@ describe('resolveFlowSoftPayState', () => {
 })
 
 describe('FlowSoftPayNotice', () => {
+  const walletState = {
+    walletReady: true,
+    smartAccountStatus: 'ready' as const,
+    onRetryWallet: vi.fn(),
+  }
+
+  it('hides sign-in until hydration completes and shows the loaded session', () => {
+    const onSignIn = vi.fn()
+    const props = {
+      ...walletState,
+      canPayOnChain: false,
+      walletConfigured: true,
+      walletReady: false,
+      authenticated: false,
+      walletOpsReady: false,
+      hasTreasury: true,
+      onSignIn,
+    }
+    const { rerender } = render(<FlowSoftPayNotice {...props} />)
+    expect(screen.getByRole('status').textContent).toMatch(/Loading your wallet/i)
+    expect(screen.queryByRole('button', { name: /Sign in/i })).toBeNull()
+    expect(onSignIn).not.toHaveBeenCalled()
+
+    rerender(<FlowSoftPayNotice {...props} walletReady authenticated />)
+    expect(screen.getByRole('status').textContent).toMatch(/Connecting your wallet/i)
+    expect(screen.queryByRole('button', { name: /Sign in/i })).toBeNull()
+
+    rerender(<FlowSoftPayNotice {...props} walletReady />)
+    expect(screen.getByRole('button', { name: /Sign in/i })).toBeTruthy()
+  })
+
+  it('offers retry after a wallet error and returns to connecting during retry', () => {
+    const onRetryWallet = vi.fn()
+    const props = {
+      ...walletState,
+      canPayOnChain: false,
+      walletConfigured: true,
+      authenticated: true,
+      walletOpsReady: false,
+      hasTreasury: true,
+      onSignIn: vi.fn(),
+      onRetryWallet,
+    }
+    const { rerender } = render(<FlowSoftPayNotice {...props} smartAccountStatus="error" />)
+    expect(screen.getByRole('alert').textContent).toMatch(/couldn't connect your wallet/i)
+    expect(screen.queryByRole('status')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /Retry wallet connection/i }))
+    expect(onRetryWallet).toHaveBeenCalledOnce()
+    expect(props.onSignIn).not.toHaveBeenCalled()
+
+    rerender(<FlowSoftPayNotice {...props} smartAccountStatus="pending" />)
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByRole('button', { name: /Retry wallet connection/i })).toBeNull()
+    expect(screen.getByRole('status').textContent).toMatch(/Connecting your wallet/i)
+
+    rerender(<FlowSoftPayNotice {...props} walletOpsReady canPayOnChain />)
+    expect(screen.queryByRole('status')).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
   it('shows sign-in prompt and triggers Privy login', () => {
     const onSignIn = vi.fn()
     render(
       <FlowSoftPayNotice
+        {...walletState}
         canPayOnChain={false}
         walletConfigured={true}
         authenticated={false}
@@ -95,6 +177,7 @@ describe('FlowSoftPayNotice', () => {
   it('shows connecting wallet message when authenticated but wallet ops not ready', () => {
     render(
       <FlowSoftPayNotice
+        {...walletState}
         canPayOnChain={false}
         walletConfigured={true}
         authenticated={true}
@@ -109,6 +192,7 @@ describe('FlowSoftPayNotice', () => {
   it('shows treasury not configured when treasury is missing and wallet is ready', () => {
     render(
       <FlowSoftPayNotice
+        {...walletState}
         canPayOnChain={false}
         walletConfigured={true}
         authenticated={true}
@@ -124,6 +208,7 @@ describe('FlowSoftPayNotice', () => {
   it('renders nothing when on-chain pay is ready', () => {
     const { container } = render(
       <FlowSoftPayNotice
+        {...walletState}
         canPayOnChain={true}
         walletConfigured={true}
         authenticated={true}

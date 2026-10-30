@@ -4,7 +4,10 @@
       "signInPrompt": "CRTVAI ile zincir üstü ödeme yapmak için oturum açın.",
       "signIn": "Oturum aç",
       "connectingWallet": "Cüzdanınız bağlanıyor…",
-      "treasuryNotConfigured": "Bu sürümde ödemeler yapılandırılmamış"
+      "treasuryNotConfigured": "Bu sürümde ödemeler yapılandırılmamış",
+      "loadingWallet": "Cüzdanınız yükleniyor…",
+      "walletError": "Cüzdanınıza bağlanamadık. Tekrar deneyin.",
+      "retryWallet": "Cüzdan bağlantısını yeniden dene"
     }
   }
 }

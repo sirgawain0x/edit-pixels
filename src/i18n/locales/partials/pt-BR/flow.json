@@ -4,7 +4,10 @@
       "signInPrompt": "Entre para pagar on-chain com CRTVAI.",
       "signIn": "Entrar",
       "connectingWallet": "Conectando sua carteira…",
-      "treasuryNotConfigured": "Pagamentos não estão configurados nesta versão"
+      "treasuryNotConfigured": "Pagamentos não estão configurados nesta versão",
+      "loadingWallet": "Carregando sua carteira…",
+      "walletError": "Não foi possível conectar sua carteira. Tente novamente.",
+      "retryWallet": "Tentar conectar a carteira novamente"
     }
   }
 }

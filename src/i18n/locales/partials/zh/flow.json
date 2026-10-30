@@ -4,7 +4,10 @@
       "signInPrompt": "登录以使用 CRTVAI 进行链上支付。",
       "signIn": "登录",
       "connectingWallet": "正在连接钱包…",
-      "treasuryNotConfigured": "此版本未配置支付"
+      "treasuryNotConfigured": "此版本未配置支付",
+      "loadingWallet": "正在加载钱包…",
+      "walletError": "无法连接钱包，请重试。",
+      "retryWallet": "重试钱包连接"
     }
   }
 }
