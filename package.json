@@ -149,19 +149,19 @@
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.1",
-    "@vitest/coverage-v8": "4.1.11",
+    "@vitest/coverage-v8": "5.0.3",
     "@webgpu/types": "0.1.69",
     "jsdom": "27.4.0",
     "playwright": "1.60.0",
     "tailwindcss": "4.2.2",
     "typescript": "5.9.3",
-    "vite-plus": "0.3.3"
+    "vite-plus": "1.1.0"
   },
   "optionalDependencies": {
     "@esbuild/linux-x64": "0.28.1",
     "@rolldown/binding-linux-x64-gnu": "1.2.8",
     "@tailwindcss/oxide-linux-x64-gnu": "4.2.2",
-    "@voidzero-dev/vite-plus-linux-x64-gnu": "0.3.3",
+    "@voidzero-dev/vite-plus-linux-x64-gnu": "1.1.0",
     "lightningcss-linux-x64-gnu": "1.33.0"
   },
   "overrides": {
