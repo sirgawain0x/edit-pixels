@@ -103,5 +103,12 @@ export function createMediabunnyInputSource(
     throw new Error('Blob URL source is not registered in this worker')
   }
 
-  return new mb.UrlSource(src)
+  return new mb.UrlSource(src, {
+    // Blob URLs are local capabilities: a failed fetch usually means the URL
+    // was revoked. Retrying cannot restore it. Network requests get two short
+    // retries instead of Mediabunny's default unbounded backoff, which leaves
+    // export preparation (and transition prewarming) pending forever.
+    getRetryDelay: (previousAttempts) =>
+      src.startsWith('blob:') || previousAttempts > 2 ? null : previousAttempts,
+  })
 }
