@@ -1,0 +1,7 @@
+{
+  "director": {
+    "packs": {
+      "minutesEstimate": "약 {{retailMinutes}}분(회원 {{premiumMinutes}})"
+    }
+  }
+}

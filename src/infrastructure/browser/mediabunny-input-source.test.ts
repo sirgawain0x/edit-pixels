@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vite-plus/test'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 import { createMediabunnyInputSource } from './mediabunny-input-source'
 import { clearObjectUrlRegistry, registerObjectUrl } from './object-url-registry'
 
@@ -23,7 +23,12 @@ class MockStreamSource {
 }
 
 class MockUrlSource {
-  constructor(public readonly url: string) {}
+  constructor(
+    public readonly url: string,
+    public readonly options: {
+      getRetryDelay: (previousAttempts: number) => number | null
+    },
+  ) {}
 }
 
 const mockMediabunny = {
@@ -55,6 +60,10 @@ async function readChunkText(chunk: Uint8Array | ReadableStream<Uint8Array>): Pr
 
 beforeEach(() => {
   clearObjectUrlRegistry()
+  vi.unstubAllGlobals()
+})
+
+afterEach(() => {
   vi.unstubAllGlobals()
 })
 
@@ -147,5 +156,35 @@ describe('createMediabunnyInputSource', () => {
     expect(() =>
       createMediabunnyInputSource(mockMediabunny, 'blob:http://localhost/media'),
     ).toThrow('Blob URL source is not registered in this worker')
+  })
+
+  it('stops retrying failed network reads after two retries', () => {
+    const source = createMediabunnyInputSource(mockMediabunny, 'https://example.com/video.mp4')
+    const { getRetryDelay } = (source as unknown as MockUrlSource).options
+    expect(getRetryDelay(1)).toBe(1)
+    expect(getRetryDelay(2)).toBe(2)
+    expect(getRetryDelay(3)).toBeNull()
+    expect(getRetryDelay(100)).toBeNull()
+  })
+
+  it('does not retry an unavailable local blob URL on the main thread', () => {
+    const source = createMediabunnyInputSource(mockMediabunny, 'blob:revoked')
+    expect((source as unknown as MockUrlSource).options.getRetryDelay(1)).toBeNull()
+  })
+
+  it('rejects an unreadable blob with the real media reader instead of hanging', async () => {
+    const mb = await import('mediabunny')
+    const failedFetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'))
+    vi.stubGlobal('fetch', failedFetch)
+    const input = new mb.Input({
+      formats: mb.ALL_FORMATS,
+      source: createMediabunnyInputSource(mb, 'blob:revoked'),
+    })
+    try {
+      await expect(input.getPrimaryVideoTrack()).rejects.toThrow('Failed to fetch')
+      expect(failedFetch).toHaveBeenCalledTimes(1)
+    } finally {
+      input.dispose()
+    }
   })
 })

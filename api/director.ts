@@ -60,6 +60,7 @@ import {
   runAdkDirector,
   withAdkSessionEvent,
 } from './_director-adk.js'
+import { checkPixelsRateLimits } from './_rate-limit.js'
 
 const DEFAULT_ENGINE_ID = '7129954674127405056'
 
@@ -575,8 +576,17 @@ async function handleDirectorPost(
   request: Request,
   reserved: ReservedDirectorPayment,
 ): Promise<Response> {
+  const ipLimited = await checkPixelsRateLimits(request, 'director')
+  if (ipLimited) return ipLimited
+
   const identity = await resolvePixelsIdentity(request, { allowDirectorSecret: true })
   if (!identity.ok) return identity.response
+
+  const identityLimited = await checkPixelsRateLimits(request, 'director', {
+    ip: false,
+    identity: identity.identity.signer,
+  })
+  if (identityLimited) return identityLimited
   logDirectorStage('auth', { mode: identity.identity.source, signer: identity.identity.signer })
   const parsed = parseDirectorBody(
     identity.body as DirectorRequestBody,

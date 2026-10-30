@@ -1,0 +1,7 @@
+{
+  "director": {
+    "packs": {
+      "minutesEstimate": "env. {{retailMinutes}} min ({{premiumMinutes}} pour les membres)"
+    }
+  }
+}

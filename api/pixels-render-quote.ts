@@ -5,7 +5,8 @@
 
 import { authenticateGenerativePost } from './_pixels-generate-route-auth.js'
 import { quoteSeedanceSpend } from './_seedance-billing.js'
-import { isSeedanceGenerateEnabled, type SeedanceResolution } from './_seedance-pricing.js'
+import { type SeedanceResolution } from './_seedance-pricing.js'
+import { guardSeedanceQuoteRequest } from './_pixels-generate-guards.js'
 import {
   clampFlowDuration,
   quoteFlowTotalCredits,
@@ -13,19 +14,25 @@ import {
   type NanobananaQuality,
 } from './_generative-pricing.js'
 import { quoteFlowCreditsUsdc6 } from './flow-billing.js'
+import { checkPixelsRateLimits } from './_rate-limit.js'
 
 const PIXELS_VEO_TIER = 'standard' as const
 const PIXELS_VEO_QUALITY = '720p'
 const PIXELS_STILL_QUALITY: NanobananaQuality = '2K'
 
 export async function POST(request: Request): Promise<Response> {
-  if (!isSeedanceGenerateEnabled()) {
-    return Response.json({ error: 'feature_disabled' }, { status: 404 })
-  }
+  const guarded = await guardSeedanceQuoteRequest(request)
+  if (guarded) return guarded
 
   const authenticated = await authenticateGenerativePost(request)
   if (!authenticated.ok) return authenticated.response
-  const { body } = authenticated
+  const { body, signer } = authenticated
+
+  const identityLimited = await checkPixelsRateLimits(request, 'quote', {
+    ip: false,
+    identity: signer,
+  })
+  if (identityLimited) return identityLimited
 
   const durationRaw = typeof body.duration === 'number' ? body.duration : 5
   const resolution: SeedanceResolution = body.resolution === '480p' ? '480p' : '720p'

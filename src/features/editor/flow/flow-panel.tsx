@@ -50,6 +50,7 @@ import {
   type FlowTier,
 } from '@/config/flow'
 import { fetchFlowServerQuote } from './fetch-flow-server-quote'
+import { FlowSoftPayNotice } from './flow-soft-pay-notice'
 import { quoteFlowGeneration } from './flow-pricing'
 import { cn } from '@/shared/ui/cn'
 
@@ -86,11 +87,19 @@ export const FlowPanel = memo(function FlowPanel() {
   const fileStartRef = useRef<HTMLInputElement>(null)
   const fileEndRef = useRef<HTMLInputElement>(null)
 
-  const { connect, authenticated, configured: walletConfigured } = useWalletContext()
+  const {
+    connect,
+    authenticated,
+    configured: walletConfigured,
+    ready: walletReady,
+    smartAccountStatus,
+    retrySmartAccount,
+  } = useWalletContext()
   const { balance, refreshBalance } = useCredits()
   const { sendOps, ready: walletOpsReady } = useSmartWalletOps()
   const auth = useGenerativeAuth()
-  const canPayOnChain = Boolean(getDirectorTreasuryAddress() && walletOpsReady)
+  const hasTreasury = Boolean(getDirectorTreasuryAddress())
+  const canPayOnChain = Boolean(hasTreasury && walletOpsReady)
   const currentProjectId = useMediaLibraryStore((s) => s.currentProjectId)
   const loadMediaItems = useMediaLibraryStore((s) => s.loadMediaItems)
 
@@ -173,8 +182,7 @@ export const FlowPanel = memo(function FlowPanel() {
     [baseQuote, serverCrtvai],
   )
 
-  const insufficient =
-    quote.crtvaiDisplay > 0 ? balance < quote.crtvaiDisplay : balance <= 0
+  const insufficient = quote.crtvaiDisplay > 0 ? balance < quote.crtvaiDisplay : balance <= 0
 
   const onTierChange = useCallback((next: FlowTier) => {
     setTier(next)
@@ -568,13 +576,17 @@ export const FlowPanel = memo(function FlowPanel() {
               </div>
             )}
           </dl>
-          {!canPayOnChain && (
-            <p className="mt-2 text-[10px] text-amber-200/90">
-              {t('flow.softPay', {
-                defaultValue: 'Treasury not configured — on-chain charge skipped locally.',
-              })}
-            </p>
-          )}
+          <FlowSoftPayNotice
+            canPayOnChain={canPayOnChain}
+            walletConfigured={walletConfigured}
+            walletReady={walletReady}
+            authenticated={authenticated}
+            walletOpsReady={walletOpsReady}
+            smartAccountStatus={smartAccountStatus}
+            hasTreasury={hasTreasury}
+            onSignIn={connect}
+            onRetryWallet={retrySmartAccount}
+          />
           {insufficient && (
             <Button
               type="button"

@@ -1,0 +1,13 @@
+{
+  "flow": {
+    "softPay": {
+      "signInPrompt": "CRTVAI로 온체인 결제하려면 로그인하세요.",
+      "signIn": "로그인",
+      "connectingWallet": "지갑 연결 중…",
+      "treasuryNotConfigured": "이 빌드에서는 결제가 구성되어 있지 않습니다",
+      "loadingWallet": "지갑을 불러오는 중…",
+      "walletError": "지갑에 연결하지 못했습니다. 다시 시도하세요.",
+      "retryWallet": "지갑 연결 다시 시도"
+    }
+  }
+}

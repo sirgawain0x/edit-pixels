@@ -10,6 +10,8 @@ interface DirectorPastBriefsProps {
   activeSessionId: string | null
   disabled?: boolean
   onResume: (sessionId: string) => void
+  getAccessToken: () => Promise<string | null | undefined>
+  signerAddress?: string
 }
 
 export const DirectorPastBriefs = memo(function DirectorPastBriefs({
@@ -18,26 +20,40 @@ export const DirectorPastBriefs = memo(function DirectorPastBriefs({
   activeSessionId,
   disabled,
   onResume,
+  getAccessToken,
+  signerAddress,
 }: DirectorPastBriefsProps) {
   const { t } = useTranslation()
   const [sessions, setSessions] = useState<DirectorPastSession[]>([])
   const [open, setOpen] = useState(false)
 
   useEffect(() => {
-    if (!walletAddress?.startsWith('0x')) {
+    if (!walletAddress?.startsWith('0x') || !signerAddress?.startsWith('0x')) {
       setSessions([])
       return
     }
 
     let cancelled = false
-    void fetchDirectorPastSessions({ walletAddress, projectId, limit: 12 }).then((rows) => {
+    void (async () => {
+      const accessToken = await getAccessToken()
+      if (!accessToken || cancelled) {
+        if (!cancelled) setSessions([])
+        return
+      }
+      const rows = await fetchDirectorPastSessions({
+        walletAddress,
+        projectId,
+        limit: 12,
+        accessToken,
+        signerAddress,
+      })
       if (!cancelled) setSessions(rows)
-    })
+    })()
 
     return () => {
       cancelled = true
     }
-  }, [walletAddress, projectId, activeSessionId])
+  }, [walletAddress, projectId, activeSessionId, getAccessToken, signerAddress])
 
   const toggle = useCallback(() => {
     setOpen((value) => !value)

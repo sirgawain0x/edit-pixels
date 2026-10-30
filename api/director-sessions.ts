@@ -8,26 +8,37 @@
  */
 // fallow-ignore-file complexity
 
-import { assertDirectorAuthorized } from './_director-auth.js'
+import {
+  authorizeDirectorSessionsGet,
+  normalizeDirectorSessionsWallet,
+} from './_director-sessions-auth.js'
 import { listDirectorSessions } from './_director-firestore.js'
 import { isDirectorFirestoreEnabled } from './_firestore-client.js'
 import {
   isServiceAccountImpersonationDenied,
   vertexAuthFailureMessage,
 } from './_vertex-auth.js'
+import { rateLimitByClientIp, rateLimitByIdentity } from './_rate-limit.js'
 
 export async function GET(request: Request): Promise<Response> {
-  const authError = assertDirectorAuthorized(request)
-  if (authError) return authError
+  const ipLimited = await rateLimitByClientIp(request, 'director')
+  if (ipLimited) return ipLimited
+
+  const url = new URL(request.url)
+  const walletRaw = url.searchParams.get('wallet')?.trim()
+  const walletAddress = walletRaw ? normalizeDirectorSessionsWallet(walletRaw) : null
+  if (!walletAddress) {
+    return Response.json({ error: 'wallet query param required' }, { status: 400 })
+  }
+
+  const auth = await authorizeDirectorSessionsGet(request, walletAddress)
+  if (!auth.ok) return auth.response
+
+  const identityLimited = await rateLimitByIdentity(request, 'director', auth.verifiedSigner)
+  if (identityLimited) return identityLimited
 
   if (!isDirectorFirestoreEnabled()) {
     return Response.json({ sessions: [] })
-  }
-
-  const url = new URL(request.url)
-  const walletAddress = url.searchParams.get('wallet')?.trim()
-  if (!walletAddress?.startsWith('0x')) {
-    return Response.json({ error: 'wallet query param required' }, { status: 400 })
   }
 
   const projectId = url.searchParams.get('projectId')?.trim() || undefined

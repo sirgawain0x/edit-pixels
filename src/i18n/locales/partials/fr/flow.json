@@ -1,0 +1,13 @@
+{
+  "flow": {
+    "softPay": {
+      "signInPrompt": "Connectez-vous pour payer on-chain avec CRTVAI.",
+      "signIn": "Se connecter",
+      "connectingWallet": "Connexion de votre portefeuille…",
+      "treasuryNotConfigured": "Les paiements ne sont pas configurés sur cette version",
+      "loadingWallet": "Chargement de votre portefeuille…",
+      "walletError": "Impossible de connecter votre portefeuille. Réessayez.",
+      "retryWallet": "Réessayer la connexion du portefeuille"
+    }
+  }
+}

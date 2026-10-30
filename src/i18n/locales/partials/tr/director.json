@@ -1,0 +1,7 @@
+{
+  "director": {
+    "packs": {
+      "minutesEstimate": "yaklaşık {{retailMinutes}} dk (üyeler için {{premiumMinutes}})"
+    }
+  }
+}
