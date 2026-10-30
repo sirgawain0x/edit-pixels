@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import * as curveQuote from '../../../../api/_metoken-curve-quote.js'
+import * as viem from 'viem'
 import {
   isRpcTransportError,
   METOKEN_QUOTE_EXPIRY_SECONDS,
@@ -21,6 +21,11 @@ import {
   isWithinSlippageBand,
   type CurveState,
 } from '../../../../api/_metoken-curve-math.js'
+
+vi.mock('viem', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('viem')>()
+  return { ...actual, createPublicClient: vi.fn(actual.createPublicClient) }
+})
 
 const MEMO_SUPPLY_CRTVAI = 3.199997731857693174
 const MEMO_BALANCE_POOLED_USDC6 = 5_120_001n
@@ -87,14 +92,16 @@ describe('isRpcTransportError', () => {
     '7465737400000000000000000000000000000000000000000000000000000000'
 
   it('treats -32000 with plain-text data as transport', () => {
-    expect(isRpcTransportError(rpcRequestError(-32_000, 'internal error', 'missing trie node'))).toBe(
-      true,
-    )
+    expect(
+      isRpcTransportError(rpcRequestError(-32_000, 'internal error', 'missing trie node')),
+    ).toBe(true)
   })
 
   it('treats -32000 with object data payload as transport', () => {
     expect(
-      isRpcTransportError(rpcRequestError(-32_000, 'internal error', { reason: 'missing trie node' })),
+      isRpcTransportError(
+        rpcRequestError(-32_000, 'internal error', { reason: 'missing trie node' }),
+      ),
     ).toBe(true)
   })
 
@@ -103,12 +110,12 @@ describe('isRpcTransportError', () => {
   })
 
   it('classifies Error(string) revert return data as a revert', () => {
-    expect(isRpcTransportError(rpcRequestError(3, 'execution reverted', errorStringRevertData))).toBe(
-      false,
-    )
-    expect(isRpcTransportError(rpcRequestError(-32_000, 'internal error', errorStringRevertData))).toBe(
-      false,
-    )
+    expect(
+      isRpcTransportError(rpcRequestError(3, 'execution reverted', errorStringRevertData)),
+    ).toBe(false)
+    expect(
+      isRpcTransportError(rpcRequestError(-32_000, 'internal error', errorStringRevertData)),
+    ).toBe(false)
   })
 
   function revertWrappingRpc(code: number, message: string) {
@@ -149,8 +156,7 @@ describe('quote expiry and slippage', () => {
   })
 
   it('rejects settlement after grace window', async () => {
-    const expiresAtMs =
-      Date.now() - (METOKEN_QUOTE_SETTLEMENT_GRACE_SECONDS + 5) * 1000
+    const expiresAtMs = Date.now() - (METOKEN_QUOTE_SETTLEMENT_GRACE_SECONDS + 5) * 1000
     await expect(
       validateSettlementAgainstQuote({
         estimatedUsdc6: 1_000_000,
@@ -163,9 +169,12 @@ describe('quote expiry and slippage', () => {
 
   it('keeps Director checkout valid after wallet delay past the 75s quote TTL', async () => {
     const quotedWei = 298_570_000_000_000_000n
-    const mintSpy = vi
-      .spyOn(curveQuote, 'readMeTokensMintedForDeposit')
-      .mockResolvedValue(quotedWei)
+    // Mock the RPC boundary; spying on another export in the same module
+    // does not replace its internal call from validateSettlementAgainstQuote.
+    const clientMock = vi.mocked(viem.createPublicClient)
+    clientMock.mockReturnValueOnce({
+      readContract: vi.fn().mockResolvedValue(quotedWei),
+    } as unknown as ReturnType<typeof viem.createPublicClient>)
 
     const issuedAtMs = Date.now() - 90_000
     const expiresAtMs = issuedAtMs + METOKEN_QUOTE_EXPIRY_SECONDS * 1000
@@ -185,7 +194,7 @@ describe('quote expiry and slippage', () => {
       }),
     ).resolves.toBeDefined()
 
-    mintSpy.mockRestore()
+    clientMock.mockReset()
   })
 
   it('rejects when fresh amount exceeds the slippage band', () => {

@@ -1,4 +1,4 @@
-import '@testing-library/jest-dom'
+import '@testing-library/jest-dom/vitest'
 import { afterEach } from 'vite-plus/test'
 import '@/i18n'
 import { resetAutoKeyframeStore } from '@/features/keyframes/stores/auto-keyframe-store'
