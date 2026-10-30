@@ -1,0 +1,10 @@
+{
+  "flow": {
+    "softPay": {
+      "signInPrompt": "Inicia sesión para pagar en cadena con CRTVAI.",
+      "signIn": "Iniciar sesión",
+      "connectingWallet": "Conectando tu monedero…",
+      "treasuryNotConfigured": "Los pagos no están configurados en esta versión"
+    }
+  }
+}

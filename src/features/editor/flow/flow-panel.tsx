@@ -50,6 +50,7 @@ import {
   type FlowTier,
 } from '@/config/flow'
 import { fetchFlowServerQuote } from './fetch-flow-server-quote'
+import { FlowSoftPayNotice } from './flow-soft-pay-notice'
 import { quoteFlowGeneration } from './flow-pricing'
 import { cn } from '@/shared/ui/cn'
 
@@ -90,7 +91,8 @@ export const FlowPanel = memo(function FlowPanel() {
   const { balance, refreshBalance } = useCredits()
   const { sendOps, ready: walletOpsReady } = useSmartWalletOps()
   const auth = useGenerativeAuth()
-  const canPayOnChain = Boolean(getDirectorTreasuryAddress() && walletOpsReady)
+  const hasTreasury = Boolean(getDirectorTreasuryAddress())
+  const canPayOnChain = Boolean(hasTreasury && walletOpsReady)
   const currentProjectId = useMediaLibraryStore((s) => s.currentProjectId)
   const loadMediaItems = useMediaLibraryStore((s) => s.loadMediaItems)
 
@@ -568,13 +570,14 @@ export const FlowPanel = memo(function FlowPanel() {
               </div>
             )}
           </dl>
-          {!canPayOnChain && (
-            <p className="mt-2 text-[10px] text-amber-200/90">
-              {t('flow.softPay', {
-                defaultValue: 'Treasury not configured — on-chain charge skipped locally.',
-              })}
-            </p>
-          )}
+          <FlowSoftPayNotice
+            canPayOnChain={canPayOnChain}
+            walletConfigured={walletConfigured}
+            authenticated={authenticated}
+            walletOpsReady={walletOpsReady}
+            hasTreasury={hasTreasury}
+            onSignIn={connect}
+          />
           {insufficient && (
             <Button
               type="button"

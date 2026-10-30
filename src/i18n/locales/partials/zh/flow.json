@@ -1,0 +1,10 @@
+{
+  "flow": {
+    "softPay": {
+      "signInPrompt": "登录以使用 CRTVAI 进行链上支付。",
+      "signIn": "登录",
+      "connectingWallet": "正在连接钱包…",
+      "treasuryNotConfigured": "此版本未配置支付"
+    }
+  }
+}

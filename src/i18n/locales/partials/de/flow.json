@@ -1,0 +1,10 @@
+{
+  "flow": {
+    "softPay": {
+      "signInPrompt": "Melden Sie sich an, um on-chain mit CRTVAI zu bezahlen.",
+      "signIn": "Anmelden",
+      "connectingWallet": "Wallet wird verbunden…",
+      "treasuryNotConfigured": "Zahlungen sind in diesem Build nicht konfiguriert"
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "flow": {
+    "softPay": {
+      "signInPrompt": "CRTVAI ile zincir üstü ödeme yapmak için oturum açın.",
+      "signIn": "Oturum aç",
+      "connectingWallet": "Cüzdanınız bağlanıyor…",
+      "treasuryNotConfigured": "Bu sürümde ödemeler yapılandırılmamış"
+    }
+  }
+}
