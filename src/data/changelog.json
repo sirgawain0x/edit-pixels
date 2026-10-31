@@ -17,6 +17,12 @@
       "improved": [
         {
           "title": "Past Director briefs load only when you're signed in to your account"
+        },
+        {
+          "title": "Flow checkout explains when to sign in, while your wallet is connecting, and when payments aren't configured"
+        },
+        {
+          "title": "Director automation now always uses your signed-in wallet"
         }
       ]
     }

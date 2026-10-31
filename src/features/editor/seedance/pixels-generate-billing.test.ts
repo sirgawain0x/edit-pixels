@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
+// Exercise the in-memory job store independently of local Redis credentials.
+vi.mock('../../../../api/_redis-client.js', () => ({
+  getRedis: vi.fn().mockResolvedValue(null),
+  isRedisConfigured: vi.fn().mockReturnValue(false),
+}))
+
 describe('pixels generate billing', () => {
   describe('bindSeedanceQuote', () => {
     it('rejects missing or expired quote ids', async () => {
