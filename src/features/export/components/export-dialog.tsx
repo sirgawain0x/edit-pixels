@@ -1595,6 +1595,7 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
                     {status === 'rendering' && t('export.progress.rendering')}
                     {status === 'encoding' && t('export.progress.encoding')}
                     {status === 'finalizing' && t('export.progress.finalizing')}
+                    {status === 'signing' && (progressMessage ?? 'Signing provenance…')}
                   </span>
                   <span className="font-medium tabular-nums flex-shrink-0">
                     {Math.round(progress)}%
