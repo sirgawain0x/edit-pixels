@@ -74,7 +74,7 @@
     "@mediabunny/mp3-encoder": "1.50.8",
     "@mediabunny/prores": "1.50.8",
     "@mediapipe/tasks-vision": "1.1.0",
-    "@modelcontextprotocol/sdk": "1.31.0",
+    "@modelcontextprotocol/sdk": "1.32.0",
     "@peculiar/x509": "2.0.0",
     "@privy-io/node": "0.34.0",
     "@privy-io/react-auth": "^3.32.2",
@@ -133,7 +133,7 @@
     "tailwindcss-animate": "1.0.7",
     "unified": "11.0.5",
     "viem": "^2.45.0",
-    "zod": "4.3.6",
+    "zod": "4.6.6",
     "zundo": "2.3.0",
     "zustand": "5.0.12"
   },
@@ -155,7 +155,7 @@
     "playwright": "1.60.0",
     "tailwindcss": "4.2.2",
     "typescript": "5.9.3",
-    "vite-plus": "1.1.0"
+    "vite-plus": "1.4.0"
   },
   "optionalDependencies": {
     "@esbuild/linux-x64": "0.28.1",
