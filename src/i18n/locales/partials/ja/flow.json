@@ -1,0 +1,13 @@
+{
+  "flow": {
+    "softPay": {
+      "signInPrompt": "CRTVAI でオンチェーン決済するにはサインインしてください。",
+      "signIn": "サインイン",
+      "connectingWallet": "ウォレットを接続しています…",
+      "treasuryNotConfigured": "このビルドでは決済が設定されていません",
+      "loadingWallet": "ウォレットを読み込んでいます…",
+      "walletError": "ウォレットに接続できませんでした。もう一度お試しください。",
+      "retryWallet": "ウォレット接続を再試行"
+    }
+  }
+}

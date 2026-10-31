@@ -6,7 +6,7 @@ All notable changes to Creative Pixels. Weekly CalVer: `YYYY.MM.DD` = the Monday
 
 ## [Current] — week of 2026-10-26
 
-Exports finish instead of stalling on missing media, centered transitions stay when you drop them on a cut, Director packs show minutes per top-up, and past briefs load only when you're signed in.
+Exports finish instead of stalling on missing media, centered transitions stay when you drop them on a cut, Director packs show minutes per top-up, past briefs load only when you're signed in, Flow checkout states are clearer, and Director automation uses your signed-in wallet.
 
 ### Fixed
 - Exports no longer hang retrying missing or unavailable media
@@ -15,6 +15,8 @@ Exports finish instead of stalling on missing media, centered transitions stay w
 
 ### Improved
 - Past Director briefs load only when you're signed in to your account
+- Flow checkout explains when to sign in, while your wallet is connecting, and when payments aren't configured
+- Director automation now always uses your signed-in wallet
 
 ## [2026.10.12] — week of 2026-10-12 to 2026-10-18
 
