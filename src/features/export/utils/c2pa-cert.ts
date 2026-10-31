@@ -44,8 +44,10 @@ const certIdCache = new Map<string, { certId: string; expiresAt: number }>()
 export async function getC2paCertId(
   wallet: string | undefined,
   walletClient: WalletClient | null,
+  signal?: AbortSignal,
 ): Promise<string | null> {
-  if (!wallet || !walletClient) return null
+  if (!wallet || !walletClient || signal?.aborted) return null
+  const signingClient = walletClient
 
   const key = wallet.toLowerCase()
   const cached = certIdCache.get(key)
@@ -53,48 +55,73 @@ export async function getC2paCertId(
     return cached.certId
   }
 
+  // Identity is optional: neither a stalled endpoint nor an unanswered wallet
+  // prompt should prevent the video renderer from starting.
+  const controller = new AbortController()
+  const onAbort = () => controller.abort()
+  signal?.addEventListener('abort', onAbort, { once: true })
+  const timeout = setTimeout(onAbort, 15_000)
+  const aborted = new Promise<null>((resolve) => {
+    controller.signal.addEventListener('abort', () => resolve(null), { once: true })
+  })
+
   try {
-    // 1. Request a challenge nonce.
-    const challengeRes = await fetch(CHALLENGE_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet }),
-    })
-    if (!challengeRes.ok) return null
-    const challenge = (await challengeRes.json()) as ChallengeResponse
+    return await Promise.race([aborted, issueCert()])
+  } finally {
+    clearTimeout(timeout)
+    signal?.removeEventListener('abort', onAbort)
+  }
 
-    // 2. Sign the EIP-712 challenge on the main thread (Privy EOA — no
-    //    EIP-1271/ERC-6492 wrapping, so recoverTypedDataAddress == wallet).
-    const signature = await walletClient.signTypedData({
-      account: wallet as `0x${string}`,
-      domain: challenge.domain,
-      types: challenge.types,
-      primaryType: 'C2PAIdentityChallenge',
-      message: {
-        wallet,
-        nonce: challenge.nonce,
-        expiresAt: BigInt(challenge.expiresAt),
-      },
-    })
+  async function issueCert(): Promise<string | null> {
+    try {
+      // 1. Request a challenge nonce.
+      const challengeRes = await fetch(CHALLENGE_ENDPOINT, {
+        signal: controller.signal,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet }),
+      })
+      if (!challengeRes.ok) return null
+      const challenge = (await challengeRes.json()) as ChallengeResponse
+      if (controller.signal.aborted) return null
 
-    // 3. Exchange the signature for a per-wallet certId.
-    const certsRes = await fetch(CERTS_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        wallet,
-        signature,
-        nonce: challenge.nonce,
-        expiresAt: challenge.expiresAt,
-      }),
-    })
-    if (!certsRes.ok) return null
-    const result = (await certsRes.json()) as CertsResponse
+      // 2. Sign the EIP-712 challenge on the main thread (Privy EOA — no
+      //    EIP-1271/ERC-6492 wrapping, so recoverTypedDataAddress == wallet).
+      const signature = await signingClient.signTypedData({
+        account: wallet as `0x${string}`,
+        domain: challenge.domain,
+        types: challenge.types,
+        primaryType: 'C2PAIdentityChallenge',
+        message: {
+          wallet,
+          nonce: challenge.nonce,
+          expiresAt: BigInt(challenge.expiresAt),
+        },
+      })
 
-    certIdCache.set(key, { certId: result.certId, expiresAt: result.expiresAt })
-    return result.certId
-  } catch {
-    return null
+      if (controller.signal.aborted) return null
+
+      // 3. Exchange the signature for a per-wallet certId.
+      const certsRes = await fetch(CERTS_ENDPOINT, {
+        signal: controller.signal,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          wallet,
+          signature,
+          nonce: challenge.nonce,
+          expiresAt: challenge.expiresAt,
+        }),
+      })
+      if (!certsRes.ok) return null
+      const result = (await certsRes.json()) as CertsResponse
+
+      if (controller.signal.aborted) return null
+      certIdCache.set(key, { certId: result.certId, expiresAt: result.expiresAt })
+      return result.certId
+    } catch {
+      return null
+    }
   }
 }
 

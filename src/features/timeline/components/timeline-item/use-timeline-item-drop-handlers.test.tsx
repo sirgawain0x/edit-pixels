@@ -1,6 +1,6 @@
 import { renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
-import type { ImageItem } from '@/types/timeline'
+import type { ImageItem, VideoItem } from '@/types/timeline'
 import { useTransitionDragStore } from '@/shared/state/transition-drag'
 import { resolveTransitionWindows } from '@/shared/timeline/transitions/transition-planner'
 import { useItemsStore } from '../../stores/items-store'
@@ -48,6 +48,49 @@ describe('transition cut drops', () => {
     useItemsStore.setState({ items: [] })
     useTransitionsStore.setState({ transitions: [] })
     vi.restoreAllMocks()
+  })
+
+  it('previews and adds a shorter transition when the default duration exceeds source handles', () => {
+    const leftVideo: VideoItem = {
+      ...leftClip,
+      type: 'video',
+      sourceStart: 0,
+      sourceEnd: 120,
+      sourceDuration: 126,
+    }
+    const rightVideo: VideoItem = {
+      ...rightClip,
+      type: 'video',
+      sourceStart: 6,
+      sourceEnd: 126,
+      sourceDuration: 180,
+    }
+    useItemsStore.setState({ items: [leftVideo, rightVideo] })
+    const addTransition = vi
+      .spyOn(useTimelineStore.getState(), 'addTransition')
+      .mockReturnValue(true)
+    const { result } = renderHook(() =>
+      useTimelineItemDropHandlers({
+        item: leftVideo,
+        trackLocked: false,
+        addEffects: vi.fn(),
+      }),
+    )
+    const event = dragEvent(15)
+    result.current.handleTransitionCutDragOver('right')(event)
+    expect(event.preventDefault).toHaveBeenCalled()
+    const preview = useTransitionDragStore.getState().preview!
+    expect(preview.durationInFrames).toBe(12)
+    result.current.handleTransitionCutDrop('right')(dragEvent(15))
+    expect(addTransition).toHaveBeenCalledWith(
+      'left',
+      'right',
+      'crossfade',
+      12,
+      'fade',
+      undefined,
+      0.5,
+    )
   })
 
   for (const edge of ['left', 'right'] as const) {

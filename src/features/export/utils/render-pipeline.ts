@@ -193,16 +193,26 @@ function renderInWorker(
     const worker = workerManager.getWorker()
 
     const onAbort = () => {
-      const cancelMessage: ExportRenderWorkerRequest = { type: 'cancel', requestId }
-      worker.postMessage(cancelMessage)
+      cleanup()
+      workerManager.terminate()
+      reject(new DOMException('Render cancelled', 'AbortError'))
     }
-    const cleanup = () => signal.removeEventListener('abort', onAbort)
+    const startupTimeout = setTimeout(() => {
+      cleanup()
+      workerManager.terminate()
+      reject(new Error('EXPORT_WORKER_RUNTIME_ERROR:Renderer did not start within 30 seconds'))
+    }, 30_000)
+    const cleanup = () => {
+      clearTimeout(startupTimeout)
+      signal.removeEventListener('abort', onAbort)
+    }
 
     signal.addEventListener('abort', onAbort, { once: true })
 
     worker.onmessage = (event: MessageEvent<ExportRenderWorkerResponse>) => {
       const response = event.data
       if (response.requestId !== requestId) return
+      clearTimeout(startupTimeout)
 
       switch (response.type) {
         case 'progress':
@@ -303,6 +313,8 @@ export async function runRender({
 
     if (!shouldFallbackToMainThread) throw workerError
 
+    workerManager.terminate()
+    signal.throwIfAborted()
     const result = await renderOnMainThread(
       exportMode,
       clientSettings,
