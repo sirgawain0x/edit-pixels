@@ -151,34 +151,43 @@ export async function resolvePrivySignerFromToken(
   }
 }
 
+function readDirectorSecretPrivyToken(body: Record<string, unknown>): string | null {
+  if (typeof body.token !== 'string') return null
+  const trimmed = body.token.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
 async function resolveDirectorSecretIdentity(
   request: Request,
   body: Record<string, unknown>,
 ): Promise<ResolvePixelsIdentityResult> {
-  const signerRaw =
-    typeof body.signerAddress === 'string'
-      ? body.signerAddress
-      : typeof body.signer_address === 'string'
-        ? body.signer_address
-        : typeof body.walletAddress === 'string'
-          ? body.walletAddress
-          : typeof body.wallet_address === 'string'
-            ? body.wallet_address
-            : readSignerHint(request, body) ?? null
-  const signer = signerRaw ? normalizeSignerAddress(signerRaw) : null
-  if (!signer) {
+  const signerHint = readSignerHint(request, body)
+  const signer = signerHint ? normalizeSignerAddress(signerHint) : null
+  if (signerHint && !signer) {
     return {
       ok: false,
-      response: Response.json({ error: 'signerAddress required' }, { status: 400 }),
+      response: Response.json({ error: 'invalid signerAddress' }, { status: 400 }),
     }
   }
 
-  if (isDirectorSecretAllowlistedSigner(signer)) {
+  if (signer && isDirectorSecretAllowlistedSigner(signer)) {
     return { ok: true, identity: { signer, source: 'secret' }, body }
   }
 
-  const token = getBearerToken(request) || (typeof body.token === 'string' ? body.token : null)
-  if (!token) {
+  const privyToken = readDirectorSecretPrivyToken(body)
+  if (!signer) {
+    if (!privyToken) {
+      return {
+        ok: false,
+        response: Response.json({ error: 'signerAddress required' }, { status: 400 }),
+      }
+    }
+    const privy = await resolvePrivySignerFromToken(privyToken)
+    if (!privy.ok) return privy
+    return { ok: true, identity: { signer: privy.signer, source: 'secret' }, body }
+  }
+
+  if (!privyToken) {
     console.warn('director secret path rejected: missing privy token for non-allowlisted signer')
     return {
       ok: false,
@@ -186,7 +195,7 @@ async function resolveDirectorSecretIdentity(
     }
   }
 
-  const privy = await resolvePrivySignerFromToken(token, signerRaw ?? undefined)
+  const privy = await resolvePrivySignerFromToken(privyToken, signerHint)
   if (!privy.ok) return privy
   if (privy.signer !== signer) {
     console.warn('director secret path rejected: signer not linked to privy account')

@@ -13,8 +13,11 @@ vi.mock('@privy-io/server-auth', () => ({
 }))
 
 vi.mock('../../../api/_director-auth.js', () => ({
-  isDirectorSecretAuthorized: (request: Request) =>
-    request.headers.get('x-director-secret') === 'test-secret',
+  isDirectorSecretAuthorized: (request: Request) => {
+    const header = request.headers.get('x-director-secret')
+    const bearer = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '').trim()
+    return header === 'test-secret' || bearer === 'test-secret'
+  },
   isDirectorSecretAllowlistedSigner: (signer: string) =>
     signer.toLowerCase() === '0xcccccccccccccccccccccccccccccccccccccccc',
 }))
@@ -161,7 +164,7 @@ describe('resolvePixelsIdentity', () => {
     }
   })
 
-  it('accepts walletAddress on director secret path with privy (Director payload shape)', async () => {
+  it('resolves director secret path from x-pixels-signer header', async () => {
     linkedUser([SIGNER_A])
     const { resolvePixelsIdentity } = await import('../../../api/_pixels-identity.js')
     const result = await resolvePixelsIdentity(
@@ -169,19 +172,63 @@ describe('resolvePixelsIdentity', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: 'Bearer good',
+          'x-director-secret': 'test-secret',
+          'x-pixels-signer': SIGNER_A,
+        },
+        body: JSON.stringify({ prompt: 'hi', token: 'good' }),
+      }),
+      { allowDirectorSecret: true },
+    )
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.identity.signer).toBe(SIGNER_A)
+  })
+
+  it('never treats walletAddress as signer on director secret path', async () => {
+    const PAYER = '0xdddddddddddddddddddddddddddddddddddddddd' as `0x${string}`
+    linkedUser([SIGNER_A])
+    const { resolvePixelsIdentity } = await import('../../../api/_pixels-identity.js')
+    const result = await resolvePixelsIdentity(
+      new Request('http://localhost/api/director', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
           'x-director-secret': 'test-secret',
         },
         body: JSON.stringify({
           prompt: 'hi',
-          walletAddress: SIGNER_A,
+          walletAddress: PAYER,
           token: 'good',
         }),
       }),
       { allowDirectorSecret: true },
     )
     expect(result.ok).toBe(true)
-    if (result.ok) expect(result.identity.signer).toBe(SIGNER_A)
+    if (result.ok) {
+      expect(result.identity.signer).toBe(SIGNER_A)
+      expect(result.identity.signer).not.toBe(PAYER)
+    }
+  })
+
+  it('uses body.token for privy on director secret path when bearer is the api secret', async () => {
+    linkedUser([SIGNER_A])
+    verifyAuthToken.mockClear()
+    const { resolvePixelsIdentity } = await import('../../../api/_pixels-identity.js')
+    const result = await resolvePixelsIdentity(
+      new Request('http://localhost/api/director', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer test-secret',
+          'x-pixels-signer': SIGNER_A,
+        },
+        body: JSON.stringify({ prompt: 'hi', token: 'good-privy-token' }),
+      }),
+      { allowDirectorSecret: true },
+    )
+    expect(result.ok).toBe(true)
+    expect(verifyAuthToken).toHaveBeenCalledTimes(1)
+    expect(verifyAuthToken).toHaveBeenCalledWith('good-privy-token')
+    expect(verifyAuthToken).not.toHaveBeenCalledWith('test-secret')
   })
 
   it('requires privy for director secret path when signer is not allowlisted', async () => {
@@ -192,7 +239,6 @@ describe('resolvePixelsIdentity', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: 'Bearer good',
           'x-director-secret': 'test-secret',
         },
         body: JSON.stringify({ prompt: 'hi', signerAddress: SIGNER_A, token: 'good' }),
