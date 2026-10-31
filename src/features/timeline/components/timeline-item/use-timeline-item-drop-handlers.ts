@@ -78,7 +78,7 @@ export function useTimelineItemDropHandlers({
         transitions: useTransitionsStore.getState().transitions,
         timelineFps: useTimelineStore.getState().fps,
         alignment: 0.5,
-        allowDurationClamp: false,
+        allowDurationClamp: true,
       })
 
       if (!target) {
@@ -152,7 +152,7 @@ export function useTimelineItemDropHandlers({
         transitions: useTransitionsStore.getState().transitions,
         timelineFps: useTimelineStore.getState().fps,
         alignment: 0.5,
-        allowDurationClamp: false,
+        allowDurationClamp: true,
       })
 
       if (!target || target.hasExisting || !target.canApply) {

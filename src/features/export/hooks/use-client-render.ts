@@ -137,7 +137,9 @@ export function useClientRender(): UseClientRenderReturn {
         void releaseTemporaryExportOutput(previousResult)
         setIsExporting(true)
         setProgress(0)
-        setProgressMessage(undefined)
+        setProgressMessage('Preparing export…')
+        setRenderedFrames(undefined)
+        setTotalFrames(undefined)
         setError(null)
         setResult(null)
         setStatus('preparing')
@@ -185,7 +187,9 @@ export function useClientRender(): UseClientRenderReturn {
         )
 
         if (smartCopy.result) {
-          const certId = await getC2paCertId(account, walletClient)
+          setProgressMessage('Preparing provenance identity…')
+          const certId = await getC2paCertId(account, walletClient, signal)
+          signal.throwIfAborted()
           const signedResult = await signRenderResultIfConfigured({
             result: smartCopy.result,
             wallet: account,
@@ -207,6 +211,7 @@ export function useClientRender(): UseClientRenderReturn {
         }
 
         // Resolve settings + codec fallback only when an encoder is required.
+        setProgressMessage('Checking export codec support…')
         const { clientSettings, codecFallback } = await resolveClientSettings(settings, fps)
         if (codecFallback) event.set('codecFallback', codecFallback)
 
@@ -262,6 +267,7 @@ export function useClientRender(): UseClientRenderReturn {
 
         // Resolve media URLs (convert mediaIds to blob URLs)
         // Export always uses full-res source, never proxies
+        setProgressMessage('Loading source media…')
         const resolvedTracks = await resolveMediaUrls(composition.tracks, { useProxy: false })
         composition.tracks = resolvedTracks
 
@@ -298,7 +304,10 @@ export function useClientRender(): UseClientRenderReturn {
         })
 
         // Run the render (worker, with automatic main-thread fallback).
-        const certId = await getC2paCertId(account, walletClient)
+        setProgressMessage('Preparing provenance identity…')
+        const certId = await getC2paCertId(account, walletClient, signal)
+        signal.throwIfAborted()
+        setProgressMessage('Starting video renderer…')
         const {
           result: renderResult,
           renderPath,
