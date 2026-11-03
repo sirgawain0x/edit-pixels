@@ -7,6 +7,90 @@ import { useWalletContext } from '@/context/wallet-context'
 
 type DeviceAction = 'approve' | 'deny'
 
+const SESSION_EXPIRED = 'Your session has expired. Sign out and sign in again before retrying.'
+
+function verificationError(status: number): string {
+  if (status === 400)
+    return 'This code is invalid or expired. Restart login in your CLI or agent to get a new code.'
+  if (status === 401) return SESSION_EXPIRED
+  return 'Unable to verify device access. Try again, or restart login in your CLI or agent.'
+}
+
+async function verifyDeviceAccess(
+  appId: string,
+  userCode: string,
+  action: DeviceAction,
+  getAccessToken: () => Promise<string | null>,
+): Promise<string | null> {
+  const token = await getAccessToken()
+  if (!token) return SESSION_EXPIRED
+  // Device authorization uses Privy's public OAuth API, never an app secret.
+  const response = await fetch(`${PRIVY_DEFAULT_AUTH_API_URL}/api/oauth/v2/device_verify`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'privy-app-id': appId,
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ user_code: userCode, action }),
+    signal: AbortSignal.timeout(15_000),
+    credentials: 'omit',
+    referrerPolicy: 'no-referrer',
+  })
+  return response.ok ? null : verificationError(response.status)
+}
+
+interface AuthorizationActionsProps {
+  configured: boolean
+  ready: boolean
+  authenticated: boolean
+  identity?: string
+  userCode: string
+  pending: DeviceAction | null
+  connect: () => void
+  signOut: () => Promise<void>
+  submit: (action: DeviceAction) => Promise<void>
+}
+
+function AuthorizationActions({
+  configured,
+  ready,
+  authenticated,
+  identity,
+  userCode,
+  pending,
+  connect,
+  signOut,
+  submit,
+}: AuthorizationActionsProps) {
+  if (!configured) return <p role="alert">Agent authorization is not configured for this app.</p>
+  if (!ready) return <p role="status">Loading sign-in…</p>
+  if (!authenticated) return <Button onClick={connect}>Sign in to continue</Button>
+
+  return (
+    <>
+      {identity ? (
+        <p className="break-all text-sm text-muted-foreground">Signed in as {identity}</p>
+      ) : null}
+      <div className="flex gap-3">
+        <Button disabled={!userCode || pending !== null} onClick={() => void submit('approve')}>
+          {pending === 'approve' ? 'Approving…' : 'Approve access'}
+        </Button>
+        <Button
+          variant="outline"
+          disabled={!userCode || pending !== null}
+          onClick={() => void submit('deny')}
+        >
+          {pending === 'deny' ? 'Denying…' : 'Deny access'}
+        </Button>
+      </div>
+      <Button variant="ghost" disabled={pending !== null} onClick={() => void signOut()}>
+        Sign out
+      </Button>
+    </>
+  )
+}
+
 export function AgentAuthorizationPage({ initialCode }: { initialCode: string }) {
   const { configured, ready, authenticated, connect, disconnect, user, getAccessToken } =
     useWalletContext()
@@ -18,6 +102,7 @@ export function AgentAuthorizationPage({ initialCode }: { initialCode: string })
   const appId = import.meta.env.VITE_PRIVY_APP_ID
   const userCode = code.trim()
   const identity = user?.email?.address ?? user?.wallet?.address ?? user?.id
+  const canSubmit = configured && ready && authenticated && Boolean(userCode) && Boolean(appId)
 
   async function signOut() {
     setError(null)
@@ -29,46 +114,14 @@ export function AgentAuthorizationPage({ initialCode }: { initialCode: string })
   }
 
   async function submit(action: DeviceAction) {
-    if (
-      submitting.current ||
-      completed ||
-      !configured ||
-      !ready ||
-      !authenticated ||
-      !userCode ||
-      !appId
-    )
-      return
+    if (submitting.current || completed || !canSubmit || !appId) return
     submitting.current = true
     setPending(action)
     setError(null)
     try {
-      const token = await getAccessToken()
-      if (!token) {
-        setError('Your session has expired. Sign out and sign in again before retrying.')
-        return
-      }
-      // Device authorization uses Privy's public OAuth API, never an app secret.
-      const response = await fetch(`${PRIVY_DEFAULT_AUTH_API_URL}/api/oauth/v2/device_verify`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'privy-app-id': appId,
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ user_code: userCode, action }),
-        signal: AbortSignal.timeout(15_000),
-        credentials: 'omit',
-        referrerPolicy: 'no-referrer',
-      })
-      if (!response.ok) {
-        setError(
-          response.status === 400
-            ? 'This code is invalid or expired. Restart login in your CLI or agent to get a new code.'
-            : response.status === 401
-              ? 'Your session has expired. Sign out and sign in again before retrying.'
-              : 'Unable to verify device access. Try again, or restart login in your CLI or agent.',
-        )
+      const failure = await verifyDeviceAccess(appId, userCode, action, getAccessToken)
+      if (failure) {
+        setError(failure)
         return
       }
       setCompleted(action)
@@ -127,37 +180,17 @@ export function AgentAuthorizationPage({ initialCode }: { initialCode: string })
                 your CLI or agent.
               </p>
             </div>
-            {!configured || !appId ? (
-              <p role="alert">Agent authorization is not configured for this app.</p>
-            ) : !ready ? (
-              <p role="status">Loading sign-in…</p>
-            ) : !authenticated ? (
-              <Button onClick={connect}>Sign in to continue</Button>
-            ) : (
-              <>
-                {identity ? (
-                  <p className="break-all text-sm text-muted-foreground">Signed in as {identity}</p>
-                ) : null}
-                <div className="flex gap-3">
-                  <Button
-                    disabled={!userCode || pending !== null}
-                    onClick={() => void submit('approve')}
-                  >
-                    {pending === 'approve' ? 'Approving…' : 'Approve access'}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    disabled={!userCode || pending !== null}
-                    onClick={() => void submit('deny')}
-                  >
-                    {pending === 'deny' ? 'Denying…' : 'Deny access'}
-                  </Button>
-                </div>
-                <Button variant="ghost" disabled={pending !== null} onClick={() => void signOut()}>
-                  Sign out
-                </Button>
-              </>
-            )}
+            <AuthorizationActions
+              configured={configured && Boolean(appId)}
+              ready={ready}
+              authenticated={authenticated}
+              identity={identity}
+              userCode={userCode}
+              pending={pending}
+              connect={connect}
+              signOut={signOut}
+              submit={submit}
+            />
             {error ? (
               <p role="alert" className="text-sm text-destructive">
                 {error}
