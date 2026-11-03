@@ -1,9 +1,15 @@
 {
   "current": {
     "version": "current",
-    "date": "2026-10-30",
+    "date": "2026-10-31",
     "groups": {
       "fixed": [
+        {
+          "title": "Exports no longer get stuck starting up when content credentials are slow to load"
+        },
+        {
+          "title": "Transitions dropped near short clips no longer get an invalid length"
+        },
         {
           "title": "Exports no longer hang retrying missing or unavailable media"
         },

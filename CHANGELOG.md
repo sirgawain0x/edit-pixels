@@ -6,9 +6,11 @@ All notable changes to Creative Pixels. Weekly CalVer: `YYYY.MM.DD` = the Monday
 
 ## [Current] — week of 2026-10-26
 
-Exports finish instead of stalling on missing media, centered transitions stay when you drop them on a cut, Director packs show minutes per top-up, past briefs load only when you're signed in, Flow checkout states are clearer, and Director automation uses your signed-in wallet.
+Exports start reliably even when content credentials load slowly, transitions on short clips keep a valid length, exports finish instead of stalling on missing media, centered transitions stay when you drop them on a cut, Director packs show minutes per top-up, past briefs load only when you're signed in, Flow checkout states are clearer, and Director automation uses your signed-in wallet.
 
 ### Fixed
+- Exports no longer get stuck starting up when content credentials are slow to load
+- Transitions dropped near short clips no longer get an invalid length
 - Exports no longer hang retrying missing or unavailable media
 - Centered transitions no longer drop when placed on a cut
 - Director session packs show estimated minutes instead of outdated credit counts
