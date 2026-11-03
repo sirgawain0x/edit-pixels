@@ -15,6 +15,7 @@ import {
   ChevronDown,
   ChevronUp,
   Copy,
+  Pencil,
   Loader2,
   RotateCcw,
   Scissors,
@@ -69,6 +70,12 @@ import { isSpanIgnored } from '../../utils/source-range-intervals'
 import type { TranscriptRemovalResult } from '../../stores/actions/edit/range-removal-actions'
 import { findTranscriptWordMatches } from '../../utils/transcript-fuzzy'
 
+import { joinTranscriptWords } from '@/shared/utils/transcript-text'
+import {
+  TranscriptCorrectionDialog,
+  type TranscriptCorrectionTarget,
+} from './transcript-correction-dialog'
+
 const logger = createLogger('TranscriptEditorPanel')
 
 type Translate = ReturnType<typeof useTranslation>['t']
@@ -99,6 +106,79 @@ function announcePartialApply(result: TranscriptRemovalResult, t: Translate): vo
       count: result.skipped.length,
     }),
   )
+}
+
+function getSkippedRanges(result: TranscriptRemovalResult | null) {
+  return result?.skipped ?? []
+}
+
+function reselectTranscriptOrigins(origins: ReadonlySet<string>, scope: TranscriptScope): void {
+  if (scope !== 'selection') return
+  const survivors = useItemsStore
+    .getState()
+    .items.filter((item) => origins.has(item.originId ?? item.id))
+    .map((item) => item.id)
+  useSelectionStore.getState().selectItems(survivors)
+}
+
+function stageSkippedRanges(result: TranscriptRemovalResult | null): void {
+  for (const skipped of getSkippedRanges(result)) {
+    useTranscriptIgnoreStore.getState().ignore({ [skipped.mediaId]: [skipped.range] })
+  }
+}
+
+function announceFailedCut(result: TranscriptRemovalResult | null, t: Translate): void {
+  toast.warning(
+    t('transcript.toastCutFailed', {
+      defaultValue: 'Cut could not be applied: {{count}} spans stayed in place',
+      count: getSkippedRanges(result).length,
+    }),
+  )
+}
+
+function announceCut(result: TranscriptRemovalResult, count: number, t: Translate): void {
+  if (result.skipped.length) announcePartialApply(result, t)
+  else toast.success(t('transcript.toastCut', { defaultValue: 'Cut {{count}} words', count }))
+}
+
+function tokenHighlightClass(
+  selected: boolean,
+  active: boolean,
+  match: boolean,
+  approximate: boolean,
+): string {
+  if (selected) return 'bg-primary text-primary-foreground'
+  if (active) return 'bg-yellow-300 text-neutral-900 shadow-sm'
+  if (match)
+    return approximate
+      ? 'text-foreground ring-1 ring-inset ring-amber-500/40'
+      : 'text-foreground ring-1 ring-inset ring-amber-500/70'
+  return 'text-foreground/85 hover:bg-secondary/60 hover:text-foreground'
+}
+
+function tokenTooltip(token: TranscriptToken, t: Translate): string {
+  return token.timingEstimated
+    ? t('transcript.estimatedWordTiming', {
+        defaultValue:
+          'Estimated timing. Review playback before cutting. Double-click to correct text.',
+      })
+    : t('transcript.doubleClickEdit', { defaultValue: 'Double-click to correct this word' })
+}
+
+function transcriptKeyboardAction(
+  event: React.KeyboardEvent,
+): 'correct' | 'mark' | 'apply' | 'clear' | null {
+  if (event.key === 'F2') return 'correct'
+  if (event.key === 'Escape') return 'clear'
+  if (event.key === 'Delete' || event.key === 'Backspace') return 'mark'
+  if (event.key !== 'Enter') return null
+  if (event.metaKey || event.ctrlKey) return 'apply'
+  return event.target === event.currentTarget ? 'correct' : null
+}
+
+function isTranscriptTypingTarget(target: EventTarget): boolean {
+  const element = target as HTMLElement
+  return element.tagName === 'INPUT' || element.tagName === 'TEXTAREA' || element.isContentEditable
 }
 
 type MediaStatus = 'loading' | 'ready' | 'needs' | 'error' | 'transcribing'
@@ -199,6 +279,7 @@ interface TranscriptSegmentRowProps {
   matchKeys: ReadonlySet<string>
   ignoredKeys: ReadonlySet<string>
   matchesApproximate: boolean
+  onEdit: (index: number) => void
   onSeek: (frame: number) => void
   onPointerDown: (index: number, event: ReactPointerEvent) => void
 }
@@ -218,6 +299,7 @@ const TranscriptSegmentRow = memo(function TranscriptSegmentRow({
   ignoredKeys,
   matchesApproximate,
   onSeek,
+  onEdit,
   onPointerDown,
 }: TranscriptSegmentRowProps) {
   const { t } = useTranslation()
@@ -260,17 +342,12 @@ const TranscriptSegmentRow = memo(function TranscriptSegmentRow({
                 data-token-key={token.key}
                 data-token-index={index}
                 onPointerDown={(event) => onPointerDown(index, event)}
+                onDoubleClick={() => onEdit(index)}
+                title={tokenTooltip(token, t)}
                 className={cn(
                   'cursor-text rounded px-0.5',
-                  isSelected
-                    ? 'bg-primary text-primary-foreground'
-                    : isActive
-                      ? 'bg-yellow-300 text-neutral-900 shadow-sm'
-                      : isMatch
-                        ? matchesApproximate
-                          ? 'text-foreground ring-1 ring-inset ring-amber-500/40'
-                          : 'text-foreground ring-1 ring-inset ring-amber-500/70'
-                        : 'text-foreground/85 hover:bg-secondary/60 hover:text-foreground',
+                  token.timingEstimated && 'underline decoration-dotted underline-offset-4',
+                  tokenHighlightClass(isSelected, isActive, isMatch, matchesApproximate),
                   isIgnored && 'line-through decoration-from-font opacity-45',
                 )}
               >
@@ -311,6 +388,8 @@ export function TranscriptEditorPanel({ active }: TranscriptEditorPanelProps) {
   const [anchorIndex, setAnchorIndex] = useState(-1)
   const [focusIndex, setFocusIndex] = useState(-1)
   const [query, setQuery] = useState('')
+  const [correctionTarget, setCorrectionTarget] = useState<TranscriptCorrectionTarget | null>(null)
+  const [skippedRanges, setSkippedRanges] = useState<TranscriptRemovalResult['skipped']>([])
   const [transcribeDialogOpen, setTranscribeDialogOpen] = useState(false)
   // -1 means "no match shown yet", so the first Next/Enter lands on match 0.
   const [matchCursor, setMatchCursor] = useState(-1)
@@ -337,8 +416,17 @@ export function TranscriptEditorPanel({ active }: TranscriptEditorPanelProps) {
   // Own Delete/Backspace whenever the pointer or focus is inside the panel, so
   // the timeline's clip-delete shortcut yields to us (see use-editing-shortcuts).
   useEffect(() => {
-    setTranscriptShortcutScope(active && (pointerWithin || focusWithin))
-  }, [active, pointerWithin, focusWithin, setTranscriptShortcutScope])
+    setTranscriptShortcutScope(
+      active && !correctionTarget && !transcribeDialogOpen && (pointerWithin || focusWithin),
+    )
+  }, [
+    active,
+    correctionTarget,
+    transcribeDialogOpen,
+    pointerWithin,
+    focusWithin,
+    setTranscriptShortcutScope,
+  ])
 
   useEffect(() => () => setTranscriptShortcutScope(false), [setTranscriptShortcutScope])
 
@@ -499,7 +587,7 @@ export function TranscriptEditorPanel({ active }: TranscriptEditorPanelProps) {
               : t('transcript.toastTranscribeFailed')
           setMediaState((prev) => ({
             ...prev,
-            [mediaId]: { status: 'error', errorMessage },
+            [mediaId]: { ...prev[mediaId], status: 'error', errorMessage },
           }))
         }
       }),
@@ -567,6 +655,33 @@ export function TranscriptEditorPanel({ active }: TranscriptEditorPanelProps) {
     if (Number.isInteger(index)) setFocusIndex(index)
   }, [])
 
+  const openCorrection = useCallback(
+    (selection: readonly TranscriptToken[]) => {
+      const first = selection[0]
+      if (!first || selection.some((token) => token.itemId !== first.itemId)) return
+      const transcript = mediaState[first.mediaId]?.transcript
+      if (!transcript) return
+      usePlaybackStore.getState().pause()
+      setCorrectionTarget({
+        mediaId: first.mediaId,
+        start: Math.min(...selection.map((token) => token.sourceStart)),
+        end: Math.max(...selection.map((token) => token.sourceEnd)),
+        text: joinTranscriptWords(selection.map((token) => token.text)),
+        expectedUpdatedAt: transcript.updatedAt,
+        wordCount: selection.length,
+      })
+    },
+    [mediaState],
+  )
+
+  const handleEditWord = useCallback(
+    (index: number) => {
+      const token = tokens[index]
+      if (token) openCorrection([token])
+    },
+    [tokens, openCorrection],
+  )
+
   // Non-destructive: striking words stages them as "ignored" (restorable) rather
   // than cutting the timeline. Re-striking an already-ignored selection restores it.
   const handleIgnoreToggle = useCallback(() => {
@@ -591,11 +706,15 @@ export function TranscriptEditorPanel({ active }: TranscriptEditorPanelProps) {
       if (clones.length === 0) return
 
       const currentFrame = usePlaybackStore.getState().currentFrame
-      useClipboardStore.getState().copyItems(clones, currentFrame, cut ? 'cut' : 'copy')
+      // These are trimmed clones; cut removal happens here, not during paste.
+      useClipboardStore.getState().copyItems(clones, currentFrame, 'copy')
       void navigator.clipboard
-        ?.writeText(selectedSlice.map((token) => token.text).join(' '))
+        ?.writeText(joinTranscriptWords(selectedSlice.map((token) => token.text)))
         .catch(() => {})
 
+      const affectedOrigins = new Set(
+        selectedSlice.map((token) => itemById[token.itemId]?.originId ?? token.itemId),
+      )
       const count = selectedSlice.length
       if (!cut) {
         toast.success(
@@ -617,21 +736,20 @@ export function TranscriptEditorPanel({ active }: TranscriptEditorPanelProps) {
           return null
         }
       })()
+      setSkippedRanges(getSkippedRanges(result))
+      stageSkippedRanges(result)
       if (!result || result.removedItemCount === 0) {
         // Never claim a cut that did not land.
-        toast.warning(
-          t('transcript.toastCutFailed', {
-            defaultValue: 'Cut could not be applied: {{count}} spans stayed in place',
-            count: result?.skipped.length ?? 0,
-          }),
-        )
+        announceFailedCut(result, t)
         return
       }
+      useClipboardStore.getState().copyItems(clones, currentFrame, 'cut')
+      reselectTranscriptOrigins(affectedOrigins, scope)
       setAnchorIndex(-1)
       setFocusIndex(-1)
-      toast.success(t('transcript.toastCut', { defaultValue: 'Cut {{count}} words', count }))
+      announceCut(result, count, t)
     },
-    [selectedSlice, itemById, timelineFps, t],
+    [selectedSlice, itemById, timelineFps, scope, t],
   )
 
   // Bridge Ctrl+C / Ctrl+X to word-level copy/cut. The global clipboard hotkeys
@@ -641,7 +759,8 @@ export function TranscriptEditorPanel({ active }: TranscriptEditorPanelProps) {
   const handleCopyWordsRef = useRef(handleCopyWords)
   handleCopyWordsRef.current = handleCopyWords
   const copyActiveRef = useRef(false)
-  copyActiveRef.current = active && selectedSlice.length > 0
+  copyActiveRef.current =
+    active && !correctionTarget && !transcribeDialogOpen && selectedSlice.length > 0
   useEffect(() => {
     return registerTranscriptCopyHandler({
       isActive: () => copyActiveRef.current,
@@ -674,6 +793,7 @@ export function TranscriptEditorPanel({ active }: TranscriptEditorPanelProps) {
       return
     }
 
+    setSkippedRanges(getSkippedRanges(result))
     setAnchorIndex(-1)
     setFocusIndex(-1)
 
@@ -685,13 +805,7 @@ export function TranscriptEditorPanel({ active }: TranscriptEditorPanelProps) {
     }
 
     // Re-select every surviving piece of the edited clips so the document stays whole.
-    if (scope === 'selection') {
-      const survivors = useItemsStore
-        .getState()
-        .items.filter((item) => affectedOrigins.has(item.originId ?? item.id))
-        .map((item) => item.id)
-      if (survivors.length > 0) useSelectionStore.getState().selectItems(survivors)
-    }
+    reselectTranscriptOrigins(affectedOrigins, scope)
 
     if (result.skipped.length > 0) {
       // Partial apply. The skipped spans are still struck, so the user can retry.
@@ -704,6 +818,7 @@ export function TranscriptEditorPanel({ active }: TranscriptEditorPanelProps) {
 
   const handleRestoreAll = useCallback(() => {
     useTranscriptIgnoreStore.getState().clear()
+    setSkippedRanges([])
   }, [])
 
   // Jump to a specific match. Callers own the cursor math (next/prev/Enter) and
@@ -732,29 +847,32 @@ export function TranscriptEditorPanel({ active }: TranscriptEditorPanelProps) {
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
-      // Never hijack typing in the search box (or any input that bubbles here).
-      const target = event.target as HTMLElement
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
-        return
+      if (correctionTarget || transcribeDialogOpen || isTranscriptTypingTarget(event.target)) return
+      const action = transcriptKeyboardAction(event)
+      if (!action) return
+      event.preventDefault()
+      event.stopPropagation()
+      const handlers = {
+        correct: () => openCorrection(selectedSlice),
+        mark: handleIgnoreToggle,
+        apply: handleApply,
+        clear: () => {
+          setAnchorIndex(-1)
+          setFocusIndex(-1)
+        },
       }
-
-      if (event.key === 'Delete' || event.key === 'Backspace') {
-        // Always own these so they never fall through to the timeline's clip
-        // delete — even with no selection (then it's simply a no-op).
-        event.preventDefault()
-        event.stopPropagation()
-        if (selectedKeys.size > 0) handleIgnoreToggle()
-      } else if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-        if (ignoredSpanCount === 0) return
-        event.preventDefault()
-        event.stopPropagation()
-        handleApply()
-      } else if (event.key === 'Escape') {
-        setAnchorIndex(-1)
-        setFocusIndex(-1)
-      }
+      handlers[action]()
     },
-    [selectedKeys.size, handleIgnoreToggle, ignoredSpanCount, handleApply],
+    [
+      selectedKeys.size,
+      correctionTarget,
+      transcribeDialogOpen,
+      selectedSlice,
+      openCorrection,
+      handleIgnoreToggle,
+      ignoredSpanCount,
+      handleApply,
+    ],
   )
 
   const needsTranscription = uniqueMediaIds.filter(
@@ -769,7 +887,7 @@ export function TranscriptEditorPanel({ active }: TranscriptEditorPanelProps) {
     (values: TranscribeDialogValues) => {
       const targets = uniqueMediaIds.filter((id) => {
         const status = mediaState[id]?.status
-        return status === 'needs' || status === 'error'
+        return status === 'needs' || status === 'error' || status === 'ready'
       })
       if (targets.length === 0) return
 
@@ -778,7 +896,7 @@ export function TranscriptEditorPanel({ active }: TranscriptEditorPanelProps) {
       for (const id of targets) requestedRef.current.add(id)
       setMediaState((prev) => {
         const next = { ...prev }
-        for (const id of targets) next[id] = { status: 'transcribing' }
+        for (const id of targets) next[id] = { ...prev[id], status: 'transcribing' }
         return next
       })
 
@@ -793,7 +911,12 @@ export function TranscriptEditorPanel({ active }: TranscriptEditorPanelProps) {
             })
             if (!mountedRef.current) return
             if (result.status === 'cancelled') {
-              setMediaState((prev) => ({ ...prev, [mediaId]: { status: 'needs' } }))
+              setMediaState((prev) => ({
+                ...prev,
+                [mediaId]: prev[mediaId]?.transcript
+                  ? { ...prev[mediaId], status: 'ready' }
+                  : { status: 'needs' },
+              }))
               return
             }
             const { transcript } = result
@@ -813,7 +936,7 @@ export function TranscriptEditorPanel({ active }: TranscriptEditorPanelProps) {
             if (mountedRef.current) {
               setMediaState((prev) => ({
                 ...prev,
-                [mediaId]: { status: 'error', errorMessage },
+                [mediaId]: { ...prev[mediaId], status: 'error', errorMessage },
               }))
             }
             toast.error(errorMessage)
@@ -868,6 +991,24 @@ export function TranscriptEditorPanel({ active }: TranscriptEditorPanelProps) {
       {/* Scope toggle */}
       <div className="flex items-center gap-1 border-b border-border p-2">
         <ScopeToggle scope={scope} onChange={setScope} t={t} />
+        {tokens.length > 0 && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="shrink-0 gap-1 text-xs"
+            disabled={isBusy || ignoredSpanCount > 0}
+            onClick={() => setTranscribeDialogOpen(true)}
+          >
+            {isBusy ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RotateCcw className="h-3.5 w-3.5" />
+            )}
+            {isBusy
+              ? t('transcript.transcribing')
+              : t('transcript.regenerate', { defaultValue: 'Transcribe again' })}
+          </Button>
+        )}
       </div>
 
       {/* Search */}
@@ -1025,12 +1166,37 @@ export function TranscriptEditorPanel({ active }: TranscriptEditorPanelProps) {
                 ignoredKeys={ignoredKeys}
                 matchesApproximate={matchesApproximate}
                 onSeek={seekToToken}
+                onEdit={handleEditWord}
                 onPointerDown={handlePointerDown}
               />
             ))}
           </div>
         )}
       </div>
+
+      {skippedRanges.length > 0 && ignoredSpanCount > 0 && (
+        <div
+          role="status"
+          className="max-h-28 overflow-y-auto border-t border-border px-3 py-2 text-xs text-amber-600 dark:text-amber-400"
+        >
+          {skippedRanges.map((skipped, index) => (
+            <p key={`${skipped.mediaId}:${index}`}>
+              {formatTimecode(skipped.range.start)}–{formatTimecode(skipped.range.end)} ·{' '}
+              {t(`transcript.skipReason.${skipped.reason}`, {
+                defaultValue: {
+                  'transition-overlap': 'Move or remove the transition, then retry Delete marked.',
+                  'linked-split-failed':
+                    'A linked clip could not be split. Check linked clips, then retry.',
+                  'clip-edge':
+                    'This range falls outside the clip or is shorter than a timeline frame.',
+                  coverage: 'This word range could not be isolated. Review the clip boundaries.',
+                  'no-timeline-clip': 'The source clip is no longer on the timeline.',
+                }[skipped.reason],
+              })}
+            </p>
+          ))}
+        </div>
+      )}
 
       {/* Pending edits bar */}
       {ignoredSpanCount > 0 && (
@@ -1082,6 +1248,23 @@ export function TranscriptEditorPanel({ active }: TranscriptEditorPanelProps) {
               })}
         </span>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 gap-1.5 px-2"
+            disabled={
+              selectionCount === 0 ||
+              selectedSlice.some((token) => token.itemId !== selectedSlice[0]?.itemId) ||
+              isBusy
+            }
+            onClick={() => openCorrection(selectedSlice)}
+            aria-label={t('transcript.editWords', { defaultValue: 'Edit words' })}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            <span className="hidden @[340px]:inline">
+              {t('transcript.editWords', { defaultValue: 'Edit words' })}
+            </span>
+          </Button>
           <Button
             size="sm"
             variant="ghost"
@@ -1143,11 +1326,21 @@ export function TranscriptEditorPanel({ active }: TranscriptEditorPanelProps) {
         </div>
       </div>
 
+      {correctionTarget && (
+        <TranscriptCorrectionDialog
+          target={correctionTarget}
+          onClose={() => {
+            setCorrectionTarget(null)
+            setAnchorIndex(-1)
+            setFocusIndex(-1)
+          }}
+        />
+      )}
       <TranscribeDialog
         open={transcribeDialogOpen}
         onOpenChange={setTranscribeDialogOpen}
         fileName={transcriptionFileName}
-        hasTranscript={false}
+        hasTranscript={tokens.length > 0}
         isRunning={isBusy}
         progressPercent={null}
         progressLabel={t('transcript.transcribing')}

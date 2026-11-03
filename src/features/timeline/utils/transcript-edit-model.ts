@@ -21,6 +21,7 @@ export interface TranscriptToken {
   itemId: string
   mediaId: string
   text: string
+  timingEstimated?: boolean
   /** Word start in source-native seconds. */
   sourceStart: number
   /** Word end in source-native seconds. */
@@ -98,6 +99,7 @@ export function buildTranscriptTokens(
         itemId: item.id,
         mediaId: item.mediaId,
         text: word.text.trim(),
+        ...(word.timing === 'estimated' ? { timingEstimated: true } : {}),
         sourceStart: clampedStart,
         sourceEnd: clampedEnd,
         startFrame: sourceSecondsToTimelineFrame(item, clampedStart, timelineFps),

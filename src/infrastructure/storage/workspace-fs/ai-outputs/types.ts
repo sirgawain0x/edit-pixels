@@ -12,6 +12,8 @@ import type {
   MediaTranscript,
   MediaTranscriptModel,
   MediaTranscriptQuantization,
+  MediaTranscriptSegment,
+  TranscriptWordOverride,
 } from '@/types/storage'
 
 /**
@@ -61,7 +63,8 @@ export interface TranscriptPayload {
   quantization: MediaTranscriptQuantization
   modelVariant: MediaTranscriptModel
   text: string
-  segments: Array<{ text: string; start: number; end: number }>
+  segments: MediaTranscriptSegment[]
+  overrides?: TranscriptWordOverride[]
 }
 
 export type CaptionsPayload = {
@@ -123,7 +126,7 @@ export function transcriptFromLegacy(record: MediaTranscript): AiOutput<'transcr
     schemaVersion: AI_OUTPUT_SCHEMA_VERSION,
     kind: 'transcript',
     mediaId: record.mediaId,
-    service: 'whisper',
+    service: record.model === 'parakeet-tdt-v3' ? 'parakeet' : 'whisper',
     model: record.model,
     params: { quantization: record.quantization, language: record.language },
     createdAt: record.createdAt,
@@ -134,6 +137,7 @@ export function transcriptFromLegacy(record: MediaTranscript): AiOutput<'transcr
       modelVariant: record.model,
       text: record.text,
       segments: record.segments,
+      ...(record.overrides ? { overrides: record.overrides } : {}),
     },
   }
 }
@@ -148,6 +152,7 @@ export function transcriptToLegacy(envelope: AiOutput<'transcript'>): MediaTrans
     quantization: envelope.data.quantization,
     text: envelope.data.text,
     segments: envelope.data.segments,
+    ...(envelope.data.overrides ? { overrides: envelope.data.overrides } : {}),
     createdAt: envelope.createdAt,
     updatedAt: envelope.updatedAt,
   }

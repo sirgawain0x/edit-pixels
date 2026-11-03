@@ -195,6 +195,8 @@ export function TranscribeDialog({
             </Select>
           </div>
 
+          <TranscriptionModelHint model={model} />
+
           {!isParakeetModel(model) && (
             <div className="space-y-1.5">
               <Label htmlFor="transcribe-quantization" className="text-sm">
@@ -321,5 +323,22 @@ export function TranscribeDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+function TranscriptionModelHint({ model }: { model: MediaTranscriptModel }) {
+  const { t } = useTranslation()
+  return (
+    <p className="text-xs leading-relaxed text-muted-foreground">
+      {model === 'whisper-large'
+        ? t('media.transcribe.largeQualityHint', {
+            defaultValue:
+              'Large v3 Turbo is the quality option for difficult speech. It needs more memory and a larger first download. Audio stays on this device.',
+          })
+        : t('media.transcribe.localModelHint', {
+            defaultValue:
+              'Audio stays on this device. Try Whisper Large v3 Turbo if recognition is inaccurate.',
+          })}
+    </p>
   )
 }

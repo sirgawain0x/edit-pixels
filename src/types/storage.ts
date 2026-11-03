@@ -191,6 +191,19 @@ export interface MediaTranscriptWord {
   start: number
   end: number
   confidence?: number
+  edited?: boolean
+  /** Inferred timing, rather than a measured word boundary. */
+  timing?: 'estimated'
+}
+
+/** Source-time correction, preserved independently of recognizer segmentation. */
+export interface TranscriptWordOverride {
+  start: number
+  end: number
+  text: string
+  words: MediaTranscriptWord[]
+  timing: 'preserved' | 'estimated'
+  sourceVersionAt: number
 }
 
 export interface MediaTranscript {
@@ -201,6 +214,7 @@ export interface MediaTranscript {
   quantization: MediaTranscriptQuantization
   text: string
   segments: MediaTranscriptSegment[]
+  overrides?: TranscriptWordOverride[]
   createdAt: number
   updatedAt: number
 }

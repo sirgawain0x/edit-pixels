@@ -52,7 +52,9 @@ export function resolveWhisperWordTimings(
 
     const nextStart = nextKnownStart(rawWords, index, start)
     let end = validTimestamp(rawEnd) && rawEnd > start ? rawEnd : null
+    const inferred = !validTimestamp(rawStart) || end === null
     end ??= nextStart ?? Math.min(chunkDuration, start + FALLBACK_WORD_SECONDS)
+    end = Math.min(end, chunkDuration)
     if (end <= start && start === chunkDuration && chunkDuration > 0) {
       start = Math.max(0, chunkDuration - MIN_WORD_SECONDS)
       end = chunkDuration
@@ -65,6 +67,7 @@ export function resolveWhisperWordTimings(
     previousEnd = end
     words.push({
       text: rawWord.text,
+      ...(inferred ? { timing: 'estimated' as const } : {}),
       start: start + chunkTimestamp,
       end: end + chunkTimestamp,
       ...(typeof rawWord.confidence === 'number' ? { confidence: rawWord.confidence } : {}),

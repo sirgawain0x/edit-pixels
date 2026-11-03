@@ -1,3 +1,4 @@
+import { dedupeTranscriptWords } from '../lib/dedupe-transcript-words'
 import type { MainThreadMessage, PCMChunk, TranscriptWord, WhisperWorkerMessage } from '../types'
 import { createLogger } from '@/shared/logging/logger'
 import { getChunkStartProgress, transcribingProgressEvent } from '../lib/chunk-progress'
@@ -29,7 +30,6 @@ const MAX_TOKENS_PER_STEP = 10
 const STATE_SHAPE = [2, 1, 640] as const // [pred_rnn_layers, batch, pred_hidden]
 
 const RECENT_WORD_RETENTION_SECONDS = 8
-const DUPLICATE_WORD_START_TOLERANCE_SECONDS = 0.5
 
 const ESTIMATED_BYTES: Record<'webgpu' | 'wasm', number> = {
   webgpu: Math.round(1_270 * 1024 * 1024),
@@ -509,21 +509,7 @@ async function transcribeChunk(chunk: PCMChunk): Promise<void> {
 }
 
 function dedupeOverlappingWords(words: TranscriptWord[]): TranscriptWord[] {
-  return words.filter((word) => {
-    const normalized = normalizeWordText(word.text)
-    if (!normalized) return true
-    return !recentWords.some((recent) => {
-      if (normalizeWordText(recent.text) !== normalized) return false
-      const startsClose =
-        Math.abs(recent.start - word.start) <= DUPLICATE_WORD_START_TOLERANCE_SECONDS
-      const overlaps = recent.start < word.end && word.start < recent.end
-      return startsClose || overlaps
-    })
-  })
-}
-
-function normalizeWordText(text: string): string {
-  return text.toLowerCase().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '')
+  return dedupeTranscriptWords(words, recentWords)
 }
 
 function postMain(message: MainThreadMessage): void {

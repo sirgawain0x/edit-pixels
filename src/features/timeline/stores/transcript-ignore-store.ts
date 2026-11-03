@@ -82,11 +82,6 @@ export const useTranscriptIgnoreStore = create<TranscriptIgnoreState>((set, get)
       .items.filter((item) => isTranscriptableItem(item) && targetMediaIds.has(item.mediaId))
       .map((item) => item.id)
 
-    if (itemIds.length === 0) {
-      set({ ranges: {} })
-      return null
-    }
-
     const rangesByMediaId: RangesByMediaId = {}
     for (const mediaId of mediaIds) {
       rangesByMediaId[mediaId] = normalizeRanges(ranges[mediaId] ?? [])
