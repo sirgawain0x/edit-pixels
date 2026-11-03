@@ -122,6 +122,22 @@ export interface TimelineActions {
     removedRangeCount: number
     removedItemCount: number
     splitCount: number
+    /** Ranges that actually left the timeline, keyed by mediaId. */
+    landedRangesByMediaId: Record<string, Array<{ start: number; end: number }>>
+    /**
+     * Ranges that were committed but stayed on the timeline, with the reason.
+     * Callers must keep these staged so the delete is retryable.
+     */
+    skipped: Array<{
+      mediaId: string
+      range: { start: number; end: number }
+      reason:
+        | 'no-timeline-clip'
+        | 'clip-edge'
+        | 'transition-overlap'
+        | 'linked-split-failed'
+        | 'coverage'
+    }>
   }
   joinItems: (itemIds: string[]) => void
   rateStretchItem: (id: string, newFrom: number, newDuration: number, newSpeed: number) => void
