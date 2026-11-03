@@ -71,6 +71,36 @@ import { findTranscriptWordMatches } from '../../utils/transcript-fuzzy'
 
 const logger = createLogger('TranscriptEditorPanel')
 
+type Translate = ReturnType<typeof useTranslation>['t']
+
+/**
+ * Why a commit removed nothing. Kept out of the handler so the callback stays
+ * under the complexity gate, and so the wording lives in one place.
+ */
+function announceBlockedApply(result: TranscriptRemovalResult | null, t: Translate): void {
+  if (result && result.skipped.length > 0) {
+    toast.warning(
+      t('transcript.toastNothingRemovedWhy', {
+        defaultValue: 'Nothing removed: {{count}} marked spans could not be cut here',
+        count: result.skipped.length,
+      }),
+    )
+    return
+  }
+  toast.info(t('transcript.toastNothingRemoved'))
+}
+
+/** Partial apply: say how much landed so a half-done delete never looks finished. */
+function announcePartialApply(result: TranscriptRemovalResult, t: Translate): void {
+  toast.warning(
+    t('transcript.toastRemovedPartial', {
+      defaultValue: 'Removed {{removed}} spans · {{count}} stayed marked',
+      removed: result.removedRangeCount,
+      count: result.skipped.length,
+    }),
+  )
+}
+
 type MediaStatus = 'loading' | 'ready' | 'needs' | 'error' | 'transcribing'
 type TranscriptScope = 'selection' | 'project'
 
@@ -650,16 +680,7 @@ export function TranscriptEditorPanel({ active }: TranscriptEditorPanelProps) {
     if (!result || result.removedItemCount === 0) {
       // Skipped ranges stay staged (the store keeps them), so say what happened
       // instead of implying the marking was ignored.
-      if (result && result.skipped.length > 0) {
-        toast.warning(
-          t('transcript.toastNothingRemovedWhy', {
-            defaultValue: 'Nothing removed: {{count}} marked spans could not be cut here',
-            count: result.skipped.length,
-          }),
-        )
-        return
-      }
-      toast.info(t('transcript.toastNothingRemoved'))
+      announceBlockedApply(result, t)
       return
     }
 
@@ -674,13 +695,7 @@ export function TranscriptEditorPanel({ active }: TranscriptEditorPanelProps) {
 
     if (result.skipped.length > 0) {
       // Partial apply. The skipped spans are still struck, so the user can retry.
-      toast.warning(
-        t('transcript.toastRemovedPartial', {
-          defaultValue: 'Removed {{removed}} spans · {{count}} stayed marked',
-          removed: result.removedRangeCount,
-          count: result.skipped.length,
-        }),
-      )
+      announcePartialApply(result, t)
       return
     }
 
