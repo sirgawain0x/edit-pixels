@@ -31,6 +31,39 @@ export interface RemoveSilenceResult {
   splitCount: number
 }
 
+/**
+ * Why a committed range did not leave the timeline. Surfaced to the user so a
+ * failed delete is retryable instead of silent — see `skipped` below.
+ */
+export type TranscriptRemovalSkipReason =
+  /** No clip of that media is on the timeline right now. */
+  | 'no-timeline-clip'
+  /** The range maps to frames at or outside the clip's in/out, so there is nothing to split. */
+  | 'clip-edge'
+  /** A boundary frame landed inside a transition overlap, where splits are not allowed. */
+  | 'transition-overlap'
+  /** A linked partner could not split with the anchor, so the whole split was aborted. */
+  | 'linked-split-failed'
+  /** The piece could not be isolated to the coverage threshold and kept its speech. */
+  | 'coverage'
+
+export interface SkippedRange {
+  mediaId: string
+  range: RemoveSilenceRange
+  reason: TranscriptRemovalSkipReason
+}
+
+export interface TranscriptRemovalResult extends RemoveSilenceResult {
+  /** Ranges that actually left the timeline, keyed by mediaId. */
+  landedRangesByMediaId: Record<string, RemoveSilenceRange[]>
+  /**
+   * Ranges that were committed but did not land, with the reason. Callers must
+   * keep these ranges staged so the user can retry rather than re-mark them.
+   * Invariant: landed + skipped === every committed range.
+   */
+  skipped: SkippedRange[]
+}
+
 // A post-split segment is removed when at least this fraction of its source-time
 // span is covered by detected silence. The threshold guards two cases:
 //   1. Frames that couldn't be split cleanly (e.g. inside a transition overlap)
@@ -179,14 +212,18 @@ export function removeSilenceFromItems(
   itemIds: string[],
   silenceRangesByMediaId: Record<string, RemoveSilenceRange[]>,
 ): RemoveSilenceResult {
-  return removeTimelineRangesFromItems('REMOVE_SILENCE', itemIds, silenceRangesByMediaId)
+  const { analyzedItemCount, removedRangeCount, removedItemCount, splitCount } =
+    removeTimelineRangesFromItems('REMOVE_SILENCE', itemIds, silenceRangesByMediaId)
+  return { analyzedItemCount, removedRangeCount, removedItemCount, splitCount }
 }
 
 export function removeFillerWordsFromItems(
   itemIds: string[],
   fillerRangesByMediaId: Record<string, RemoveSilenceRange[]>,
 ): RemoveSilenceResult {
-  return removeTimelineRangesFromItems('REMOVE_FILLER_WORDS', itemIds, fillerRangesByMediaId)
+  const { analyzedItemCount, removedRangeCount, removedItemCount, splitCount } =
+    removeTimelineRangesFromItems('REMOVE_FILLER_WORDS', itemIds, fillerRangesByMediaId)
+  return { analyzedItemCount, removedRangeCount, removedItemCount, splitCount }
 }
 
 /**
@@ -194,21 +231,87 @@ export function removeFillerWordsFromItems(
  * Ranges are in source-native seconds, keyed by mediaId — the same shape the
  * silence/filler removers use — so this reuses the split-then-ripple machinery
  * and lands as a single "remove transcript selection" undo step.
+ *
+ * Unlike the silence/filler variants this reports per-range outcome: which
+ * ranges actually left the timeline and, for the ones that did not, why. The
+ * caller keeps the skipped ranges staged so a failed delete is retryable
+ * instead of silently losing the user's review state.
  */
 export function removeTranscriptRangesFromItems(
   itemIds: string[],
   rangesByMediaId: Record<string, RemoveSilenceRange[]>,
-): RemoveSilenceResult {
+): TranscriptRemovalResult {
   return removeTimelineRangesFromItems('REMOVE_TRANSCRIPT_SELECTION', itemIds, rangesByMediaId)
+}
+
+/** A committed range counts as landed once this much of it left the timeline. */
+const RANGE_LANDED_COVERAGE = 0.9
+
+// When a range fails for more than one reason, report the most actionable one.
+const SKIP_REASON_PRIORITY: Record<TranscriptRemovalSkipReason, number> = {
+  'no-timeline-clip': 0,
+  coverage: 1,
+  'clip-edge': 2,
+  'linked-split-failed': 3,
+  'transition-overlap': 4,
+}
+
+interface CommittedRange {
+  mediaId: string
+  range: RemoveSilenceRange
+  key: string
+}
+
+function collectCommittedRanges(
+  rangesByMediaId: Record<string, RemoveSilenceRange[]>,
+): CommittedRange[] {
+  return Object.entries(rangesByMediaId).flatMap(([mediaId, ranges]) =>
+    ranges.map((range, index) => ({ mediaId, range, key: `${mediaId}:${index}` })),
+  )
+}
+
+/** Merge overlapping spans so coverage is never double-counted. */
+function unionSpans(spans: readonly RemoveSilenceRange[]): RemoveSilenceRange[] {
+  const sorted = [...spans].toSorted((left, right) => left.start - right.start)
+  const merged: RemoveSilenceRange[] = []
+  for (const span of sorted) {
+    const last = merged.at(-1)
+    if (last && span.start <= last.end) {
+      last.end = Math.max(last.end, span.end)
+      continue
+    }
+    merged.push({ start: span.start, end: span.end })
+  }
+  return merged
+}
+
+function overlapSeconds(spans: readonly RemoveSilenceRange[], range: RemoveSilenceRange): number {
+  return spans.reduce((sum, span) => {
+    const overlapStart = Math.max(range.start, span.start)
+    const overlapEnd = Math.min(range.end, span.end)
+    return sum + Math.max(0, overlapEnd - overlapStart)
+  }, 0)
 }
 
 function removeTimelineRangesFromItems(
   commandType: 'REMOVE_SILENCE' | 'REMOVE_FILLER_WORDS' | 'REMOVE_TRANSCRIPT_SELECTION',
   itemIds: string[],
   rangesByMediaId: Record<string, RemoveSilenceRange[]>,
-): RemoveSilenceResult {
+): TranscriptRemovalResult {
+  const committed = collectCommittedRanges(rangesByMediaId)
+
+  const allSkipped = (reason: TranscriptRemovalSkipReason): SkippedRange[] =>
+    committed.map((entry) => ({ mediaId: entry.mediaId, range: entry.range, reason }))
+
   if (itemIds.length === 0) {
-    return { analyzedItemCount: 0, removedRangeCount: 0, removedItemCount: 0, splitCount: 0 }
+    return {
+      analyzedItemCount: 0,
+      removedRangeCount: 0,
+      removedItemCount: 0,
+      splitCount: 0,
+      landedRangesByMediaId: {},
+      skipped: allSkipped('no-timeline-clip'),
+    }
   }
 
   return execute(
@@ -228,7 +331,14 @@ function removeTimelineRangesFromItems(
         )
 
       if (anchors.length === 0) {
-        return { analyzedItemCount: 0, removedRangeCount: 0, removedItemCount: 0, splitCount: 0 }
+        return {
+          analyzedItemCount: 0,
+          removedRangeCount: 0,
+          removedItemCount: 0,
+          splitCount: 0,
+          landedRangesByMediaId: {},
+          skipped: allSkipped('no-timeline-clip'),
+        }
       }
 
       const anchorDescriptors = anchors.map((item) => ({
@@ -236,63 +346,104 @@ function removeTimelineRangesFromItems(
         mediaId: item.mediaId!,
         originId: item.originId ?? item.id,
       }))
+      const anchoredMediaIds = new Set(anchorDescriptors.map((entry) => entry.mediaId))
+
+      // Attribute every failed split back to the committed range that produced it,
+      // so a range that survives can say why instead of vanishing.
+      const failures = new Map<string, TranscriptRemovalSkipReason>()
+      const noteFailure = (key: string, reason: TranscriptRemovalSkipReason) => {
+        const current = failures.get(key)
+        if (current && SKIP_REASON_PRIORITY[current] >= SKIP_REASON_PRIORITY[reason]) return
+        failures.set(key, reason)
+      }
 
       let splitCount = 0
       for (const anchor of anchors) {
-        const ranges = rangesByMediaId[anchor.mediaId!]
-        if (!ranges || ranges.length === 0) continue
+        const mediaId = anchor.mediaId!
+        const ranges = rangesByMediaId[mediaId] ?? []
+        if (ranges.length === 0) continue
 
-        const splitFrames = Array.from(
-          new Set(
-            ranges.flatMap((range) => [
-              sourceSecondsToTimelineFrame(anchor, range.start, timelineFps),
-              sourceSecondsToTimelineFrame(anchor, range.end, timelineFps),
-            ]),
-          ),
-        )
-          .filter((frame) => frame > anchor.from && frame < anchor.from + anchor.durationInFrames)
-          .sort((left, right) => right - left)
+        // One attempt per distinct boundary frame, remembering which range owns it.
+        const attemptByFrame = new Map<number, { frame: number; key: string }>()
+        ranges.forEach((range, index) => {
+          const key = `${mediaId}:${index}`
+          for (const seconds of [range.start, range.end]) {
+            const frame = sourceSecondsToTimelineFrame(anchor, seconds, timelineFps)
+            if (!attemptByFrame.has(frame)) attemptByFrame.set(frame, { frame, key })
+          }
+        })
 
-        if (splitFrames.length === 0) continue
+        const clipEnd = anchor.from + anchor.durationInFrames
+        let splitAborted = false
 
-        const itemsToSplit = getLinkedItemsForEdit(
-          useItemsStore.getState().items,
-          anchor.id,
-          isLinkedSelectionEnabled(),
-        )
-        if (itemsToSplit.length === 0) continue
+        for (const attempt of Array.from(attemptByFrame.values()).toSorted(
+          (left, right) => right.frame - left.frame,
+        )) {
+          if (splitAborted) {
+            noteFailure(attempt.key, 'linked-split-failed')
+            continue
+          }
 
-        for (const frame of splitFrames) {
+          // Frames on the clip's in/out are not split points: whatever sits on the
+          // far side of them is removed whole by the coverage pass, or not at all.
+          if (attempt.frame <= anchor.from || attempt.frame >= clipEnd) {
+            noteFailure(attempt.key, 'clip-edge')
+            continue
+          }
+
+          // Re-resolved per attempt: a split replaces the right-hand piece with a
+          // new id, so a snapshot taken before the first split goes stale.
+          const itemsToSplit = getLinkedItemsForEdit(
+            useItemsStore.getState().items,
+            anchor.id,
+            isLinkedSelectionEnabled(),
+          )
+          if (itemsToSplit.length === 0) {
+            noteFailure(attempt.key, 'linked-split-failed')
+            continue
+          }
+
           const currentItemsById = useItemsStore.getState().itemById
-          const canSplitFrame = itemsToSplit.every((item) => {
-            const currentItem = currentItemsById[item.id]
-            if (!currentItem) return false
-            if (
-              frame <= currentItem.from ||
-              frame >= currentItem.from + currentItem.durationInFrames
-            ) {
-              return false
-            }
-
-            const relativeFrame = frame - currentItem.from
-            return !isInTransitionOverlap(
-              currentItem.id,
-              relativeFrame,
-              currentItem.durationInFrames,
-            )
-          })
-
-          if (!canSplitFrame) continue
+          const blockingReason = itemsToSplit.reduce<TranscriptRemovalSkipReason | null>(
+            (reason, item) => {
+              if (reason) return reason
+              const currentItem = currentItemsById[item.id]
+              if (!currentItem) return 'linked-split-failed'
+              if (
+                attempt.frame <= currentItem.from ||
+                attempt.frame >= currentItem.from + currentItem.durationInFrames
+              ) {
+                return 'clip-edge'
+              }
+              const relativeFrame = attempt.frame - currentItem.from
+              return isInTransitionOverlap(
+                currentItem.id,
+                relativeFrame,
+                currentItem.durationInFrames,
+              )
+                ? 'transition-overlap'
+                : null
+            },
+            null,
+          )
+          if (blockingReason) {
+            noteFailure(attempt.key, blockingReason)
+            continue
+          }
 
           const frameSplitResults = itemsToSplit
             .map((item) => ({
               originalId: item.id,
               originalLinkedGroupId: item.linkedGroupId,
-              result: useItemsStore.getState()._splitItem(item.id, frame),
+              result: useItemsStore.getState()._splitItem(item.id, attempt.frame),
             }))
             .filter((entry): entry is SplitResultEntry => entry.result !== null)
 
-          if (frameSplitResults.length !== itemsToSplit.length) continue
+          if (frameSplitResults.length !== itemsToSplit.length) {
+            noteFailure(attempt.key, 'linked-split-failed')
+            splitAborted = true
+            continue
+          }
 
           applySplitBookkeeping(frameSplitResults)
           splitCount += 1
@@ -305,7 +456,7 @@ function removeTimelineRangesFromItems(
 
       const currentItems = useItemsStore.getState().items
       const idsToRemove = new Set<string>()
-      const removedRangeKeys = new Set<string>()
+      const removedSpansByMedia = new Map<string, RemoveSilenceRange[]>()
 
       for (const descriptor of anchorDescriptors) {
         const ranges = rangesByMediaId[descriptor.mediaId]
@@ -319,21 +470,47 @@ function removeTimelineRangesFromItems(
           const span = getItemSourceSpanSeconds(candidate, timelineFps)
           if (span !== null && isMostlyInsideRanges(span, ranges)) {
             idsToRemove.add(candidate.id)
-            ranges.forEach((range, rangeIndex) => {
-              if (range.end > span.start && range.start < span.end) {
-                removedRangeKeys.add(`${descriptor.originId}:${rangeIndex}`)
-              }
-            })
+            const spans = removedSpansByMedia.get(descriptor.mediaId) ?? []
+            spans.push({ start: span.start, end: span.end })
+            removedSpansByMedia.set(descriptor.mediaId, spans)
           }
         }
       }
 
+      const landedRangesByMediaId: Record<string, RemoveSilenceRange[]> = {}
+      const skipped: SkippedRange[] = []
+      for (const entry of committed) {
+        const duration = entry.range.end - entry.range.start
+        const covered = overlapSeconds(
+          unionSpans(removedSpansByMedia.get(entry.mediaId) ?? []),
+          entry.range,
+        )
+        if (duration > 0 && covered / duration >= RANGE_LANDED_COVERAGE) {
+          ;(landedRangesByMediaId[entry.mediaId] ??= []).push(entry.range)
+          continue
+        }
+        skipped.push({
+          mediaId: entry.mediaId,
+          range: entry.range,
+          reason: anchoredMediaIds.has(entry.mediaId)
+            ? (failures.get(entry.key) ?? 'coverage')
+            : 'no-timeline-clip',
+        })
+      }
+
+      const landedCount = Object.values(landedRangesByMediaId).reduce(
+        (sum, ranges) => sum + ranges.length,
+        0,
+      )
+
       if (idsToRemove.size === 0) {
         return {
           analyzedItemCount: anchors.length,
-          removedRangeCount: 0,
+          removedRangeCount: landedCount,
           removedItemCount: 0,
           splitCount,
+          landedRangesByMediaId,
+          skipped,
         }
       }
 
@@ -344,9 +521,11 @@ function removeTimelineRangesFromItems(
 
       return {
         analyzedItemCount: anchors.length,
-        removedRangeCount: removedRangeKeys.size,
+        removedRangeCount: landedCount,
         removedItemCount: removalResult.removedIds.length,
         splitCount,
+        landedRangesByMediaId,
+        skipped,
       }
     },
     { itemIds, mediaCount: Object.keys(rangesByMediaId).length },

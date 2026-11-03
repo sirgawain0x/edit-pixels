@@ -23,7 +23,7 @@ import {
   type SourceRange,
 } from '../utils/source-range-intervals'
 import { isTranscriptableItem } from '../utils/transcript-edit-model'
-import type { RemoveSilenceResult } from './actions/edit/range-removal-actions'
+import type { TranscriptRemovalResult } from './actions/edit/range-removal-actions'
 
 export type RangesByMediaId = Record<string, SourceRange[]>
 
@@ -37,7 +37,7 @@ interface TranscriptIgnoreState {
   /** Drop the entire buffer without committing. */
   clear: () => void
   /** Commit all ignored ranges to the timeline as one undoable removal. */
-  commit: () => RemoveSilenceResult | null
+  commit: () => TranscriptRemovalResult | null
 }
 
 function mergeIn(base: RangesByMediaId, add: RangesByMediaId): RangesByMediaId {
@@ -95,7 +95,11 @@ export const useTranscriptIgnoreStore = create<TranscriptIgnoreState>((set, get)
     const result = useTimelineStore
       .getState()
       .removeTranscriptRangesFromItems(itemIds, rangesByMediaId)
-    set({ ranges: {} })
+
+    // Clear only the ranges that actually left the timeline. Anything the remover
+    // skipped stays staged (still struck in the panel) so the user can retry or
+    // adjust it — a failed apply must never destroy the review state.
+    set({ ranges: subtractFrom(ranges, result.landedRangesByMediaId) })
     return result
   },
 }))
