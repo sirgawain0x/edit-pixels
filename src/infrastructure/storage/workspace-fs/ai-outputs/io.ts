@@ -87,7 +87,7 @@ export async function writeAiOutputAt<K extends AiOutputKind>(
     model: input.model,
     params: input.params ?? {},
     createdAt: existing?.createdAt ?? now,
-    updatedAt: now,
+    updatedAt: Math.max(now, (existing?.updatedAt ?? 0) + 1),
     data: input.data,
   }
 

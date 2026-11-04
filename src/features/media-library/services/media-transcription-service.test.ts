@@ -1179,3 +1179,177 @@ describe('mediaTranscriptionService.transcribeMedia', () => {
     expect(transcribeMock).toHaveBeenCalledTimes(2)
   })
 })
+
+describe('mediaTranscriptionService.updateTranscriptWords', () => {
+  const original: MediaTranscript = {
+    id: 'media-1',
+    mediaId: 'media-1',
+    model: 'parakeet-tdt-v3',
+    quantization: 'hybrid',
+    text: 'wrong',
+    createdAt: 1,
+    updatedAt: 2,
+    segments: [{ text: 'wrong', start: 1, end: 2, words: [{ text: 'wrong', start: 1, end: 2 }] }],
+  }
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getTranscriptMock.mockReset().mockResolvedValue(original)
+    saveTranscriptMock.mockReset().mockImplementation(async (record: MediaTranscript) => record)
+    useTimelineStoreGetStateMock.mockReturnValue({ items: [] })
+  })
+
+  it('writes once, refreshes caption versions, and notifies after persistence', async () => {
+    const { mediaTranscriptionService } = await import('./media-transcription-service')
+    const updateItem = vi.fn()
+    useTimelineStoreGetStateMock.mockReturnValue({
+      items: [
+        {
+          id: 'clip',
+          type: 'video',
+          mediaId: 'media-1',
+          transcriptCaptions: {
+            type: 'transcript',
+            mediaId: 'media-1',
+            sourceTranscriptUpdatedAt: 2,
+            timingVersion: 4,
+            enabled: true,
+          },
+        },
+      ],
+      updateItem,
+    })
+    const listener = vi.fn()
+    const unsubscribe = mediaTranscriptionService.onTranscriptChanged(listener)
+    try {
+      const updated = await mediaTranscriptionService.updateTranscriptWords('media-1', {
+        start: 1,
+        end: 2,
+        text: 'correct',
+        expectedUpdatedAt: 2,
+      })
+      expect(saveTranscriptMock).toHaveBeenCalledTimes(1)
+      expect(updated.text).toBe('correct')
+      expect(updated.overrides?.[0]?.text).toBe('correct')
+      expect(updateItem).toHaveBeenCalledWith(
+        'clip',
+        expect.objectContaining({
+          transcriptCaptions: expect.objectContaining({
+            sourceTranscriptUpdatedAt: updated.updatedAt,
+            cues: [expect.objectContaining({ text: 'correct' })],
+          }),
+        }),
+      )
+      expect(listener).toHaveBeenCalledWith('media-1')
+    } finally {
+      unsubscribe()
+    }
+  })
+
+  it('serializes conflicting saves and rejects stale input instead of losing a correction', async () => {
+    const { mediaTranscriptionService } = await import('./media-transcription-service')
+    let stored = original
+    getTranscriptMock.mockImplementation(async () => stored)
+    saveTranscriptMock.mockImplementation(async (record: MediaTranscript) => {
+      stored = record
+      return record
+    })
+    const results = await Promise.allSettled([
+      mediaTranscriptionService.updateTranscriptWords('media-1', {
+        start: 1,
+        end: 2,
+        text: 'first',
+        expectedUpdatedAt: 2,
+      }),
+      mediaTranscriptionService.updateTranscriptWords('media-1', {
+        start: 1,
+        end: 2,
+        text: 'second',
+        expectedUpdatedAt: 2,
+      }),
+    ])
+    expect(results.map((result) => result.status)).toEqual(['fulfilled', 'rejected'])
+    expect(stored.text).toBe('first')
+    expect(saveTranscriptMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps saved source-time corrections when regenerating with another model', async () => {
+    const { mediaTranscriptionService } = await import('./media-transcription-service')
+    const corrected = await mediaTranscriptionService.updateTranscriptWords('media-1', {
+      start: 1,
+      end: 2,
+      text: 'correct',
+      expectedUpdatedAt: 2,
+    })
+    getTranscriptMock.mockResolvedValue(corrected)
+    mockQueuedTranscriptionSources()
+    transcribeMock.mockReturnValue({
+      collect: async () => [
+        {
+          text: 'wrong again',
+          start: 0.98,
+          end: 2.02,
+          words: [
+            { text: 'wrong', start: 0.98, end: 1.5 },
+            { text: 'again', start: 1.5, end: 2.02 },
+          ],
+        },
+      ],
+      cancel: vi.fn(),
+    })
+    const regenerated = await mediaTranscriptionService.transcribeMedia('media-1', {
+      model: 'whisper-large',
+    })
+    expect(regenerated.model).toBe('whisper-large')
+    expect(regenerated.text).toBe('correct')
+    expect(regenerated.overrides).toEqual(corrected.overrides)
+    expect(regenerated.segments.flatMap((segment) => segment.words ?? [])).toEqual([
+      { text: 'correct', start: 1, end: 2, edited: true },
+    ])
+  })
+
+  it('undoes a correction with the original exact word timings and rejects stale undo', async () => {
+    const { mediaTranscriptionService } = await import('./media-transcription-service')
+    let stored = original
+    getTranscriptMock.mockImplementation(async () => stored)
+    saveTranscriptMock.mockImplementation(async (record: MediaTranscript) => {
+      stored = record
+      return record
+    })
+    const edited = await mediaTranscriptionService.updateTranscriptWords('media-1', {
+      start: 1,
+      end: 2,
+      text: 'two words',
+      expectedUpdatedAt: 2,
+    })
+    const restored = await mediaTranscriptionService.restoreTranscriptWords(
+      original,
+      edited.updatedAt,
+    )
+    expect(restored.segments).toEqual(original.segments)
+    expect(restored.overrides).toBeUndefined()
+    expect(restored.updatedAt).toBeGreaterThan(edited.updatedAt)
+    await expect(
+      mediaTranscriptionService.restoreTranscriptWords(original, edited.updatedAt),
+    ).rejects.toThrow('newer work')
+  })
+
+  it('does not update captions or announce a failed disk write', async () => {
+    const { mediaTranscriptionService } = await import('./media-transcription-service')
+    saveTranscriptMock.mockRejectedValueOnce(new Error('Disk full'))
+    const listener = vi.fn()
+    const unsubscribe = mediaTranscriptionService.onTranscriptChanged(listener)
+    try {
+      await expect(
+        mediaTranscriptionService.updateTranscriptWords('media-1', {
+          start: 1,
+          end: 2,
+          text: 'correct',
+          expectedUpdatedAt: 2,
+        }),
+      ).rejects.toThrow('Disk full')
+      expect(listener).not.toHaveBeenCalled()
+    } finally {
+      unsubscribe()
+    }
+  })
+})

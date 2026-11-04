@@ -8,6 +8,7 @@ import { expandIdsWithLinkedItems, getLinkedItemsForEdit } from '../linked-edit'
 import {
   sourceSecondsToTimelineFrame,
   getItemSourceSpanSeconds,
+  getMediaSourceFps,
 } from '../../../utils/media-item-frames'
 import { getUniqueLinkedItemAnchorIds } from '../../../utils/linked-items'
 import { isTrackSyncLockEnabled } from '../../../utils/track-sync-lock'
@@ -447,14 +448,28 @@ function removablePieceSpan(
   descriptor: AnchorDescriptor,
   ranges: readonly RemoveSilenceRange[],
   timelineFps: number,
+  useFrameBoundaries: boolean,
 ): RemoveSilenceRange | null {
   if (candidate.type !== 'video' && candidate.type !== 'audio') return null
   if (candidate.mediaId !== descriptor.mediaId) return null
   if ((candidate.originId ?? candidate.id) !== descriptor.originId) return null
 
   const span = getItemSourceSpanSeconds(candidate, timelineFps)
-  if (span === null || !isMostlyInsideRanges(span, ranges)) return null
-  return { start: span.start, end: span.end }
+  if (span === null) return null
+  // A short word may round outward by a frame on either side. Compare the
+  // actual editable frame interval, rather than testing seconds against a
+  // silence threshold that can reject the very piece we just isolated.
+  const covered = useFrameBoundaries
+    ? isMostlyInsideRanges(
+        { start: candidate.from, end: candidate.from + candidate.durationInFrames },
+        ranges.map((range) => {
+          const start = sourceSecondsToTimelineFrame(candidate, range.start, timelineFps)
+          const end = sourceSecondsToTimelineFrame(candidate, range.end, timelineFps)
+          return { start: Math.min(start, end), end: Math.max(start, end) }
+        }),
+      )
+    : isMostlyInsideRanges(span, ranges)
+  return covered ? span : null
 }
 
 /** Pieces whose source span sits mostly inside the marked ranges. */
@@ -463,6 +478,7 @@ function collectRemovableItems(
   rangesByMediaId: Record<string, RemoveSilenceRange[]>,
   items: readonly TimelineItem[],
   timelineFps: number,
+  useFrameBoundaries: boolean,
 ): RemovableItems {
   const idsToRemove = new Set<string>()
   const removedSpansByMedia = new Map<string, RemoveSilenceRange[]>()
@@ -472,7 +488,13 @@ function collectRemovableItems(
     if (!ranges || ranges.length === 0) continue
 
     for (const candidate of items) {
-      const span = removablePieceSpan(candidate, descriptor, ranges, timelineFps)
+      const span = removablePieceSpan(
+        candidate,
+        descriptor,
+        ranges,
+        timelineFps,
+        useFrameBoundaries,
+      )
       if (!span) continue
 
       idsToRemove.add(candidate.id)
@@ -494,11 +516,17 @@ interface RangeVerdict {
  * Partition every committed range into landed or skipped. This is the only place
  * that decides "did it delete", so a partial apply is always expressible.
  */
+function isCommittedRangeLanded(duration: number, covered: number, tolerance: number): boolean {
+  if (duration <= 0 || covered <= 0) return false
+  return covered / duration >= RANGE_LANDED_COVERAGE || covered + tolerance + 1e-9 >= duration
+}
+
 function classifyCommittedRanges(
   committed: readonly CommittedRange[],
   removedSpansByMedia: ReadonlyMap<string, RemoveSilenceRange[]>,
   anchoredMediaIds: ReadonlySet<string>,
   failures: ReadonlyMap<string, TranscriptRemovalSkipReason>,
+  frameToleranceByMedia: ReadonlyMap<string, number>,
 ): RangeVerdict {
   const landedRangesByMediaId: Record<string, RemoveSilenceRange[]> = {}
   const skipped: SkippedRange[] = []
@@ -510,7 +538,8 @@ function classifyCommittedRanges(
       entry.range,
     )
 
-    if (duration > 0 && covered / duration >= RANGE_LANDED_COVERAGE) {
+    const tolerance = frameToleranceByMedia.get(entry.mediaId) ?? 0
+    if (isCommittedRangeLanded(duration, covered, tolerance)) {
       ;(landedRangesByMediaId[entry.mediaId] ??= []).push(entry.range)
       continue
     }
@@ -606,13 +635,30 @@ function removeTimelineRangesFromItems(
         rangesByMediaId,
         useItemsStore.getState().items,
         timelineFps,
+        commandType === 'REMOVE_TRANSCRIPT_SELECTION',
       )
 
+      const frameToleranceByMedia = new Map<string, number>()
+      if (commandType === 'REMOVE_TRANSCRIPT_SELECTION') {
+        for (const anchor of anchors) {
+          const span = getItemSourceSpanSeconds(anchor, timelineFps)
+          if (!span || !anchor.mediaId) continue
+          const tolerance = Math.max(
+            (span.end - span.start) / anchor.durationInFrames,
+            1 / getMediaSourceFps(anchor, timelineFps),
+          )
+          frameToleranceByMedia.set(
+            anchor.mediaId,
+            Math.max(frameToleranceByMedia.get(anchor.mediaId) ?? 0, tolerance),
+          )
+        }
+      }
       const { landedRangesByMediaId, skipped } = classifyCommittedRanges(
         committed,
         removedSpansByMedia,
         anchoredMediaIds,
         failures,
+        frameToleranceByMedia,
       )
       const removedRangeCount = countLandedRanges(landedRangesByMediaId)
 

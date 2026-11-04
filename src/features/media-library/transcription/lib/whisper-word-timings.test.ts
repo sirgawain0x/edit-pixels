@@ -20,7 +20,7 @@ describe('resolveWhisperWordTimings', () => {
       ),
     ).toEqual([
       { text: '柔', start: 122, end: 122.3 },
-      { text: '眠', start: 122.3, end: 122.8 },
+      { text: '眠', timing: 'estimated', start: 122.3, end: 122.8 },
     ])
   })
 
@@ -34,7 +34,7 @@ describe('resolveWhisperWordTimings', () => {
         0,
         10,
       )[0],
-    ).toEqual({ text: 'one', start: 1, end: 1.6 })
+    ).toEqual({ text: 'one', timing: 'estimated', start: 1, end: 1.6 })
   })
 
   it('preserves a fully open final word at the chunk boundary', () => {
@@ -49,7 +49,11 @@ describe('resolveWhisperWordTimings', () => {
       ),
     ).toEqual([
       { text: 'before', start: 129.5, end: 130 },
-      { text: 'boundary', start: 129.99, end: 130 },
+      { text: 'boundary', timing: 'estimated', start: 129.99, end: 130 },
     ])
+  })
+  it('never emits a word past the end of the decoded audio chunk', () => {
+    const words = resolveWhisperWordTimings([{ text: 'end', timestamp: [9.8, 10.4] }], 20, 10)
+    expect(words[0]?.end).toBe(30)
   })
 })

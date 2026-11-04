@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ChangelogRouteImport } from './routes/changelog'
+import { Route as AuthorizeRouteImport } from './routes/authorize'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ProjectsIndexRouteImport } from './routes/projects/index'
 import { Route as DocsIndexRouteImport } from './routes/docs/index'
@@ -21,6 +22,11 @@ import { Route as DocsSlugRouteImport } from './routes/docs/$slug'
 const ChangelogRoute = ChangelogRouteImport.update({
   id: '/changelog',
   path: '/changelog',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthorizeRoute = AuthorizeRouteImport.update({
+  id: '/authorize',
+  path: '/authorize',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -63,6 +69,7 @@ const DocsSlugRoute = DocsSlugRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/authorize': typeof AuthorizeRoute
   '/changelog': typeof ChangelogRoute
   '/docs/$slug': typeof DocsSlugRoute
   '/editor/$projectId': typeof EditorProjectIdRoute
@@ -73,6 +80,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/authorize': typeof AuthorizeRoute
   '/changelog': typeof ChangelogRoute
   '/docs/$slug': typeof DocsSlugRoute
   '/editor/$projectId': typeof EditorProjectIdRoute
@@ -84,6 +92,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/authorize': typeof AuthorizeRoute
   '/changelog': typeof ChangelogRoute
   '/docs/$slug': typeof DocsSlugRoute
   '/editor/$projectId': typeof EditorProjectIdRoute
@@ -96,6 +105,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/authorize'
     | '/changelog'
     | '/docs/$slug'
     | '/editor/$projectId'
@@ -106,6 +116,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/authorize'
     | '/changelog'
     | '/docs/$slug'
     | '/editor/$projectId'
@@ -116,6 +127,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/authorize'
     | '/changelog'
     | '/docs/$slug'
     | '/editor/$projectId'
@@ -127,6 +139,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuthorizeRoute: typeof AuthorizeRoute
   ChangelogRoute: typeof ChangelogRoute
   DocsSlugRoute: typeof DocsSlugRoute
   EditorProjectIdRoute: typeof EditorProjectIdRoute
@@ -143,6 +156,13 @@ declare module '@tanstack/react-router' {
       path: '/changelog'
       fullPath: '/changelog'
       preLoaderRoute: typeof ChangelogRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/authorize': {
+      id: '/authorize'
+      path: '/authorize'
+      fullPath: '/authorize'
+      preLoaderRoute: typeof AuthorizeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -199,6 +219,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuthorizeRoute: AuthorizeRoute,
   ChangelogRoute: ChangelogRoute,
   DocsSlugRoute: DocsSlugRoute,
   EditorProjectIdRoute: EditorProjectIdRoute,

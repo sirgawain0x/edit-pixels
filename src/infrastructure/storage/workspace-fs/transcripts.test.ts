@@ -38,6 +38,37 @@ describe('workspace-fs transcripts', () => {
     expect(t!.segments[0]!.text).toBe('hello')
   })
 
+  it('persists correction intervals, timing provenance, and the actual engine', async () => {
+    const root = createRoot()
+    setWorkspaceRoot(asHandle(root))
+    const words = [
+      { text: 'corrected', start: 0, end: 1, edited: true, timing: 'estimated' as const },
+    ]
+    const record: MediaTranscript = {
+      id: 'edited',
+      mediaId: 'edited',
+      model: 'parakeet-tdt-v3',
+      quantization: 'hybrid',
+      text: 'corrected',
+      createdAt: 1,
+      updatedAt: 1,
+      segments: [{ start: 0, end: 1, text: 'corrected', words }],
+      overrides: [
+        { start: 0, end: 1, text: 'corrected', words, timing: 'estimated', sourceVersionAt: 1 },
+      ],
+    }
+    const first = await saveTranscript(record)
+    const second = await saveTranscript(first)
+    const loaded = await getTranscript('edited')
+    expect(loaded?.overrides).toEqual(record.overrides)
+    expect(loaded?.segments).toEqual(record.segments)
+    expect(second.updatedAt).toBeGreaterThan(first.updatedAt)
+    const { readJson } = await import('./fs-primitives')
+    expect(await readJson(asHandle(root), aiOutputPath('edited', 'transcript'))).toMatchObject({
+      service: 'parakeet',
+    })
+  })
+
   it('getTranscript returns undefined when missing', async () => {
     const root = createRoot()
     setWorkspaceRoot(asHandle(root))

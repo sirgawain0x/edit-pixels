@@ -173,6 +173,19 @@ describe('removeTranscriptRangesFromItems', () => {
     expect(result.skipped[0]).toMatchObject({ reason: 'clip-edge' })
   })
 
+  it('removes a short word rounded to timeline frames and supports undo', () => {
+    useItemsStore.getState().setItems([makeVideoItem()])
+    const range = { start: 2.014, end: 2.052 }
+    const result = removeTranscriptRangesFromItems(['video-1'], { 'media-1': [range] })
+    expect(result.removedItemCount).toBe(1)
+    expect(result.skipped).toEqual([])
+    expectPartitionOfCommittedRanges(result, 1)
+    useTimelineCommandStore.getState().undo()
+    expect(sourceSpans('video')).toEqual([
+      { from: 0, durationInFrames: 300, sourceStart: 0, sourceEnd: 300 },
+    ])
+  })
+
   it('lands a range that covers the whole clip by removing the clip', () => {
     useItemsStore.getState().setItems([makeVideoItem()])
 
