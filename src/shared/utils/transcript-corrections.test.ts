@@ -48,7 +48,45 @@ describe('wordIsInSelectedInterval', () => {
     expect(wordIsInSelectedInterval(first, 0, 0.5)).toBe(true)
     expect(wordIsInSelectedInterval(second, 0, 0.5)).toBe(false)
   })
+
+  it('selects a word whose end extends slightly past the selection when its midpoint stays inside', () => {
+    const selectionStart = 1.2
+    const selectionEnd = 1.52
+    const slackSeconds = 0.025
+    const edited = { text: 'wrong', start: 1.2, end: selectionEnd + slackSeconds - 0.002 }
+
+    expect(edited.end).toBeGreaterThan(selectionEnd)
+    expect(edited.end - selectionEnd).toBeLessThanOrEqual(slackSeconds)
+    expect(wordIsInSelectedInterval(edited, selectionStart, selectionEnd)).toBe(true)
+  })
+
+  it('does not select a neighbor whose midpoint is outside even when bounds overlap within slack', () => {
+    const selectionStart = 1.2
+    const selectionEnd = 1.52
+    const neighbor = { text: 'very', start: 0.98, end: 1.225 }
+
+    expect(intervalsOverlap(neighbor.start, neighbor.end, selectionStart, selectionEnd)).toBe(true)
+    expect(wordIsInSelectedInterval(neighbor, selectionStart, selectionEnd)).toBe(false)
+  })
 })
+
+const whisperVeryWrongOverlap: MediaTranscript = {
+  ...transcript,
+  text: 'Hello very wrong world',
+  segments: [
+    {
+      start: 0,
+      end: 3,
+      text: 'Hello very wrong world',
+      words: [
+        { text: 'Hello', start: 0, end: 0.5 },
+        { text: 'very', start: 0.98, end: 1.2 },
+        { text: 'wrong', start: 1.2, end: 1.52 },
+        { text: 'world', start: 2, end: 3 },
+      ],
+    },
+  ],
+}
 
 const whisperBoundaryOverlap: MediaTranscript = {
   ...transcript,
@@ -94,6 +132,29 @@ describe('transcript corrections', () => {
       expectedUpdatedAt: 2,
     })
     expectBoundaryNeighborSurvives(updated)
+  })
+
+  it('does not replace neighboring whisper-overlap words when correcting one token', () => {
+    const updated = correctTranscriptWords(whisperVeryWrongOverlap, {
+      start: 1.2,
+      end: 1.52,
+      text: 'beautiful',
+      expectedUpdatedAt: 2,
+    })
+    expect(updated.text).toBe('Hello very beautiful world')
+    expect(updated.overrides?.[0]).toMatchObject({ start: 1.2, end: 1.52, timing: 'preserved' })
+  })
+
+  it('honors explicit dialog indices when very and wrong whisper timings overlap', () => {
+    const updated = correctTranscriptWords(whisperVeryWrongOverlap, {
+      start: 0.98,
+      end: 1.52,
+      indices: [2],
+      text: 'beautiful',
+      expectedUpdatedAt: 2,
+    })
+    expect(updated.text).toBe('Hello very beautiful world')
+    expect(updated.overrides?.[0]).toMatchObject({ start: 1.2, end: 1.52, timing: 'preserved' })
   })
 
   it('preserves exact timing, surrounding text order, and the input record', () => {
