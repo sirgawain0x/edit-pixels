@@ -669,6 +669,7 @@ export function TranscriptEditorPanel({ active }: TranscriptEditorPanelProps) {
         text: joinTranscriptWords(selection.map((token) => token.text)),
         expectedUpdatedAt: transcript.updatedAt,
         wordCount: selection.length,
+        indices: selection.map((token) => token.wordIndex),
       })
     },
     [mediaState],

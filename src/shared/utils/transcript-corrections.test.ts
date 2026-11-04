@@ -50,34 +50,50 @@ describe('wordIsInSelectedInterval', () => {
   })
 })
 
+const whisperBoundaryOverlap: MediaTranscript = {
+  ...transcript,
+  text: 'hello world',
+  segments: [
+    {
+      start: 0,
+      end: 0.9,
+      text: 'hello world',
+      words: [
+        { text: 'hello', start: 0, end: 0.5 },
+        { text: 'world', start: 0.48, end: 0.9 },
+      ],
+    },
+  ],
+}
+
+function expectBoundaryNeighborSurvives(updated: MediaTranscript) {
+  expect(updated.text).toBe('hi world')
+  expect(updated.segments.flatMap((segment) => segment.words ?? [])).toEqual([
+    { text: 'hi', start: 0, end: 0.5, edited: true },
+    { text: 'world', start: 0.48, end: 0.9 },
+  ])
+}
+
 describe('transcript corrections', () => {
   it('replaces only midpoint-selected words when Whisper timings overlap at boundaries', () => {
-    const whisperOverlap: MediaTranscript = {
-      ...transcript,
-      text: 'hello world',
-      segments: [
-        {
-          start: 0,
-          end: 0.9,
-          text: 'hello world',
-          words: [
-            { text: 'hello', start: 0, end: 0.5 },
-            { text: 'world', start: 0.48, end: 0.9 },
-          ],
-        },
-      ],
-    }
-    const updated = correctTranscriptWords(whisperOverlap, {
+    const updated = correctTranscriptWords(whisperBoundaryOverlap, {
       start: 0,
       end: 0.5,
       text: 'hi',
       expectedUpdatedAt: 2,
     })
-    expect(updated.text).toBe('hi world')
-    expect(updated.segments.flatMap((segment) => segment.words ?? [])).toEqual([
-      { text: 'hi', start: 0, end: 0.5, edited: true },
-      { text: 'world', start: 0.48, end: 0.9 },
-    ])
+    expectBoundaryNeighborSurvives(updated)
+  })
+
+  it('honors explicit dialog indices over overlapping selection timestamps', () => {
+    const updated = correctTranscriptWords(whisperBoundaryOverlap, {
+      start: 0,
+      end: 0.9,
+      indices: [0],
+      text: 'hi',
+      expectedUpdatedAt: 2,
+    })
+    expectBoundaryNeighborSurvives(updated)
   })
 
   it('preserves exact timing, surrounding text order, and the input record', () => {

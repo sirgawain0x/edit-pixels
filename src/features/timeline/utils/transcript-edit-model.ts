@@ -18,6 +18,8 @@ import type { RemoveSilenceRange } from '../stores/actions/edit/range-removal-ac
 export interface TranscriptToken {
   /** Stable identity for React keys and selection — `${itemId}:${wordIndex}`. */
   key: string
+  /** Index in the media transcript's flat timed-word list (`collectWords` order). */
+  wordIndex: number
   itemId: string
   mediaId: string
   text: string
@@ -96,6 +98,7 @@ export function buildTranscriptTokens(
       const clampedEnd = Math.min(word.end, span.end)
       tokens.push({
         key: `${item.id}:${index}`,
+        wordIndex: index,
         itemId: item.id,
         mediaId: item.mediaId,
         text: word.text.trim(),

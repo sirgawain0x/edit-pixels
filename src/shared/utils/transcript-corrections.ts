@@ -11,6 +11,8 @@ export interface TranscriptWordCorrection {
   end: number
   text: string
   expectedUpdatedAt: number
+  /** Contiguous indices in the transcript flat word list; authoritative when set. */
+  indices?: number[]
 }
 
 function overlaps(a: { start: number; end: number }, b: { start: number; end: number }) {
@@ -29,6 +31,20 @@ export function wordIsInSelectedInterval(
 ): boolean {
   const midpoint = (word.start + word.end) / 2
   return midpoint >= selectionStart && midpoint <= selectionEnd
+}
+
+function collectTimedWords(transcript: MediaTranscript): MediaTranscriptWord[] {
+  return transcript.segments
+    .flatMap((segment) => segment.words ?? [])
+    .toSorted((a, b) => a.start - b.start)
+}
+
+function assertContiguousIndices(indices: readonly number[]): boolean {
+  if (!indices.length) return false
+  for (let i = 1; i < indices.length; i++) {
+    if (indices[i] !== indices[i - 1]! + 1) return false
+  }
+  return true
 }
 
 /** Reapply saved text without trusting new ASR token indices or text. */
@@ -87,12 +103,22 @@ export function correctTranscriptWords(
   }
   const text = correction.text.trim().replace(/\s+/gu, ' ')
   if (!text) throw new Error('Enter corrected words. Use Mark for delete to remove speech.')
-  const original = transcript.segments
-    .flatMap((segment) => segment.words ?? [])
-    .filter((word) =>
+  const allWords = collectTimedWords(transcript)
+  let original: MediaTranscriptWord[]
+  if (correction.indices?.length) {
+    const indices = [...correction.indices].sort((a, b) => a - b)
+    if (!assertContiguousIndices(indices)) {
+      throw new Error('Select a valid spoken range to correct.')
+    }
+    if (indices.some((index) => index < 0 || index >= allWords.length)) {
+      throw new Error('No timed words found in this range.')
+    }
+    original = indices.map((index) => allWords[index]!)
+  } else {
+    original = allWords.filter((word) =>
       wordIsInSelectedInterval(word, correction.start, correction.end),
     )
-    .toSorted((a, b) => a.start - b.start)
+  }
   if (!original.length) throw new Error('No timed words found in this range.')
 
   // Preserve punctuation/CJK tokens as one unit when editing one original token.

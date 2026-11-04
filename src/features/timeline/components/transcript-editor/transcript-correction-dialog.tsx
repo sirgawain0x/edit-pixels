@@ -20,6 +20,7 @@ export interface TranscriptCorrectionTarget {
   text: string
   expectedUpdatedAt: number
   wordCount?: number
+  indices?: number[]
 }
 
 export function TranscriptCorrectionDialog({
