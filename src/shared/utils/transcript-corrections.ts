@@ -17,6 +17,17 @@ function overlaps(a: { start: number; end: number }, b: { start: number; end: nu
   return a.start < b.end && b.start < a.end
 }
 
+/** Whisper neighbors often overlap by tens of ms; slack keeps the edited token, not the neighbor. */
+const WHISPER_WORD_BOUNDARY_SLACK_SECONDS = 0.025
+
+function wordWithinSelection(
+  word: { start: number; end: number },
+  selection: { start: number; end: number },
+) {
+  const slack = WHISPER_WORD_BOUNDARY_SLACK_SECONDS
+  return word.start >= selection.start - slack && word.end <= selection.end + slack
+}
+
 /** Reapply saved text without trusting new ASR token indices or text. */
 export function applyTranscriptCorrections(
   segments: readonly MediaTranscriptSegment[],
@@ -69,7 +80,7 @@ export function correctTranscriptWords(
   if (!text) throw new Error('Enter corrected words. Use Mark for delete to remove speech.')
   const original = transcript.segments
     .flatMap((segment) => segment.words ?? [])
-    .filter((word) => overlaps(word, correction))
+    .filter((word) => wordWithinSelection(word, correction))
     .toSorted((a, b) => a.start - b.start)
   if (!original.length) throw new Error('No timed words found in this range.')
 
@@ -105,7 +116,7 @@ export function correctTranscriptWords(
   const overrides = (transcript.overrides ?? []).flatMap((existing) => {
     if (!overlaps(existing, range)) return [existing]
     return existing.words
-      .filter((word) => !overlaps(word, range))
+      .filter((word) => !wordWithinSelection(word, range))
       .map((word) => ({
         ...existing,
         start: word.start,

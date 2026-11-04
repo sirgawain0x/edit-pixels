@@ -59,6 +59,34 @@ describe('transcript corrections', () => {
     ])
   })
 
+  it('does not replace neighboring whisper-overlap words when correcting one token', () => {
+    const overlapping: MediaTranscript = {
+      ...transcript,
+      text: 'Hello very wrong world',
+      segments: [
+        {
+          start: 0,
+          end: 3,
+          text: 'Hello very wrong world',
+          words: [
+            { text: 'Hello', start: 0, end: 0.5 },
+            { text: 'very', start: 0.98, end: 1.2 },
+            { text: 'wrong', start: 1.2, end: 1.52 },
+            { text: 'world', start: 2, end: 3 },
+          ],
+        },
+      ],
+    }
+    const updated = correctTranscriptWords(overlapping, {
+      start: 1.2,
+      end: 1.52,
+      text: 'beautiful',
+      expectedUpdatedAt: 2,
+    })
+    expect(updated.text).toBe('Hello very beautiful world')
+    expect(updated.overrides?.[0]).toMatchObject({ start: 1.2, end: 1.52, timing: 'preserved' })
+  })
+
   it('reapplies corrections after recognizer segmentation and word counts change', () => {
     const updated = correctTranscriptWords(transcript, {
       start: 1,
