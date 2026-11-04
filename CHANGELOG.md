@@ -4,9 +4,14 @@ All notable changes to Creative Pixels. Weekly CalVer: `YYYY.MM.DD` = the Monday
 
 <!-- Entries below are generated via the `changelog` skill. Newest first. -->
 
-## [Current] — week of 2026-10-26
+## [Current] — week of 2026-11-02
 
-Exports start reliably even when content credentials load slowly, transitions on short clips keep a valid length, exports finish instead of stalling on missing media, centered transitions stay when you drop them on a cut, Director packs show minutes per top-up, past briefs load only when you're signed in, Flow checkout states are clearer, and Director automation uses your signed-in wallet.
+Edit transcript words with synced captions, rerun transcription without losing fixes, and approve agent device sign-ins on the web — plus exports start reliably even when content credentials load slowly, transitions on short clips keep a valid length, exports finish instead of stalling on missing media, centered transitions stay when you drop them on a cut, Director packs show minutes per top-up, past briefs load only when you're signed in, Flow checkout states are clearer, and Director automation uses your signed-in wallet.
+
+### Added
+- Fix transcript typos word by word — corrections update linked captions and stay saved when you transcribe again
+- Transcribe again reruns speech recognition on a clip without wiping your word fixes
+- Approve or deny CLI and agent device sign-in codes on the /authorize page while you're signed in
 
 ### Fixed
 - Exports no longer get stuck starting up when content credentials are slow to load

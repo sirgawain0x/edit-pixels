@@ -1,11 +1,11 @@
 ---
 name: changelog
-description: Maintain FreeCut's user-facing weekly changelog manually. Use when the user asks to add a changelog entry, draft bullets from recent commits, or close out a week into a release. Curates commits into polished user-facing bullets and keeps CHANGELOG.md and src/data/changelog.json in sync.
+description: Maintain the web app's user-facing weekly changelog manually. Use when the user asks to add a changelog entry, draft bullets from recent commits, or close out a week into a release. Curates commits into polished user-facing bullets and keeps CHANGELOG.md and src/data/changelog.json in sync.
 ---
 
 # Changelog skill
 
-FreeCut's changelog is **maintained manually** — there is no auto-append CI. The operator (or this skill, on request) curates commits into user-facing bullets and updates both files together.
+The changelog is **maintained manually** — there is no auto-append CI. The operator (or this skill, on request) curates commits into user-facing bullets and updates both files together.
 
 Two synchronized files:
 
@@ -251,7 +251,7 @@ The What's New dialog renders one entry per group with title-only bullets — no
 ```markdown
 # Changelog
 
-All notable changes to FreeCut. Versioning follows weekly CalVer: `YYYY.MM.DD` = the Monday of the release week.
+All notable changes to Creative Pixels. Versioning follows weekly CalVer: `YYYY.MM.DD` = the Monday of the release week.
 
 ## [Current] — week of 2026-04-13
 
