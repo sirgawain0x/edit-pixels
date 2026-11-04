@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vite-plus/test'
 import type { MediaTranscript } from '@/types/storage'
-import { applyTranscriptCorrections, correctTranscriptWords } from './transcript-corrections'
+import {
+  applyTranscriptCorrections,
+  correctTranscriptWords,
+  wordIsInSelectedInterval,
+} from './transcript-corrections'
 
 const transcript: MediaTranscript = {
   id: 'm',
@@ -24,7 +28,58 @@ const transcript: MediaTranscript = {
   ],
 }
 
+function intervalsOverlap(
+  aStart: number,
+  aEnd: number,
+  bStart: number,
+  bEnd: number,
+): boolean {
+  return aStart < bEnd && aEnd > bStart
+}
+
+describe('wordIsInSelectedInterval', () => {
+  it('does not select a neighbor that only shares a Whisper boundary overlap', () => {
+    const first = { text: 'hello', start: 0, end: 0.5 }
+    const second = { text: 'world', start: 0.48, end: 0.9 }
+
+    expect(intervalsOverlap(first.start, first.end, 0, 0.5)).toBe(true)
+    expect(intervalsOverlap(second.start, second.end, 0, 0.5)).toBe(true)
+
+    expect(wordIsInSelectedInterval(first, 0, 0.5)).toBe(true)
+    expect(wordIsInSelectedInterval(second, 0, 0.5)).toBe(false)
+  })
+})
+
 describe('transcript corrections', () => {
+  it('replaces only midpoint-selected words when Whisper timings overlap at boundaries', () => {
+    const whisperOverlap: MediaTranscript = {
+      ...transcript,
+      text: 'hello world',
+      segments: [
+        {
+          start: 0,
+          end: 0.9,
+          text: 'hello world',
+          words: [
+            { text: 'hello', start: 0, end: 0.5 },
+            { text: 'world', start: 0.48, end: 0.9 },
+          ],
+        },
+      ],
+    }
+    const updated = correctTranscriptWords(whisperOverlap, {
+      start: 0,
+      end: 0.5,
+      text: 'hi',
+      expectedUpdatedAt: 2,
+    })
+    expect(updated.text).toBe('hi world')
+    expect(updated.segments.flatMap((segment) => segment.words ?? [])).toEqual([
+      { text: 'hi', start: 0, end: 0.5, edited: true },
+      { text: 'world', start: 0.48, end: 0.9 },
+    ])
+  })
+
   it('preserves exact timing, surrounding text order, and the input record', () => {
     const updated = correctTranscriptWords(transcript, {
       start: 1,

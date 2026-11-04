@@ -17,6 +17,20 @@ function overlaps(a: { start: number; end: number }, b: { start: number; end: nu
   return a.start < b.end && b.start < a.end
 }
 
+/**
+ * Treat a word as selected when its midpoint lies in the interval.
+ * Whisper word timings often overlap by tens of milliseconds at boundaries;
+ * any-touch overlap would include the next word when editing one token.
+ */
+export function wordIsInSelectedInterval(
+  word: { start: number; end: number },
+  selectionStart: number,
+  selectionEnd: number,
+): boolean {
+  const midpoint = (word.start + word.end) / 2
+  return midpoint >= selectionStart && midpoint <= selectionEnd
+}
+
 /** Reapply saved text without trusting new ASR token indices or text. */
 export function applyTranscriptCorrections(
   segments: readonly MediaTranscriptSegment[],
@@ -31,8 +45,14 @@ export function applyTranscriptCorrections(
     result = result.flatMap((segment) => {
       if (!segment.words?.length) return overlaps(segment, override) ? [] : [segment]
       if (!segment.words.some((word) => overlaps(word, override))) return [segment]
-      const before = segment.words.filter((word) => word.end <= override.start)
-      const after = segment.words.filter((word) => word.start >= override.end)
+      const before = segment.words.filter((word) => {
+        const midpoint = (word.start + word.end) / 2
+        return midpoint < override.start
+      })
+      const after = segment.words.filter((word) => {
+        const midpoint = (word.start + word.end) / 2
+        return midpoint > override.end
+      })
       return [before, after]
         .filter((words) => words.length > 0)
         .map((words) => ({
@@ -69,7 +89,9 @@ export function correctTranscriptWords(
   if (!text) throw new Error('Enter corrected words. Use Mark for delete to remove speech.')
   const original = transcript.segments
     .flatMap((segment) => segment.words ?? [])
-    .filter((word) => overlaps(word, correction))
+    .filter((word) =>
+      wordIsInSelectedInterval(word, correction.start, correction.end),
+    )
     .toSorted((a, b) => a.start - b.start)
   if (!original.length) throw new Error('No timed words found in this range.')
 
