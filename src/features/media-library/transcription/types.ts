@@ -1,4 +1,8 @@
-import type { MediaTranscriptModel, MediaTranscriptQuantization } from '@/types/storage'
+import type {
+  MediaTranscriptModel,
+  MediaTranscriptQuantization,
+  MediaTranscriptWord,
+} from '@/types/storage'
 
 export type WhisperModel = MediaTranscriptModel
 export type QuantizationType = MediaTranscriptQuantization
@@ -14,12 +18,7 @@ export interface TranscriptSegment {
   words?: TranscriptWord[]
 }
 
-export interface TranscriptWord {
-  text: string
-  start: number
-  end: number
-  confidence?: number
-}
+export type TranscriptWord = MediaTranscriptWord
 
 /**
  * `downloading` and `preparing` are separate because they fail differently for the user: a

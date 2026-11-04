@@ -27,6 +27,7 @@ function videoItem(overrides: Partial<VideoItem> = {}): VideoItem {
 function token(overrides: Partial<TranscriptToken>): TranscriptToken {
   return {
     key: 'item-1:0',
+    wordIndex: 0,
     itemId: 'item-1',
     mediaId: 'media-1',
     text: 'word',

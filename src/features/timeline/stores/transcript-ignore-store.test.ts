@@ -92,6 +92,15 @@ describe('useTranscriptIgnoreStore.commit', () => {
     })
   })
 
+  it('keeps staged words when their timeline clip has disappeared', () => {
+    const ranges = { 'media-1': [{ start: 2, end: 4 }] }
+    useTranscriptIgnoreStore.getState().ignore(ranges)
+    useItemsStore.getState().setItems([])
+    const result = useTranscriptIgnoreStore.getState().commit()
+    expect(result?.skipped[0]?.reason).toBe('no-timeline-clip')
+    expect(useTranscriptIgnoreStore.getState().ranges).toEqual(ranges)
+  })
+
   it('empties the buffer when every range landed', () => {
     useTranscriptIgnoreStore.getState().ignore({ 'media-1': [{ start: 2, end: 4 }] })
 

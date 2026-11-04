@@ -8,6 +8,11 @@ import { usePlaybackStore } from '@/shared/state/playback'
 import { useSelectionStore } from '@/shared/state/selection'
 import { createLogger } from '@/shared/logging/logger'
 import { joinTranscriptWords } from '@/shared/utils/transcript-text'
+import {
+  applyTranscriptCorrections,
+  correctTranscriptWords,
+  type TranscriptWordCorrection,
+} from '@/shared/utils/transcript-corrections'
 import { DEFAULT_PROJECT_HEIGHT, DEFAULT_PROJECT_WIDTH } from '@/shared/projects/defaults'
 import type { MediaTranscript, MediaTranscriptModel, MediaTranscriptSegment } from '@/types/storage'
 import type {
@@ -136,6 +141,8 @@ function sanitizeTranscriptWord(word: NonNullable<TranscriptSegment['words']>[nu
     start: word.start,
     end: word.end,
     ...(typeof word.confidence === 'number' ? { confidence: word.confidence } : {}),
+    ...(word.timing ? { timing: word.timing } : {}),
+    ...(word.edited ? { edited: true } : {}),
   }
 }
 
@@ -347,6 +354,55 @@ class MediaTranscriptionService {
   private queue: QueuedTranscriptionJob[] = []
   private readonly transcriptChangeListeners = new Set<(mediaId: string) => void>()
 
+  private readonly transcriptWrites = new Map<string, Promise<unknown>>()
+
+  private async withTranscriptWrite<T>(mediaId: string, write: () => Promise<T>): Promise<T> {
+    const previous = this.transcriptWrites.get(mediaId) ?? Promise.resolve()
+    const pending = previous.catch(() => {}).then(write)
+    this.transcriptWrites.set(mediaId, pending)
+    try {
+      return await pending
+    } finally {
+      if (this.transcriptWrites.get(mediaId) === pending) this.transcriptWrites.delete(mediaId)
+    }
+  }
+
+  /** Save a confirmed correction once, then invalidate every caption consumer. */
+  async updateTranscriptWords(
+    mediaId: string,
+    correction: TranscriptWordCorrection,
+  ): Promise<MediaTranscript> {
+    return this.withTranscriptWrite(mediaId, async () => {
+      const transcript = await getTranscript(mediaId)
+      if (!transcript) throw new Error('This transcript no longer exists. Generate it again.')
+      const updated = correctTranscriptWords(transcript, correction)
+      const saved = await saveTranscript(updated)
+      this.syncExistingTranscriptCaptions(mediaId, saved)
+      this.emitTranscriptChanged(mediaId)
+      return saved
+    })
+  }
+
+  /** Undo a confirmed correction without overwriting any newer transcript work. */
+  async restoreTranscriptWords(
+    previous: MediaTranscript,
+    expectedUpdatedAt: number,
+  ): Promise<MediaTranscript> {
+    return this.withTranscriptWrite(previous.mediaId, async () => {
+      const current = await getTranscript(previous.mediaId)
+      if (current?.updatedAt !== expectedUpdatedAt) {
+        throw new Error('The transcript changed again. Undo would overwrite newer work.')
+      }
+      const saved = await saveTranscript({
+        ...previous,
+        updatedAt: Math.max(Date.now(), current.updatedAt + 1),
+      })
+      this.syncExistingTranscriptCaptions(previous.mediaId, saved)
+      this.emitTranscriptChanged(previous.mediaId)
+      return saved
+    })
+  }
+
   getTranscript = getTranscript
   getTranscriptMediaIds = getTranscriptMediaIds
 
@@ -365,8 +421,10 @@ class MediaTranscriptionService {
   }
 
   async deleteTranscript(mediaId: string): Promise<void> {
-    await deleteTranscript(mediaId)
-    this.emitTranscriptChanged(mediaId)
+    await this.withTranscriptWrite(mediaId, async () => {
+      await deleteTranscript(mediaId)
+      this.emitTranscriptChanged(mediaId)
+    })
   }
 
   async transcribeMedia(
@@ -593,15 +651,30 @@ class MediaTranscriptionService {
       updatedAt: Date.now(),
     }
 
-    await saveTranscript(transcript)
-    this.syncExistingTranscriptCaptions(mediaId, transcript)
-    this.emitTranscriptChanged(mediaId)
+    const saved = await this.withTranscriptWrite(mediaId, async () => {
+      const previous = await getTranscript(mediaId)
+      const overrides = previous?.overrides ?? []
+      const correctedSegments = overrides.length
+        ? applyTranscriptCorrections(transcript.segments, overrides)
+        : transcript.segments
+      const updated = {
+        ...transcript,
+        segments: correctedSegments,
+        text: joinTranscriptWords(correctedSegments.map((segment) => segment.text)),
+        ...(overrides.length ? { overrides } : {}),
+      }
+      const stored = await saveTranscript(updated)
+      const savedTranscript = stored ?? updated
+      this.syncExistingTranscriptCaptions(mediaId, savedTranscript)
+      this.emitTranscriptChanged(mediaId)
+      return savedTranscript
+    })
     logger.info('Saved transcript', {
       mediaId,
       segments: transcript.segments.length,
       model: getMediaTranscriptionModelLabel(transcript.model),
     })
-    return transcript
+    return saved
   }
 
   /**
@@ -627,12 +700,7 @@ class MediaTranscriptionService {
     // an older transcript snapshot.
     const compositionsState = useCompositionsStore.getState()
     for (const composition of compositionsState.compositions) {
-      const synced = syncTranscriptCaptionItems(
-        composition.items,
-        mediaId,
-        transcript,
-        sourceCues,
-      )
+      const synced = syncTranscriptCaptionItems(composition.items, mediaId, transcript, sourceCues)
       if (synced.updatedClipCount === 0) continue
       compositionsState.updateComposition(composition.id, { items: synced.items })
       updatedClipCount += synced.updatedClipCount
@@ -649,9 +717,7 @@ class MediaTranscriptionService {
       return synced.updatedClipCount > 0 ? { ...stash, items: synced.items } : stash
     }
     const nextStashStack = navigationState.stashStack.map(syncStash)
-    const nextMainHolder = navigationState.mainHolder
-      ? syncStash(navigationState.mainHolder)
-      : null
+    const nextMainHolder = navigationState.mainHolder ? syncStash(navigationState.mainHolder) : null
     if (updatedStashedClipCount > 0) {
       useCompositionNavigationStore.setState({
         stashStack: nextStashStack,

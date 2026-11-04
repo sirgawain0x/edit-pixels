@@ -1,3 +1,4 @@
+import { dedupeTranscriptWords } from '../lib/dedupe-transcript-words'
 import type {
   MainThreadMessage,
   PCMChunk,
@@ -23,7 +24,6 @@ const WHISPER_CHUNK_SECONDS = 30
 const WHISPER_STRIDE_SECONDS = 5
 const WHISPER_TASK = 'transcribe'
 const RECENT_WORD_RETENTION_SECONDS = 8
-const DUPLICATE_WORD_START_TOLERANCE_SECONDS = 0.5
 
 type ASRPipeline = (input: Float32Array, options: Record<string, unknown>) => Promise<unknown>
 
@@ -348,27 +348,7 @@ async function transcribeChunk(chunk: PCMChunk): Promise<void> {
 }
 
 function dedupeOverlappingWords(words: TranscriptWord[]): TranscriptWord[] {
-  return words.filter((word) => {
-    const normalizedText = normalizeWordText(word.text)
-    if (!normalizedText) {
-      return true
-    }
-
-    return !recentWords.some((recentWord) => {
-      if (normalizeWordText(recentWord.text) !== normalizedText) {
-        return false
-      }
-
-      const startsClose =
-        Math.abs(recentWord.start - word.start) <= DUPLICATE_WORD_START_TOLERANCE_SECONDS
-      const overlaps = recentWord.start < word.end && word.start < recentWord.end
-      return startsClose || overlaps
-    })
-  })
-}
-
-function normalizeWordText(text: string): string {
-  return text.toLowerCase().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '')
+  return dedupeTranscriptWords(words, recentWords)
 }
 
 function postMain(message: MainThreadMessage): void {
