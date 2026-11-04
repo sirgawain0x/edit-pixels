@@ -219,6 +219,41 @@ describe('transcript corrections', () => {
     expect(applyTranscriptCorrections([], updated.overrides!)[0]?.text).toBe('beautiful')
   })
 
+  it('keeps earlier boundary-neighbor overrides when correcting the next word', () => {
+    const correctedHello = correctTranscriptWords(whisperBoundaryOverlap, {
+      start: 0,
+      end: 0.5,
+      text: 'hi',
+      expectedUpdatedAt: 2,
+    })
+    const correctedBoth = correctTranscriptWords(correctedHello, {
+      start: 0.48,
+      end: 0.9,
+      text: 'earth',
+      expectedUpdatedAt: correctedHello.updatedAt,
+    })
+
+    expect(correctedBoth.overrides?.map((override) => override.text).sort()).toEqual(['earth', 'hi'])
+    expect(correctedBoth.text).toBe('hi earth')
+
+    const regenerated = [
+      {
+        start: 0,
+        end: 0.9,
+        text: 'hello world',
+        words: [
+          { text: 'hello', start: 0, end: 0.5 },
+          { text: 'world', start: 0.48, end: 0.9 },
+        ],
+      },
+    ]
+    expect(
+      applyTranscriptCorrections(regenerated, correctedBoth.overrides!)
+        .map((segment) => segment.text)
+        .join(' '),
+    ).toBe('hi earth')
+  })
+
   it('keeps unaffected corrections when editing part of a corrected phrase again', () => {
     const phrase = correctTranscriptWords(transcript, {
       start: 1,

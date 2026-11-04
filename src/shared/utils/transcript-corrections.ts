@@ -47,6 +47,20 @@ function assertContiguousIndices(indices: readonly number[]): boolean {
   return true
 }
 
+/** Same inclusion rule as picking words for a new correction (indices win over timestamps). */
+function wordIsReplacedByCorrection(
+  word: { start: number; end: number },
+  correction: TranscriptWordCorrection,
+  selectedOriginals: readonly MediaTranscriptWord[],
+): boolean {
+  if (correction.indices?.length) {
+    return selectedOriginals.some(
+      (selected) => selected.start === word.start && selected.end === word.end,
+    )
+  }
+  return wordIsInSelectedInterval(word, correction.start, correction.end)
+}
+
 /** Reapply saved text without trusting new ASR token indices or text. */
 export function applyTranscriptCorrections(
   segments: readonly MediaTranscriptSegment[],
@@ -151,16 +165,18 @@ export function correctTranscriptWords(
   // Earlier corrections may cover a wider phrase. Keep their unaffected words;
   // replacing the whole old override would resurrect those corrections on refresh.
   const overrides = (transcript.overrides ?? []).flatMap((existing) => {
-    if (!overlaps(existing, range)) return [existing]
-    return existing.words
-      .filter((word) => !overlaps(word, range))
-      .map((word) => ({
-        ...existing,
-        start: word.start,
-        end: word.end,
-        text: word.text,
-        words: [word],
-      }))
+    const kept = existing.words.filter(
+      (word) => !wordIsReplacedByCorrection(word, correction, original),
+    )
+    if (kept.length === existing.words.length) return [existing]
+    if (!kept.length) return []
+    return kept.map((word) => ({
+      ...existing,
+      start: word.start,
+      end: word.end,
+      text: word.text,
+      words: [word],
+    }))
   })
   overrides.push(override)
   const segments = applyTranscriptCorrections(transcript.segments, [override])
