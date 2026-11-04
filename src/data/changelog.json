@@ -1,8 +1,19 @@
 {
   "current": {
     "version": "current",
-    "date": "2026-10-31",
+    "date": "2026-11-04",
     "groups": {
+      "added": [
+        {
+          "title": "Fix transcript typos word by word — corrections update linked captions and stay saved when you transcribe again"
+        },
+        {
+          "title": "Transcribe again reruns speech recognition on a clip without wiping your word fixes"
+        },
+        {
+          "title": "Approve or deny CLI and agent device sign-in codes on the /authorize page while you're signed in"
+        }
+      ],
       "fixed": [
         {
           "title": "Exports no longer get stuck starting up when content credentials are slow to load"
