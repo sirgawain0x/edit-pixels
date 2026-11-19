@@ -17,10 +17,13 @@ jobs:
     # skip the full quality suite (already run on every PR and push to main).
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
-    # onnxruntime-node postinstall pulls optional CUDA EP binaries from NuGet on
-    # linux/x64; CI does not use them and the download flakes (ETIMEDOUT).
+    # onnxruntime-node postinstall pulls optional CUDA EP binaries on linux/x64;
+    # CI does not use them and downloads flake/404. Newer onnxruntime-node reads
+    # ONNXRUNTIME_NODE_INSTALL; nested 1.21.0 (via kokoro-js) only reads
+    # ONNXRUNTIME_NODE_INSTALL_CUDA.
     env:
       ONNXRUNTIME_NODE_INSTALL: skip
+      ONNXRUNTIME_NODE_INSTALL_CUDA: skip
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -128,6 +131,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ONNXRUNTIME_NODE_INSTALL: skip
+      ONNXRUNTIME_NODE_INSTALL_CUDA: skip
     # ~27s/run × 10 nightly runs ≈ 5min of work; cap well above that so a
     # hung fast-scrub deadlock is killed fast instead of holding the runner
     # for the 6h GitHub default.
