@@ -173,6 +173,30 @@ async function readDirectorError(
   }
 }
 
+/** Mirrors `METOKEN_QUOTE_SETTLEMENT_GRACE_SECONDS` in api/_metoken-curve-config.ts (15 min total from issue). */
+const DIRECTOR_QUOTE_SETTLEMENT_GRACE_MS = (15 * 60 - 75) * 1000
+
+export function releasedDirectorPaymentDeadlineMs(payment: {
+  quoteExpiresAtMs?: number
+}): number | null {
+  if (typeof payment.quoteExpiresAtMs !== 'number' || !Number.isFinite(payment.quoteExpiresAtMs)) {
+    return null
+  }
+  return payment.quoteExpiresAtMs + DIRECTOR_QUOTE_SETTLEMENT_GRACE_MS
+}
+
+export function isReleasedDirectorPaymentExpired(
+  payment: { quoteExpiresAtMs?: number },
+  nowMs = Date.now(),
+): boolean {
+  const deadlineMs = releasedDirectorPaymentDeadlineMs(payment)
+  return deadlineMs !== null && nowMs >= deadlineMs
+}
+
+function isPreBillingRetryableStatus(status: number): boolean {
+  return status === 401 || status === 429
+}
+
 function buildReleasedPayment(
   brief: string,
   apiPrompt: string,
@@ -180,6 +204,9 @@ function buildReleasedPayment(
 ): ReleasedDirectorPayment | null {
   const paymentTxHash = options?.paymentTxHash?.trim()
   if (!paymentTxHash || typeof options?.audioDurationSeconds !== 'number') {
+    return null
+  }
+  if (isReleasedDirectorPaymentExpired({ quoteExpiresAtMs: options.quoteExpiresAtMs })) {
     return null
   }
   return {
@@ -335,9 +362,8 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
 
       if (!response.ok) {
         const failure = await readDirectorError(response)
-        const reusable = failure.paymentReleased
-          ? buildReleasedPayment(trimmed, apiPrompt, options)
-          : null
+        const keepReleased = failure.paymentReleased || isPreBillingRetryableStatus(response.status)
+        const reusable = keepReleased ? buildReleasedPayment(trimmed, apiPrompt, options) : null
         setDirectorFailure(set, failure.message, reusable)
         return
       }

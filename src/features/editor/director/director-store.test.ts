@@ -1,21 +1,32 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { useDirectorStore } from './director-store'
+import {
+  isReleasedDirectorPaymentExpired,
+  releasedDirectorPaymentDeadlineMs,
+  useDirectorStore,
+} from './director-store'
 
-const BASE_SUBMIT_OPTIONS = {
-  apiPrompt: 'Storyboard this track\n\nAudio: 60s',
-  audioDurationSeconds: 60,
-  paymentTxHash: '0xpaidtx0000000000000000000000000000000000000000000000000000000001',
-  walletAddress: '0xSmartAccount0000000000000000000000000001',
-  signerAddress: '0xSigner0000000000000000000000000000000001',
-  projectId: 'proj-1',
-  quoteId: 'q-1',
-  quoteSignature: 'sig-1',
-  quoteExpiresAtMs: 1_800_000_000_000,
-  quoteSlippageBps: 250,
-  quoteEstimatedUsdc6: 50_000,
-  quoteCrtvaiRequired: '4000000000000000000',
-  quoteTier: 'retail' as const,
-  accessToken: 'privy-token',
+function makeSubmitOptions(
+  overrides: Partial<{
+    quoteExpiresAtMs: number
+    accessToken: string
+  }> = {},
+) {
+  return {
+    apiPrompt: 'Storyboard this track\n\nAudio: 60s',
+    audioDurationSeconds: 60,
+    paymentTxHash: '0xpaidtx0000000000000000000000000000000000000000000000000000000001',
+    walletAddress: '0xSmartAccount0000000000000000000000000001',
+    signerAddress: '0xSigner0000000000000000000000000000000001',
+    projectId: 'proj-1',
+    quoteId: 'q-1',
+    quoteSignature: 'sig-1',
+    quoteExpiresAtMs: overrides.quoteExpiresAtMs ?? Date.now() + 75_000,
+    quoteSlippageBps: 250,
+    quoteEstimatedUsdc6: 50_000,
+    quoteCrtvaiRequired: '4000000000000000000',
+    quoteTier: 'retail' as const,
+    accessToken: overrides.accessToken ?? 'privy-token',
+  }
 }
 
 function makeSseStream(chunks: string[]): ReadableStream<Uint8Array> {
@@ -40,6 +51,7 @@ describe('useDirectorStore released payment retry', () => {
   })
 
   it('retains releasedPayment when the API fails with paymentReleased: true', async () => {
+    const options = makeSubmitOptions()
     vi.stubGlobal(
       'fetch',
       vi.fn(async () =>
@@ -50,24 +62,24 @@ describe('useDirectorStore released payment retry', () => {
       ),
     )
 
-    await useDirectorStore.getState().submit('Storyboard this track', BASE_SUBMIT_OPTIONS)
+    await useDirectorStore.getState().submit('Storyboard this track', options)
 
     const state = useDirectorStore.getState()
     expect(state.phase).toBe('idle')
     expect(state.lastError).toBe("Permission 'aiplatform.endpoints.predict' denied")
     expect(state.releasedPayment).toEqual({
       brief: 'Storyboard this track',
-      apiPrompt: BASE_SUBMIT_OPTIONS.apiPrompt,
+      apiPrompt: options.apiPrompt,
       audioUri: undefined,
       userId: undefined,
       projectId: 'proj-1',
       audioDurationSeconds: 60,
-      paymentTxHash: BASE_SUBMIT_OPTIONS.paymentTxHash,
-      walletAddress: BASE_SUBMIT_OPTIONS.walletAddress,
-      signerAddress: BASE_SUBMIT_OPTIONS.signerAddress,
+      paymentTxHash: options.paymentTxHash,
+      walletAddress: options.walletAddress,
+      signerAddress: options.signerAddress,
       quoteId: 'q-1',
       quoteSignature: 'sig-1',
-      quoteExpiresAtMs: 1_800_000_000_000,
+      quoteExpiresAtMs: options.quoteExpiresAtMs,
       quoteSlippageBps: 250,
       quoteEstimatedUsdc6: 50_000,
       quoteCrtvaiRequired: '4000000000000000000',
@@ -75,7 +87,8 @@ describe('useDirectorStore released payment retry', () => {
     })
   })
 
-  it('does not retain releasedPayment when paymentReleased is missing or false', async () => {
+  it('does not retain releasedPayment when paymentReleased is missing or false outside 401/429', async () => {
+    const options = makeSubmitOptions()
     vi.stubGlobal(
       'fetch',
       vi.fn(async () =>
@@ -83,20 +96,77 @@ describe('useDirectorStore released payment retry', () => {
       ),
     )
 
-    await useDirectorStore.getState().submit('Storyboard this track', BASE_SUBMIT_OPTIONS)
+    await useDirectorStore.getState().submit('Storyboard this track', options)
     expect(useDirectorStore.getState().releasedPayment).toBeNull()
 
     useDirectorStore.getState().clearChat()
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => Response.json({ error: 'Rate limited' }, { status: 429 })),
+      vi.fn(async () => Response.json({ error: 'Engine error' }, { status: 502 })),
     )
 
-    await useDirectorStore.getState().submit('Storyboard this track', BASE_SUBMIT_OPTIONS)
+    await useDirectorStore.getState().submit('Storyboard this track', options)
     expect(useDirectorStore.getState().releasedPayment).toBeNull()
   })
 
+  it('retains releasedPayment when a paid request or retry hits pre-billing 401 or 429', async () => {
+    const options = makeSubmitOptions()
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json({ error: 'Upstream failed', paymentReleased: true }, { status: 502 }),
+      )
+      .mockResolvedValueOnce(Response.json({ error: 'Rate limited' }, { status: 429 }))
+      .mockResolvedValueOnce(Response.json({ error: 'Token expired' }, { status: 401 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await useDirectorStore.getState().submit('Storyboard this track', options)
+    const firstSaved = useDirectorStore.getState().releasedPayment
+    expect(firstSaved).not.toBeNull()
+    if (!firstSaved) return
+
+    await useDirectorStore
+      .getState()
+      .submit(firstSaved.brief, { ...firstSaved, accessToken: 'token-2' })
+    const after429 = useDirectorStore.getState().releasedPayment
+    expect(after429).toEqual(firstSaved)
+    if (!after429) return
+
+    await useDirectorStore
+      .getState()
+      .submit(after429.brief, { ...after429, accessToken: 'expired-token' })
+    expect(useDirectorStore.getState().releasedPayment).toEqual(firstSaved)
+  })
+
+  it('does not retain releasedPayment once the 15-minute settlement grace window has passed', async () => {
+    const expiredAt = Date.now() - 15 * 60 * 1000
+    const options = makeSubmitOptions({ quoteExpiresAtMs: expiredAt })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({ error: 'Upstream failed', paymentReleased: true }, { status: 502 }),
+      ),
+    )
+
+    await useDirectorStore.getState().submit('Storyboard this track', options)
+    expect(useDirectorStore.getState().releasedPayment).toBeNull()
+  })
+
+  it('computes the 15-minute settlement deadline and checks boundary expiry', () => {
+    const quoteExpiresAtMs = 1_700_000_000_000
+    const expectedDeadlineMs = quoteExpiresAtMs + (15 * 60 - 75) * 1000
+    expect(releasedDirectorPaymentDeadlineMs({ quoteExpiresAtMs })).toBe(expectedDeadlineMs)
+    expect(releasedDirectorPaymentDeadlineMs({})).toBeNull()
+
+    expect(isReleasedDirectorPaymentExpired({ quoteExpiresAtMs }, expectedDeadlineMs - 1)).toBe(
+      false,
+    )
+    expect(isReleasedDirectorPaymentExpired({ quoteExpiresAtMs }, expectedDeadlineMs)).toBe(true)
+    expect(isReleasedDirectorPaymentExpired({}, expectedDeadlineMs)).toBe(false)
+  })
+
   it('clears releasedPayment once a retry succeeds with an SSE stream', async () => {
+    const options = makeSubmitOptions()
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
@@ -110,7 +180,7 @@ describe('useDirectorStore released payment retry', () => {
       )
     vi.stubGlobal('fetch', fetchMock)
 
-    await useDirectorStore.getState().submit('Storyboard this track', BASE_SUBMIT_OPTIONS)
+    await useDirectorStore.getState().submit('Storyboard this track', options)
     const saved = useDirectorStore.getState().releasedPayment
     expect(saved).not.toBeNull()
     if (!saved) return
@@ -124,6 +194,7 @@ describe('useDirectorStore released payment retry', () => {
   })
 
   it('clears releasedPayment on clearReleasedPayment and clearChat', async () => {
+    const options = makeSubmitOptions()
     vi.stubGlobal(
       'fetch',
       vi.fn(async () =>
@@ -131,13 +202,13 @@ describe('useDirectorStore released payment retry', () => {
       ),
     )
 
-    await useDirectorStore.getState().submit('Storyboard this track', BASE_SUBMIT_OPTIONS)
+    await useDirectorStore.getState().submit('Storyboard this track', options)
     expect(useDirectorStore.getState().releasedPayment).not.toBeNull()
 
     useDirectorStore.getState().clearReleasedPayment()
     expect(useDirectorStore.getState().releasedPayment).toBeNull()
 
-    await useDirectorStore.getState().submit('Storyboard this track', BASE_SUBMIT_OPTIONS)
+    await useDirectorStore.getState().submit('Storyboard this track', options)
     expect(useDirectorStore.getState().releasedPayment).not.toBeNull()
 
     useDirectorStore.getState().clearChat()

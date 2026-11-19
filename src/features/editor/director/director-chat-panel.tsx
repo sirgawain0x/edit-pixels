@@ -25,7 +25,11 @@ import { DirectorPastBriefs } from './director-past-briefs'
 import { DirectorMarkdown } from './director-markdown'
 import { DirectorMessageActions } from './director-message-actions'
 import { useSpeechRecognition } from './use-speech-recognition'
-import { useDirectorStore } from './director-store'
+import {
+  isReleasedDirectorPaymentExpired,
+  releasedDirectorPaymentDeadlineMs,
+  useDirectorStore,
+} from './director-store'
 import {
   buildDirectorTimelineAudioContext,
   formatTimelineAudioForPrompt,
@@ -149,24 +153,27 @@ function DirectorMessage({
   )
 }
 
+function sameProjectScope(a?: string, b?: string): boolean {
+  return !a || !b || a === b
+}
+
+function sameWalletAddress(a?: string, b?: string): boolean {
+  return !a || !b || a.toLowerCase() === b.toLowerCase()
+}
+
 function canUseReleasedPayment(
-  releasedPayment: { projectId?: string; walletAddress?: string } | null,
+  releasedPayment: { projectId?: string; walletAddress?: string; quoteExpiresAtMs?: number } | null,
   busy: boolean,
   projectId?: string,
   account?: string,
 ): boolean {
-  if (!releasedPayment || busy) return false
-  if (releasedPayment.projectId && projectId && releasedPayment.projectId !== projectId) {
+  if (!releasedPayment || busy || isReleasedDirectorPaymentExpired(releasedPayment)) {
     return false
   }
-  if (
-    releasedPayment.walletAddress &&
-    account &&
-    releasedPayment.walletAddress.toLowerCase() !== account.toLowerCase()
-  ) {
-    return false
-  }
-  return true
+  return (
+    sameProjectScope(releasedPayment.projectId, projectId) &&
+    sameWalletAddress(releasedPayment.walletAddress, account)
+  )
 }
 
 function DirectorReleasedPaymentBanner({
@@ -420,10 +427,31 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
     setPaying(false)
   }, [])
 
+  useEffect(() => {
+    if (!releasedPayment) return
+    const deadlineMs = releasedDirectorPaymentDeadlineMs(releasedPayment)
+    if (deadlineMs === null) return
+    const remainingMs = Math.max(0, deadlineMs - Date.now())
+    const timer = window.setTimeout(() => {
+      clearReleasedPayment()
+    }, remainingMs)
+    return () => window.clearTimeout(timer)
+  }, [clearReleasedPayment, releasedPayment])
+
   const canRetryReleasedPayment = canUseReleasedPayment(releasedPayment, busy, projectId, account)
 
   const retryReleasedPayment = useCallback(async () => {
     if (!releasedPayment || busy) return
+    if (isReleasedDirectorPaymentExpired(releasedPayment)) {
+      clearReleasedPayment()
+      reportLocalError(
+        t('director.error.releasedPaymentExpired', {
+          defaultValue:
+            'Your released payment quote expired after 15 minutes. Brief again to request a new quote.',
+        }),
+      )
+      return
+    }
     const token = (await getAccessToken())?.trim()
     if (!token) {
       if (walletConfigured) connect()
@@ -440,6 +468,7 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
     })
   }, [
     busy,
+    clearReleasedPayment,
     connect,
     getAccessToken,
     releasedPayment,
