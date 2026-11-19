@@ -55,6 +55,7 @@ import { DirectorSsePersistAccumulator } from './_director-sse-persist.js'
 import {
   DirectorAdkError,
   encodeAdkEventsAsSse,
+  extractAdkRunFailure,
   getDirectorAdkAppName,
   getDirectorAdkBaseUrl,
   runAdkDirector,
@@ -279,7 +280,10 @@ async function assertDirectorPayment(data: ParsedDirectorRequest): Promise<
       data.billingQuote.tier !== canonical.tier)
   ) {
     return {
-      error: Response.json({ error: 'Director quote mismatch — refresh and try again.' }, { status: 402 }),
+      error: Response.json(
+        { error: 'Director quote mismatch — refresh and try again.' },
+        { status: 402 },
+      ),
     }
   }
 
@@ -308,9 +312,7 @@ async function assertDirectorPayment(data: ParsedDirectorRequest): Promise<
     minAmountWei = await resolveDirectorSettlementMinWei(quote)
   } catch (error) {
     const message =
-      error instanceof MetokenQuoteError
-        ? error.message
-        : 'Director quote validation failed'
+      error instanceof MetokenQuoteError ? error.message : 'Director quote validation failed'
     return {
       error: Response.json({ error: message }, { status: 402 }),
     }
@@ -327,10 +329,7 @@ async function assertDirectorPayment(data: ParsedDirectorRequest): Promise<
   if (!verified.ok) {
     const status = verified.httpStatus ?? 402
     return {
-      error: Response.json(
-        { error: `Director payment rejected: ${verified.reason}` },
-        { status },
-      ),
+      error: Response.json({ error: `Director payment rejected: ${verified.reason}` }, { status }),
     }
   }
 
@@ -356,7 +355,7 @@ async function handleDirectorAdkPost(
   },
   persistCtx: DirectorPersistContext,
   reservedPaymentTxHash: string | null,
-  releaseReservedPayment: () => Promise<void>,
+  releaseReservedPayment: () => Promise<boolean>,
 ): Promise<Response> {
   const upstreamAbort = new AbortController()
   const onClientAbort = () => upstreamAbort.abort()
@@ -382,14 +381,14 @@ async function handleDirectorAdkPost(
     })
   } catch (error) {
     request.signal.removeEventListener('abort', onClientAbort)
-    await releaseReservedPayment()
+    const paymentReleased = await releaseReservedPayment()
     if (upstreamAbort.signal.aborted || request.signal.aborted) {
       return new Response(null, { status: 499 })
     }
     if (error instanceof DirectorAdkError) {
       console.error('Director ADK error', error.stage, error.status, error.detail)
       return Response.json(
-        { error: 'Creative Director engine request failed', status: error.status },
+        { error: 'Creative Director engine request failed', status: error.status, paymentReleased },
         { status: 502 },
       )
     }
@@ -398,12 +397,23 @@ async function handleDirectorAdkPost(
     if (isDirectorUpstreamAuthFailure(error)) {
       console.error('Director ADK auth error', error)
       return Response.json(
-        { error: `Director auth failed: ${vertexAuthFailureMessage(error)}` },
+        { error: `Director auth failed: ${vertexAuthFailureMessage(error)}`, paymentReleased },
         { status: 503 },
       )
     }
     console.error('Director ADK fetch error', error)
-    return Response.json({ error: 'Failed to reach Creative Director engine' }, { status: 502 })
+    return Response.json(
+      { error: 'Failed to reach Creative Director engine', paymentReleased },
+      { status: 502 },
+    )
+  }
+
+  const adkFailure = extractAdkRunFailure(events)
+  if (adkFailure) {
+    request.signal.removeEventListener('abort', onClientAbort)
+    const paymentReleased = await releaseReservedPayment()
+    console.error('Director ADK error event', { sessionId, error: adkFailure })
+    return Response.json({ error: adkFailure, paymentReleased }, { status: 502 })
   }
 
   const outboundEvents = withAdkSessionEvent(events, sessionId)
@@ -434,7 +444,11 @@ async function handleDirectorAdkPost(
   const first = await reader.read()
   if (first.done || !first.value) {
     request.signal.removeEventListener('abort', onClientAbort)
-    return Response.json({ error: 'Empty response from Director ADK' }, { status: 502 })
+    const paymentReleased = await releaseReservedPayment()
+    return Response.json(
+      { error: 'Empty response from Director ADK', paymentReleased },
+      { status: 502 },
+    )
   }
 
   return proxyEngineSse(request, reader, first.value, upstreamAbort, {
@@ -588,10 +602,7 @@ async function handleDirectorPost(
   })
   if (identityLimited) return identityLimited
   logDirectorStage('auth', { mode: identity.identity.source, signer: identity.identity.signer })
-  const parsed = parseDirectorBody(
-    identity.body as DirectorRequestBody,
-    identity.identity.signer,
-  )
+  const parsed = parseDirectorBody(identity.body as DirectorRequestBody, identity.identity.signer)
   if (!parsed.ok) return parsed.response
 
   const payment = await assertDirectorPayment(parsed.data)
@@ -609,15 +620,20 @@ async function handleDirectorPost(
     estimatedUsdc6: payment.quote?.estimatedUsdc6 ?? null,
   })
 
-  const releaseReservedPayment = async () => {
-    if (reservedPaymentTxHash != null && reservedPaymentLogIndex != null) {
-      await releaseDirectorPayment(reservedPaymentTxHash, reservedPaymentLogIndex).catch(
-        () => undefined,
-      )
+  const releaseReservedPayment = async (): Promise<boolean> => {
+    if (reservedPaymentTxHash == null || reservedPaymentLogIndex == null) {
+      return false
+    }
+    try {
+      await releaseDirectorPayment(reservedPaymentTxHash, reservedPaymentLogIndex)
       logDirectorStage('payment_released', {
         paymentTxHash: reservedPaymentTxHash,
         paymentLogIndex: reservedPaymentLogIndex,
       })
+      return true
+    } catch (error) {
+      console.error('Director payment release failed', error)
+      return false
     }
   }
 
@@ -651,7 +667,7 @@ async function handleDirectorPost(
       wallet: parsed.data.walletAddress?.toLowerCase() ?? null,
     })
   } catch (error) {
-    await releaseReservedPayment()
+    const paymentReleased = await releaseReservedPayment()
     console.error('Director auth error', error)
     const detail = error instanceof Error ? error.message : String(error)
     const hint = vertexAuthFailureMessage(error)
@@ -659,6 +675,7 @@ async function handleDirectorPost(
       {
         error: `Director auth failed: ${hint}`,
         detail: process.env.VERCEL ? undefined : detail,
+        paymentReleased,
       },
       { status: 503 },
     )
@@ -678,21 +695,28 @@ async function handleDirectorPost(
     })
   } catch (error) {
     request.signal.removeEventListener('abort', onClientAbort)
-    await releaseReservedPayment()
+    const paymentReleased = await releaseReservedPayment()
     if (upstreamAbort.signal.aborted || request.signal.aborted) {
       return new Response(null, { status: 499 })
     }
     console.error('Director upstream fetch error', error)
-    return Response.json({ error: 'Failed to reach Creative Director engine' }, { status: 502 })
+    return Response.json(
+      { error: 'Failed to reach Creative Director engine', paymentReleased },
+      { status: 502 },
+    )
   }
 
   if (!upstream.ok || !upstream.body) {
     request.signal.removeEventListener('abort', onClientAbort)
-    await releaseReservedPayment()
+    const paymentReleased = await releaseReservedPayment()
     const errText = await upstream.text().catch(() => '')
     console.error('Director engine error', upstream.status, errText)
     return Response.json(
-      { error: 'Creative Director engine request failed', status: upstream.status },
+      {
+        error: 'Creative Director engine request failed',
+        status: upstream.status,
+        paymentReleased,
+      },
       { status: 502 },
     )
   }
@@ -700,10 +724,14 @@ async function handleDirectorPost(
   const preamble = await readFirstEngineChunk(upstream.body)
   if (!preamble.ok) {
     request.signal.removeEventListener('abort', onClientAbort)
-    await releaseReservedPayment()
+    const paymentReleased = await releaseReservedPayment()
     console.error('Director engine preamble failed', upstream.status)
     return Response.json(
-      { error: 'Creative Director engine request failed', status: upstream.status },
+      {
+        error: 'Creative Director engine request failed',
+        status: upstream.status,
+        paymentReleased,
+      },
       { status: 502 },
     )
   }
@@ -732,15 +760,21 @@ export async function POST(request: Request): Promise<Response> {
     return await handleDirectorPost(request, reserved)
   } catch (error) {
     console.error('Director request failed', error)
+    let paymentReleased = false
     if (reserved.txHash != null && reserved.logIndex != null) {
-      await releaseDirectorPayment(reserved.txHash, reserved.logIndex).catch(() => undefined)
-      logDirectorStage('payment_released', {
-        paymentTxHash: reserved.txHash,
-        paymentLogIndex: reserved.logIndex,
-        reason: 'uncaught',
-      })
+      try {
+        await releaseDirectorPayment(reserved.txHash, reserved.logIndex)
+        paymentReleased = true
+        logDirectorStage('payment_released', {
+          paymentTxHash: reserved.txHash,
+          paymentLogIndex: reserved.logIndex,
+          reason: 'uncaught',
+        })
+      } catch (releaseError) {
+        console.error('Director payment release failed', releaseError)
+      }
     }
     const message = error instanceof Error ? error.message : 'Creative Director request failed'
-    return Response.json({ error: message }, { status: 500 })
+    return Response.json({ error: message, paymentReleased }, { status: 500 })
   }
 }

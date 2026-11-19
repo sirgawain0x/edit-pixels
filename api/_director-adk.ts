@@ -132,3 +132,79 @@ export function withAdkSessionEvent(events: unknown[], sessionId: string): unkno
   if (adkEventsIncludeSessionId(events)) return events
   return [{ sessionId, session_id: sessionId }, ...events]
 }
+
+interface AdkEventInspection {
+  hasOutput: boolean
+  errorMessage: string | null
+}
+
+const EMPTY_ADK_INSPECTION: AdkEventInspection = { hasOutput: false, errorMessage: null }
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
+function readAdkErrorMessage(record: Record<string, unknown>): string | null {
+  const topMessage = nonEmptyString(record.errorMessage) ?? nonEmptyString(record.error)
+  if (topMessage) return topMessage
+  if (!record.error || typeof record.error !== 'object') return null
+  return nonEmptyString((record.error as { message?: unknown }).message)
+}
+
+function hasNonEmptyName(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false
+  return nonEmptyString((value as { name?: unknown }).name) !== null
+}
+
+function adkPartHasOutput(part: unknown): boolean {
+  if (!part || typeof part !== 'object') return false
+  const candidate = part as { text?: unknown; functionCall?: unknown; functionResponse?: unknown }
+  if (nonEmptyString(candidate.text) !== null) return true
+  return hasNonEmptyName(candidate.functionCall) || hasNonEmptyName(candidate.functionResponse)
+}
+
+function adkPartsHaveOutput(content: unknown): boolean {
+  if (!content || typeof content !== 'object') return false
+  const parts = (content as { parts?: unknown }).parts
+  return Array.isArray(parts) && parts.some(adkPartHasOutput)
+}
+
+function inspectAdkStringEvent(raw: string, depth: number): AdkEventInspection {
+  const trimmed = raw.trim()
+  if (!trimmed || trimmed === '[DONE]') return EMPTY_ADK_INSPECTION
+  try {
+    return inspectAdkEvent(JSON.parse(trimmed) as unknown, depth + 1)
+  } catch {
+    return { hasOutput: true, errorMessage: null }
+  }
+}
+
+function inspectAdkEvent(raw: unknown, depth = 0): AdkEventInspection {
+  if (depth > 4 || raw == null) return EMPTY_ADK_INSPECTION
+  if (typeof raw === 'string') return inspectAdkStringEvent(raw, depth)
+  if (typeof raw !== 'object') return { hasOutput: true, errorMessage: null }
+
+  const record = raw as Record<string, unknown>
+  const errorMessage = readAdkErrorMessage(record)
+  const hasOutput = adkPartsHaveOutput(record.content)
+  if (!hasOutput && !errorMessage && record.event != null) {
+    return inspectAdkEvent(record.event, depth + 1)
+  }
+  return { hasOutput, errorMessage }
+}
+
+/** Return an error message when ADK `/run` produced no output and failed or returned empty. */
+export function extractAdkRunFailure(events: unknown[]): string | null {
+  if (events.length === 0) return 'Empty response from Director ADK'
+  let firstError: string | null = null
+  for (const event of events) {
+    const inspected = inspectAdkEvent(event)
+    if (inspected.hasOutput) return null
+    if (!firstError && inspected.errorMessage) {
+      firstError = inspected.errorMessage
+    }
+  }
+  return firstError
+}

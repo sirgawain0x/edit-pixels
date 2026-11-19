@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { directorFailureMessage } from './director-api-error'
+import { directorFailureMessage, isDirectorPaymentReleased } from './director-api-error'
 
 describe('directorFailureMessage', () => {
   it('uses a string error field', () => {
@@ -34,5 +34,16 @@ describe('directorFailureMessage', () => {
 
   it('falls back to the status when the body is empty', () => {
     expect(directorFailureMessage(500, null)).toBe('Director request failed (500)')
+  })
+})
+
+describe('isDirectorPaymentReleased', () => {
+  it('returns true only when paymentReleased is strictly true', () => {
+    expect(isDirectorPaymentReleased({ error: 'failed', paymentReleased: true })).toBe(true)
+    expect(isDirectorPaymentReleased({ error: 'failed', paymentReleased: false })).toBe(false)
+    expect(isDirectorPaymentReleased({ error: 'failed', paymentReleased: 'true' })).toBe(false)
+    expect(isDirectorPaymentReleased({ error: 'failed' })).toBe(false)
+    expect(isDirectorPaymentReleased(null)).toBe(false)
+    expect(isDirectorPaymentReleased('paymentReleased')).toBe(false)
   })
 })
