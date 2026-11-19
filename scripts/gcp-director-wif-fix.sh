@@ -7,6 +7,7 @@
 # 2) Caller SA run.invoker on the ADK Cloud Run service
 # 3) Named Firestore DB creative-director-1 (if missing)
 # 4) Caller SA roles/datastore.user for Firestore REST
+# 5) ADK runtime SA roles/secretmanager.secretAccessor on AGENTO11Y_AUTH_TOKEN and OTEL_EXPORTER_OTLP_HEADERS
 #
 # Usage:
 #   ./scripts/gcp-director-wif-fix.sh
@@ -21,6 +22,8 @@ FIRESTORE_DB="${FIRESTORE_DATABASE_ID:-creative-director-1}"
 FIRESTORE_LOCATION="${FIRESTORE_LOCATION:-nam5}"
 ADK_REGION="${ADK_REGION:-us-east1}"
 ADK_SERVICE="${ADK_SERVICE:-creative-director}"
+ADK_RUNTIME_SA="${ADK_RUNTIME_SA:-creative-director@${PROJECT_ID}.iam.gserviceaccount.com}"
+ADK_SECRETS="${ADK_SECRETS:-AGENTO11Y_AUTH_TOKEN OTEL_EXPORTER_OTLP_HEADERS}"
 DRY_RUN="${DRY_RUN:-0}"
 
 run() {
@@ -35,6 +38,8 @@ echo "Project:     $PROJECT_ID"
 echo "Caller SA:   $SA_EMAIL"
 echo "Firestore:   $FIRESTORE_DB ($FIRESTORE_LOCATION)"
 echo "Cloud Run:   $ADK_SERVICE ($ADK_REGION)"
+echo "Runtime SA:  $ADK_RUNTIME_SA"
+echo "ADK Secrets: $ADK_SECRETS"
 echo
 
 echo "==> Token Creator self-bind (getOpenIdToken for Cloud Run ID tokens)"
@@ -82,6 +87,24 @@ run gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:${SA_EMAIL}" \
   --role="roles/datastore.user" \
   --condition=None
+
+echo "==> Secret Manager secretAccessor for ADK runtime SA"
+for secret in $ADK_SECRETS; do
+  if [[ "$DRY_RUN" == "1" ]]; then
+    echo "+ gcloud secrets describe $secret --project=$PROJECT_ID"
+    echo "+ gcloud secrets add-iam-policy-binding $secret --project=$PROJECT_ID --member=serviceAccount:${ADK_RUNTIME_SA} --role=roles/secretmanager.secretAccessor"
+  elif gcloud secrets describe "$secret" \
+    --project="$PROJECT_ID" \
+    --format='value(name)' >/dev/null 2>&1; then
+    run gcloud secrets add-iam-policy-binding "$secret" \
+      --project="$PROJECT_ID" \
+      --member="serviceAccount:${ADK_RUNTIME_SA}" \
+      --role="roles/secretmanager.secretAccessor"
+  else
+    echo "WARN: Secret '$secret' not found in project '$PROJECT_ID'."
+    echo "      Create the secret (or override ADK_SECRETS) and re-run."
+  fi
+done
 
 echo
 echo "Done. Next:"
