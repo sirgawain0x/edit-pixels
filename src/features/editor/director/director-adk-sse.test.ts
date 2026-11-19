@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   adkEventsIncludeSessionId,
   encodeAdkEventsAsSse,
+  extractAdkRunFailure,
   getDirectorAdkBaseUrl,
   runAdkDirector,
   withAdkSessionEvent,
@@ -22,13 +23,8 @@ describe('DIRECTOR_ADK_BASE_URL', () => {
   })
 
   it('strips a trailing slash from the Cloud Run URL', () => {
-    vi.stubEnv(
-      'DIRECTOR_ADK_BASE_URL',
-      'https://creative-director-1037240986506.us-east1.run.app/',
-    )
-    expect(getDirectorAdkBaseUrl()).toBe(
-      'https://creative-director-1037240986506.us-east1.run.app',
-    )
+    vi.stubEnv('DIRECTOR_ADK_BASE_URL', 'https://creative-director-1037240986506.us-east1.run.app/')
+    expect(getDirectorAdkBaseUrl()).toBe('https://creative-director-1037240986506.us-east1.run.app')
   })
 })
 
@@ -85,5 +81,39 @@ describe('runAdkDirector Cloud Run auth', () => {
       const headers = call.init?.headers as Record<string, string> | undefined
       expect(headers?.Authorization).toBe('Bearer mock-id-token')
     }
+  })
+})
+
+describe('extractAdkRunFailure', () => {
+  it('returns the error message for error-only ADK events', () => {
+    const vertexDenied =
+      "Permission 'aiplatform.endpoints.predict' denied on resource '//aiplatform.googleapis.com/projects/creative-ai-491118/locations/global/publishers/google/models/gemini-3.5-flash'"
+    expect(extractAdkRunFailure([{ errorMessage: vertexDenied }])).toBe(vertexDenied)
+    expect(extractAdkRunFailure([{ error: 'rate limited' }])).toBe('rate limited')
+    expect(extractAdkRunFailure([{ error: { message: 'upstream error' } }])).toBe('upstream error')
+    expect(extractAdkRunFailure([{ event: { errorMessage: 'nested failure' } }])).toBe(
+      'nested failure',
+    )
+  })
+
+  it('returns an error when /run produces an empty array', () => {
+    expect(extractAdkRunFailure([])).toBe('Empty response from Director ADK')
+  })
+
+  it('returns null when assistant text or tool output is present', () => {
+    expect(
+      extractAdkRunFailure([
+        { errorMessage: 'transient warning' },
+        { content: { parts: [{ text: 'Shot 1: wide angle' }] } },
+      ]),
+    ).toBeNull()
+    expect(
+      extractAdkRunFailure([{ content: { parts: [{ functionCall: { name: 'search_mood' } }] } }]),
+    ).toBeNull()
+    expect(
+      extractAdkRunFailure([
+        { content: { parts: [{ functionResponse: { name: 'search_mood', response: {} } }] } },
+      ]),
+    ).toBeNull()
   })
 })

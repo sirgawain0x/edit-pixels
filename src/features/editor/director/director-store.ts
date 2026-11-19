@@ -4,7 +4,7 @@
  */
 
 import { create } from 'zustand'
-import { directorFailureMessage } from './director-api-error'
+import { directorFailureMessage, isDirectorPaymentReleased } from './director-api-error'
 import { consumeSseBuffer, parseSseDataLine, type DirectorStreamEvent } from './parse-sse'
 
 type DirectorPhase = 'idle' | 'streaming'
@@ -24,6 +24,45 @@ interface DirectorToolCall {
   status: 'running' | 'done'
 }
 
+interface DirectorSubmitOptions {
+  audioUri?: string
+  userId?: string
+  projectId?: string
+  /** Full prompt sent to the API (defaults to text) */
+  apiPrompt?: string
+  audioDurationSeconds?: number
+  paymentTxHash?: string
+  quoteId?: string
+  quoteSignature?: string
+  quoteExpiresAtMs?: number
+  quoteSlippageBps?: number
+  quoteEstimatedUsdc6?: number
+  quoteCrtvaiRequired?: string
+  quoteTier?: 'retail' | 'premium'
+  walletAddress?: string
+  signerAddress?: string
+  accessToken?: string
+}
+
+interface ReleasedDirectorPayment {
+  brief: string
+  apiPrompt: string
+  audioUri?: string
+  userId?: string
+  projectId?: string
+  audioDurationSeconds: number
+  paymentTxHash: string
+  walletAddress?: string
+  signerAddress?: string
+  quoteId?: string
+  quoteSignature?: string
+  quoteExpiresAtMs?: number
+  quoteSlippageBps?: number
+  quoteEstimatedUsdc6?: number
+  quoteCrtvaiRequired?: string
+  quoteTier?: 'retail' | 'premium'
+}
+
 interface DirectorState {
   messages: DirectorChatMessage[]
   phase: DirectorPhase
@@ -31,33 +70,14 @@ interface DirectorState {
   toolCalls: DirectorToolCall[]
   sessionId: string | null
   lastError: string | null
+  releasedPayment: ReleasedDirectorPayment | null
 
-  submit: (
-    text: string,
-    options?: {
-      audioUri?: string
-      userId?: string
-      projectId?: string
-      /** Full prompt sent to the API (defaults to text) */
-      apiPrompt?: string
-      audioDurationSeconds?: number
-      paymentTxHash?: string
-      quoteId?: string
-      quoteSignature?: string
-      quoteExpiresAtMs?: number
-      quoteSlippageBps?: number
-      quoteEstimatedUsdc6?: number
-      quoteCrtvaiRequired?: string
-      quoteTier?: 'retail' | 'premium'
-      walletAddress?: string
-      signerAddress?: string
-      accessToken?: string
-    },
-  ) => Promise<void>
+  submit: (text: string, options?: DirectorSubmitOptions) => Promise<void>
   /** Resume an Agent Engine session from Firestore index. */
   resumeSession: (sessionId: string) => void
   /** Local UX error (e.g. missing timeline audio) — does not call the API. */
   reportLocalError: (message: string) => void
+  clearReleasedPayment: () => void
   cancel: () => void
   clearChat: () => void
 }
@@ -136,11 +156,49 @@ function applyStreamEvents(events: DirectorStreamEvent[], set: DirectorSet): voi
   }
 }
 
-async function readDirectorError(response: Response): Promise<string> {
+async function readDirectorError(
+  response: Response,
+): Promise<{ message: string; paymentReleased: boolean }> {
   try {
-    return directorFailureMessage(response.status, await response.json())
+    const body = (await response.json()) as unknown
+    return {
+      message: directorFailureMessage(response.status, body),
+      paymentReleased: isDirectorPaymentReleased(body),
+    }
   } catch {
-    return directorFailureMessage(response.status, null)
+    return {
+      message: directorFailureMessage(response.status, null),
+      paymentReleased: false,
+    }
+  }
+}
+
+function buildReleasedPayment(
+  brief: string,
+  apiPrompt: string,
+  options?: DirectorSubmitOptions,
+): ReleasedDirectorPayment | null {
+  const paymentTxHash = options?.paymentTxHash?.trim()
+  if (!paymentTxHash || typeof options?.audioDurationSeconds !== 'number') {
+    return null
+  }
+  return {
+    brief,
+    apiPrompt,
+    audioUri: options.audioUri,
+    userId: options.userId,
+    projectId: options.projectId,
+    audioDurationSeconds: options.audioDurationSeconds,
+    paymentTxHash,
+    walletAddress: options.walletAddress,
+    signerAddress: options.signerAddress,
+    quoteId: options.quoteId,
+    quoteSignature: options.quoteSignature,
+    quoteExpiresAtMs: options.quoteExpiresAtMs,
+    quoteSlippageBps: options.quoteSlippageBps,
+    quoteEstimatedUsdc6: options.quoteEstimatedUsdc6,
+    quoteCrtvaiRequired: options.quoteCrtvaiRequired,
+    quoteTier: options.quoteTier,
   }
 }
 
@@ -182,12 +240,17 @@ function finalizeAssistantReply(set: DirectorSet, get: () => DirectorState): voi
   }))
 }
 
-function setDirectorFailure(set: DirectorSet, message: string): void {
+function setDirectorFailure(
+  set: DirectorSet,
+  message: string,
+  releasedPayment: ReleasedDirectorPayment | null = null,
+): void {
   set((state) => ({
     messages: [...state.messages, { id: newId(), role: 'error', content: message }],
     phase: 'idle',
     streamingText: '',
     lastError: message,
+    releasedPayment,
   }))
 }
 
@@ -198,6 +261,7 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
   toolCalls: [],
   sessionId: null,
   lastError: null,
+  releasedPayment: null,
 
   reportLocalError: (message) => {
     const trimmed = message.trim()
@@ -206,6 +270,10 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
       messages: [...state.messages, { id: newId(), role: 'error', content: trimmed }],
       lastError: trimmed,
     }))
+  },
+
+  clearReleasedPayment: () => {
+    set({ releasedPayment: null })
   },
 
   // fallow-ignore-next-line complexity
@@ -225,6 +293,7 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
       phase: 'streaming',
       streamingText: '',
       lastError: null,
+      releasedPayment: null,
       toolCalls: [],
     }))
 
@@ -265,7 +334,11 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
       })
 
       if (!response.ok) {
-        setDirectorFailure(set, await readDirectorError(response))
+        const failure = await readDirectorError(response)
+        const reusable = failure.paymentReleased
+          ? buildReleasedPayment(trimmed, apiPrompt, options)
+          : null
+        setDirectorFailure(set, failure.message, reusable)
         return
       }
 
@@ -313,6 +386,7 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
       streamingText: '',
       sessionId: null,
       lastError: null,
+      releasedPayment: null,
     })
   },
 }))

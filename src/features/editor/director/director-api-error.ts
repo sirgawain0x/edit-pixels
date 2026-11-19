@@ -36,3 +36,9 @@ export function directorFailureMessage(status: number, body: unknown): string {
 
   return textField(record.message) ?? fallback
 }
+
+export function isDirectorPaymentReleased(body: unknown): boolean {
+  return Boolean(
+    body && typeof body === 'object' && (body as Record<string, unknown>).paymentReleased === true,
+  )
+}

@@ -110,7 +110,7 @@ function DirectorMessage({
   if (role === 'user') {
     return (
       <div className="flex justify-end gap-2.5">
-        <div className="max-w-[88%] rounded-2xl rounded-br-md bg-primary px-3 py-2 text-[12px] leading-relaxed whitespace-pre-wrap text-primary-foreground">
+        <div className="min-w-0 max-w-[88%] rounded-2xl rounded-br-md bg-primary px-3 py-2 text-[12px] leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-primary-foreground">
           {text}
         </div>
       </div>
@@ -136,7 +136,7 @@ function DirectorMessage({
       <AgentMark variant={markVariant} />
       <div
         className={cn(
-          'max-w-[88%] whitespace-pre-wrap text-[12px] leading-relaxed',
+          'min-w-0 max-w-[88%] whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-[12px] leading-relaxed',
           role === 'tool' &&
             'rounded-md border border-border/80 bg-secondary/25 px-2.5 py-1.5 font-mono text-[11px] text-muted-foreground',
           role === 'error' &&
@@ -144,6 +144,70 @@ function DirectorMessage({
         )}
       >
         {text}
+      </div>
+    </div>
+  )
+}
+
+function canUseReleasedPayment(
+  releasedPayment: { projectId?: string; walletAddress?: string } | null,
+  busy: boolean,
+  projectId?: string,
+  account?: string,
+): boolean {
+  if (!releasedPayment || busy) return false
+  if (releasedPayment.projectId && projectId && releasedPayment.projectId !== projectId) {
+    return false
+  }
+  if (
+    releasedPayment.walletAddress &&
+    account &&
+    releasedPayment.walletAddress.toLowerCase() !== account.toLowerCase()
+  ) {
+    return false
+  }
+  return true
+}
+
+function DirectorReleasedPaymentBanner({
+  disabled,
+  onRetry,
+  onDismiss,
+  t,
+}: {
+  disabled: boolean
+  onRetry: () => void
+  onDismiss: () => void
+  t: (key: string, opts?: { defaultValue: string }) => string
+}) {
+  return (
+    <div className="rounded-xl border border-amber-400/40 bg-amber-500/10 p-3">
+      <p className="text-[12px] leading-relaxed text-amber-100">
+        {t('director.error.paymentReleasedHint', {
+          defaultValue:
+            'Your CRTVAI payment was released after the failure. Retry this brief without paying again.',
+        })}
+      </p>
+      <div className="mt-2.5 flex items-center justify-end gap-2">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-8 text-[11px]"
+          disabled={disabled}
+          onClick={onDismiss}
+        >
+          {t('director.error.dismissReleasedPayment', { defaultValue: 'Dismiss' })}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          className="h-8 text-[11px]"
+          disabled={disabled}
+          onClick={onRetry}
+        >
+          {t('director.error.retryWithoutPaying', { defaultValue: 'Retry without paying' })}
+        </Button>
       </div>
     </div>
   )
@@ -163,11 +227,18 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
   const clearChat = useDirectorStore((s) => s.clearChat)
   const sessionId = useDirectorStore((s) => s.sessionId)
   const resumeSession = useDirectorStore((s) => s.resumeSession)
+  const releasedPayment = useDirectorStore((s) => s.releasedPayment)
+  const clearReleasedPayment = useDirectorStore((s) => s.clearReleasedPayment)
 
   const { projectId } = useParams({ from: '/editor/$projectId' })
 
-  const { account, connect, authenticated, configured: walletConfigured, getAccessToken } =
-    useWalletContext()
+  const {
+    account,
+    connect,
+    authenticated,
+    configured: walletConfigured,
+    getAccessToken,
+  } = useWalletContext()
   const generativeAuth = useGenerativeAuth()
   const { balance, refreshBalance } = useCredits()
   const { isPremiumMember } = usePremiumMembership(account)
@@ -348,6 +419,35 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
     setPendingInvoice(null)
     setPaying(false)
   }, [])
+
+  const canRetryReleasedPayment = canUseReleasedPayment(releasedPayment, busy, projectId, account)
+
+  const retryReleasedPayment = useCallback(async () => {
+    if (!releasedPayment || busy) return
+    const token = (await getAccessToken())?.trim()
+    if (!token) {
+      if (walletConfigured) connect()
+      reportLocalError(
+        t('director.error.connectWallet', {
+          defaultValue: 'Connect your wallet to pay for the Director in CRTVAI.',
+        }),
+      )
+      return
+    }
+    await submit(releasedPayment.brief, {
+      ...releasedPayment,
+      accessToken: token,
+    })
+  }, [
+    busy,
+    connect,
+    getAccessToken,
+    releasedPayment,
+    reportLocalError,
+    submit,
+    t,
+    walletConfigured,
+  ])
 
   const confirmInvoice = useCallback(async () => {
     if (!pendingInvoice || paying) return
@@ -564,6 +664,15 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
         {messages.map((message) => (
           <DirectorMessage key={message.id} role={message.role} content={message.content} />
         ))}
+
+        {canRetryReleasedPayment && (
+          <DirectorReleasedPaymentBanner
+            disabled={busy}
+            onRetry={() => void retryReleasedPayment()}
+            onDismiss={clearReleasedPayment}
+            t={t}
+          />
+        )}
 
         {pendingInvoice && (
           <DirectorInvoiceCard
