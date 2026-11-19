@@ -16,7 +16,8 @@ jobs:
     # The nightly `schedule` trigger only exists for the preview-sync soak;
     # skip the full quality suite (already run on every PR and push to main).
     if: github.event_name != 'schedule'
-    runs-on: ubuntu-latest
+    # Pinned to ubuntu-24.04 because Playwright 1.60.0 does not support ubuntu-26.04 (current ubuntu-latest).
+    runs-on: ubuntu-24.04
     # onnxruntime-node postinstall pulls optional CUDA EP binaries on linux/x64;
     # CI does not use them and downloads flake/404. Newer onnxruntime-node reads
     # ONNXRUNTIME_NODE_INSTALL; nested 1.21.0 (via kokoro-js) only reads
@@ -128,7 +129,7 @@ jobs:
   # touch preview code. See scripts/preview-sync-stress.mjs.
   preview-sync-stress:
     name: Preview Sync Stress
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       ONNXRUNTIME_NODE_INSTALL: skip
       ONNXRUNTIME_NODE_INSTALL_CUDA: skip
