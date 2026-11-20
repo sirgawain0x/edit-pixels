@@ -1,17 +1,21 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { GET } from '../../../../api/director-agent-info.js'
+import { GET, OPTIONS } from '../../../../api/director-agent-info.js'
 
 describe('GET /api/director-agent-info', () => {
   afterEach(() => {
     vi.unstubAllEnvs()
   })
 
-  it('returns dual-rail human CRTVAI and x402 Base USDC discovery metadata', async () => {
+  it('returns dual-rail human CRTVAI and x402 Base USDC discovery metadata with CORS and cache headers', async () => {
     vi.stubEnv('DIRECTOR_ADK_BASE_URL', 'https://creative-director-3ortoh2aiq-ue.a.run.app')
     vi.stubEnv('DIRECTOR_ADK_APP_NAME', 'agent')
 
     const response = await GET()
     expect(response.status).toBe(200)
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*')
+    expect(response.headers.get('Access-Control-Allow-Methods')).toBe('GET, OPTIONS')
+    expect(response.headers.get('Cache-Control')).toBe('public, max-age=300')
+
     const body = (await response.json()) as {
       service: string
       humanAccess: { method: string; path: string; quotePath: string; token: string; auth: string }
@@ -63,5 +67,33 @@ describe('GET /api/director-agent-info', () => {
     expect(body.agentAccess.agentCardUrl).toBe(
       'https://gateway.example.com/.well-known/agent-card.json',
     )
+  })
+
+  it('uses TREASURY_USDC_ADDRESS override when valid and falls back when invalid or blank', async () => {
+    const customTreasury = '0x1111111111111111111111111111111111111111'
+    vi.stubEnv('TREASURY_USDC_ADDRESS', `  ${customTreasury}  `)
+
+    const customResponse = await GET()
+    const customBody = (await customResponse.json()) as { agentAccess: { payTo: string } }
+    expect(customBody.agentAccess.payTo).toBe(customTreasury)
+
+    vi.stubEnv('TREASURY_USDC_ADDRESS', 'not-an-address')
+    const invalidResponse = await GET()
+    const invalidBody = (await invalidResponse.json()) as { agentAccess: { payTo: string } }
+    expect(invalidBody.agentAccess.payTo).toBe('0xf46F1BA19A9280F752a451d0973b047D81c63D70')
+
+    vi.stubEnv('TREASURY_USDC_ADDRESS', '   ')
+    const blankResponse = await GET()
+    const blankBody = (await blankResponse.json()) as { agentAccess: { payTo: string } }
+    expect(blankBody.agentAccess.payTo).toBe('0xf46F1BA19A9280F752a451d0973b047D81c63D70')
+  })
+
+  it('responds to OPTIONS preflight with 204 and CORS + cache headers', () => {
+    const response = OPTIONS()
+    expect(response.status).toBe(204)
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*')
+    expect(response.headers.get('Access-Control-Allow-Methods')).toBe('GET, OPTIONS')
+    expect(response.headers.get('Access-Control-Allow-Headers')).toBe('Content-Type, Authorization')
+    expect(response.headers.get('Cache-Control')).toBe('public, max-age=300')
   })
 })
