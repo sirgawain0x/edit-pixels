@@ -6,6 +6,10 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { POST as directorPost } from './api/director'
+import {
+  GET as directorAgentInfoGet,
+  OPTIONS as directorAgentInfoOptions,
+} from './api/director-agent-info'
 import { POST as directorQuotePost } from './api/director-quote'
 import { GET as directorSessionsGet } from './api/director-sessions'
 import { GET as generateTaskGet } from './api/generate-task'
@@ -159,6 +163,19 @@ void pixelsRenderVeoPost
 void pixelsGenerateTaskGet
 void pixelsGenerateCancelPost
 
+function sendDevProxyError(
+  res: import('node:http').ServerResponse,
+  label: string,
+  error: unknown,
+): void {
+  console.error(`${label} API middleware error`, error)
+  if (!res.headersSent) {
+    res.statusCode = 500
+    res.setHeader('Content-Type', 'application/json')
+    res.end(JSON.stringify({ error: `${label} proxy failed` }))
+  }
+}
+
 // fallow-ignore-next-line complexity
 async function proxyEarnDevRequest(
   req: import('node:http').IncomingMessage,
@@ -280,6 +297,19 @@ function directorApiDevPlugin(): Plugin {
               res.setHeader('Content-Type', 'application/json')
               res.end(JSON.stringify({ error: 'Director quote proxy failed' }))
             }
+          })
+          return
+        }
+        if (
+          path === '/api/director-agent-info' &&
+          (req.method === 'GET' || req.method === 'OPTIONS')
+        ) {
+          const handler =
+            req.method === 'OPTIONS'
+              ? () => Promise.resolve(directorAgentInfoOptions())
+              : () => directorAgentInfoGet()
+          void proxyEarnDevRequest(req, res, handler).catch((error) => {
+            sendDevProxyError(res, 'Director agent info', error)
           })
           return
         }
@@ -459,7 +489,9 @@ function vercelSiteHeaders(): Record<string, string> {
     headers?: Array<{ source: string; headers: Array<{ key: string; value: string }> }>
   }
   const site = vercel.headers?.find((entry) => entry.source === '/(.*)')
-  const staticHeaders = Object.fromEntries((site?.headers ?? []).map((header) => [header.key, header.value]))
+  const staticHeaders = Object.fromEntries(
+    (site?.headers ?? []).map((header) => [header.key, header.value]),
+  )
   return {
     ...staticHeaders,
     'Content-Security-Policy-Report-Only': resolveReportOnlyContentSecurityPolicyForDeployment({
