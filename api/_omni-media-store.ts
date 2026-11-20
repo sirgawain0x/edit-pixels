@@ -54,19 +54,34 @@ async function saveMediaRef(mediaToken: string, ref: StoredGcsMediaRef): Promise
   })
 }
 
+function parseStoredMediaRef(raw: unknown): StoredGcsMediaRef | null {
+  let value: unknown = raw
+  if (typeof raw === 'string') {
+    try {
+      value = JSON.parse(raw)
+    } catch {
+      return null
+    }
+  }
+  if (!value || typeof value !== 'object') return null
+  const ref = value as Partial<StoredGcsMediaRef>
+  if (typeof ref.bucket !== 'string' || typeof ref.objectName !== 'string') return null
+  if (!ref.bucket || !ref.objectName) return null
+  return {
+    bucket: ref.bucket,
+    objectName: ref.objectName,
+    mimeType: typeof ref.mimeType === 'string' ? ref.mimeType : 'video/mp4',
+  }
+}
+
 async function loadMediaRef(mediaToken: string): Promise<StoredGcsMediaRef | null> {
   if (isRedisConfigured()) {
     const redis = await getRedis()
     if (redis) {
-      const raw = await redis.get<string>(`${MEDIA_KEY_PREFIX}${mediaToken}`)
-      if (typeof raw === 'string') {
-        try {
-          const parsed = JSON.parse(raw) as StoredGcsMediaRef
-          if (parsed?.bucket && parsed?.objectName) return parsed
-        } catch {
-          return null
-        }
-      }
+      // Upstash auto-deserializes JSON by default, so `raw` is usually already an object;
+      // still accept a string for clients configured with automaticDeserialization: false.
+      const raw = await redis.get<StoredGcsMediaRef | string>(`${MEDIA_KEY_PREFIX}${mediaToken}`)
+      return parseStoredMediaRef(raw)
     }
   }
   const entry = memoryMediaRefs.get(mediaToken)

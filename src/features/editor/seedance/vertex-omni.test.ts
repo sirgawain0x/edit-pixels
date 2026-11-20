@@ -244,4 +244,55 @@ describe('Gemini Omni 1.2 Flash Vertex Interactions integration', () => {
     )
     expect(badMediaRes.status).toBe(400)
   })
+
+  it('serves GCS-backed Omni media when Upstash auto-deserializes the stored ref', async () => {
+    process.env.VERCEL = '1'
+    const vertexAuth = await import('../../../../api/_vertex-auth.js')
+    vi.spyOn(vertexAuth, 'isVertexAuthConfigured').mockReturnValue(true)
+
+    // Mimic @upstash/redis default automaticDeserialization: JSON strings come back as objects.
+    const kv = new Map<string, unknown>()
+    const fakeRedis = {
+      set: vi.fn(async (key: string, value: unknown) => {
+        kv.set(key, typeof value === 'string' ? JSON.parse(value) : value)
+        return 'OK'
+      }),
+      get: vi.fn(async (key: string) => kv.get(key) ?? null),
+    }
+    const redisClient = await import('../../../../api/_redis-client.js')
+    vi.spyOn(redisClient, 'isRedisConfigured').mockReturnValue(true)
+    vi.spyOn(redisClient, 'getRedis').mockResolvedValue(fakeRedis as never)
+
+    const mp4Bytes = Buffer.from('00000018ftypmp42-redis-object-ref')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const targetUrl = String(input)
+        if (targetUrl.includes('/upload/storage/v1/b/')) {
+          return new Response(JSON.stringify({ name: 'omni-media/test.mp4' }), { status: 200 })
+        }
+        if (targetUrl.includes('alt=media')) {
+          return new Response(new Uint8Array(mp4Bytes), {
+            status: 200,
+            headers: { 'Content-Type': 'video/mp4' },
+          })
+        }
+        throw new Error(`Unexpected fetch URL: ${targetUrl}`)
+      }),
+    )
+
+    const { storeOmniVideoMedia, serveOmniVideoMedia } =
+      await import('../../../../api/_omni-media-store')
+    const mediaUrl = await storeOmniVideoMedia({
+      bytes: mp4Bytes,
+      mimeType: 'video/mp4',
+      origin: 'https://pixels.example',
+    })
+    const token = new URL(mediaUrl).searchParams.get('media') ?? ''
+    expect(typeof [...kv.values()][0]).toBe('object')
+
+    const res = await serveOmniVideoMedia(new Request(mediaUrl), token)
+    expect(res.status).toBe(200)
+    expect(Buffer.from(await res.arrayBuffer()).equals(mp4Bytes)).toBe(true)
+  })
 })
