@@ -29,7 +29,11 @@ import {
 } from '../director/timeline-audio'
 import { usePlaybackStore } from '@/shared/state/playback'
 import { isSeedanceGenerateEnabled, type SeedanceResolution } from '@/config/seedance'
-import { quotePixelsRenderOptions, type PixelsRenderProvider } from '@/config/pixels-render'
+import {
+  quotePixelsRenderOptions,
+  type PixelsRenderProvider,
+  type PixelsRenderQuote,
+} from '@/config/pixels-render'
 import { cn } from '@/shared/ui/cn'
 import { planSeedanceShot, quotePixelsRender } from './seedance-client'
 import type { PixelsRenderQuotesResponse, SeedanceShotBrief } from './seedance-client'
@@ -51,6 +55,24 @@ import {
 } from './pixels-generate-helpers'
 
 type Phase = 'idle' | 'planning' | 'ready' | 'generating'
+
+function mergeServerRenderQuotes(
+  baseOptions: PixelsRenderQuote[],
+  serverQuotes: PixelsRenderQuotesResponse | null,
+): PixelsRenderQuote[] {
+  if (!serverQuotes) return baseOptions
+  return baseOptions.map((option) => {
+    const remote = serverQuotes[option.provider]
+    if (!remote) return option
+    return {
+      ...option,
+      crtvaiWei: BigInt(remote.crtvaiRequired),
+      crtvaiDisplay: remote.crtvaiDisplay,
+      formattedUsd: remote.formattedUsd,
+      estimatedUsdc6: remote.estimatedUsdc6,
+    }
+  })
+}
 
 // fallow-ignore-next-line complexity
 export const SeedancePanel = memo(function SeedancePanel() {
@@ -78,11 +100,15 @@ export const SeedancePanel = memo(function SeedancePanel() {
 
   const renderOptions = useMemo(() => {
     if (!brief) return []
-    return quotePixelsRenderOptions(brief.duration, resolution)
-  }, [brief, resolution])
+    return mergeServerRenderQuotes(
+      quotePixelsRenderOptions(brief.duration, resolution),
+      serverQuotes,
+    )
+  }, [brief, resolution, serverQuotes])
 
   const selectedQuote = useMemo(() => {
     if (!renderProvider || !serverQuotes) return null
+    if (renderProvider === 'omni') return serverQuotes.omni ?? null
     return renderProvider === 'veo' ? serverQuotes.veo : serverQuotes.seedance
   }, [renderProvider, serverQuotes])
 
@@ -115,7 +141,11 @@ export const SeedancePanel = memo(function SeedancePanel() {
     ) => {
       setStatus(t('seedance.status.importing', { defaultValue: 'Importing to timeline…' }))
       const tags =
-        provider === 'seedance' ? ['ai-generated', 'seedance'] : ['ai-generated', 'veo', 'pixels']
+        provider === 'seedance'
+          ? ['ai-generated', 'seedance']
+          : provider === 'omni'
+            ? ['ai-generated', 'omni', 'pixels']
+            : ['ai-generated', 'veo', 'pixels']
       const { inserted, fileName } = await importRenderVideoToTimeline(
         videoUrl,
         projectId,
@@ -205,6 +235,12 @@ export const SeedancePanel = memo(function SeedancePanel() {
           setStatus(
             t('seedance.status.generatingSeedance', {
               defaultValue: 'Generating with Seedance 2.5…',
+            }),
+          )
+        } else if (input.provider === 'omni') {
+          setStatus(
+            t('seedance.status.generatingOmni', {
+              defaultValue: 'Generating with Gemini Omni 1.2 Flash…',
             }),
           )
         } else {
@@ -457,7 +493,7 @@ export const SeedancePanel = memo(function SeedancePanel() {
             <div className="space-y-1">
               <Label className="text-[11px]">
                 {t('seedance.seedanceResolution', {
-                  defaultValue: 'Seedance resolution (Veo uses 720p)',
+                  defaultValue: 'Seedance resolution (Veo & Omni use 720p)',
                 })}
               </Label>
               <Select

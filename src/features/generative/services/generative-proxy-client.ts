@@ -1,7 +1,14 @@
 // fallow-ignore-file unused-export,complexity,code-duplication
 import { createLogger } from '@/shared/logging/logger'
 import { quoteNanobananaCredits, quoteVeoCredits, normalizeVeoQuality } from '@/config/credits'
-import type { GenerativeTaskDetail, NanobananaQuality, VeoQuality, VeoTier } from '../types'
+import type {
+  FlowQuality,
+  FlowTier,
+  GenerativeTaskDetail,
+  NanobananaQuality,
+  VeoQuality,
+  VeoTier,
+} from '../types'
 import {
   pixelsIdentityHeaders,
   withPixelsIdentityBody,
@@ -232,10 +239,10 @@ export async function proxyFlowRun(
   body: {
     prompt: string
     duration?: number
-    quality?: VeoQuality
-    tier?: VeoTier
+    quality?: FlowQuality
+    tier?: FlowTier
     /** @deprecated Use tier */
-    speed?: VeoTier
+    speed?: FlowTier
     aspect_ratio?: string
     startImageUrl?: string
     endImageUrl?: string

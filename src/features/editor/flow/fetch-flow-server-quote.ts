@@ -1,7 +1,7 @@
 import { PIXELS_SIGNER_HEADER } from '@/features/editor/deps/generative'
 import type { FlowQuote } from './flow-pricing'
-import type { FlowTier } from '@/config/flow'
-import type { NanobananaQuality, VeoQuality } from '@/config/credits'
+import type { FlowQuality, FlowTier } from '@/config/flow'
+import type { NanobananaQuality } from '@/config/credits'
 
 interface FlowServerQuoteResponse {
   quoteId: string
@@ -9,7 +9,7 @@ interface FlowServerQuoteResponse {
   expiresAtMs: number
   slippageBps: number
   duration: number
-  quality: VeoQuality
+  quality: FlowQuality
   tier: FlowTier
   stillCount: number
   videoCredits: number
@@ -25,7 +25,7 @@ export async function fetchFlowServerQuote(
   auth: { token: string; signerAddress: `0x${string}` },
   input: {
     duration: number
-    quality: VeoQuality
+    quality: FlowQuality
     tier: FlowTier
     stillCount: number
     stillQuality?: NanobananaQuality

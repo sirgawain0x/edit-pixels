@@ -6,8 +6,9 @@
 import { quoteSeedanceSpend, syncBatchLinkedSeedanceQuoteExpiry } from './_seedance-billing.js'
 import {
   clampFlowDuration,
+  clampOmniDuration,
   quoteFlowTotalCredits,
-  quoteNanobananaCredits,
+  quoteOmniCredits,
   type NanobananaQuality,
 } from './_generative-pricing.js'
 import { quoteFlowCreditsUsdc6 } from './flow-billing.js'
@@ -40,10 +41,19 @@ export interface DirectorBatchQuoteShotResult {
   generate: {
     prompt: string
     duration: number
+    omniDuration: number
     veoDuration: number
     seedanceDuration: number
     aspect_ratio: string
     resolution: SeedanceResolution
+  }
+  omni: {
+    provider: 'omni'
+    duration: number
+    estimatedUsdc6: number
+    crtvaiRequired: string
+    crtvaiDisplay: number
+    formattedUsd: string
   }
   veo: {
     provider: 'veo'
@@ -71,6 +81,12 @@ export interface DirectorBatchQuoteResult {
   shotCount: number
   shots: DirectorBatchQuoteShotResult[]
   totals: {
+    allOmni: {
+      crtvaiRequired: string
+      crtvaiDisplay: number
+      formattedUsd: string
+      estimatedUsdc6: number
+    }
     allVeo: {
       crtvaiRequired: string
       crtvaiDisplay: number
@@ -88,9 +104,23 @@ export interface DirectorBatchQuoteResult {
       crtvaiDisplay: number
       formattedUsd: string
       estimatedUsdc6: number
-      providers: { veo: number; seedance: number }
+      providers: { veo: number; seedance: number; omni?: number }
     }
   }
+}
+
+async function quoteOmniForShot(omniDuration: number): Promise<{
+  estimatedUsdc6: number
+  crtvaiWei: bigint
+} | null> {
+  const duration = clampOmniDuration(omniDuration)
+  const credits = quoteOmniCredits({
+    duration,
+    quality: PIXELS_VEO_QUALITY,
+  })
+  const quote = await quoteFlowCreditsUsdc6(credits)
+  if (!quote) return null
+  return { estimatedUsdc6: quote.estimatedUsdc6, crtvaiWei: quote.minCrtvaiWei }
 }
 
 async function quoteVeoForShot(veoDuration: number): Promise<{
@@ -138,10 +168,12 @@ export async function quoteDirectorStoryboardBatch(input: {
   const storeShots: DirectorBatchShotQuoteRecord[] = []
   const seenShotIds = new Set<string>()
 
+  let allOmniWei = 0n
   let allVeoWei = 0n
   let allSeedanceWei = 0n
   let mixWei = 0n
   let mixUsdc6 = 0
+  let mixOmni = 0
   let mixVeo = 0
   let mixSeedance = 0
 
@@ -158,6 +190,11 @@ export async function quoteDirectorStoryboardBatch(input: {
     }
     seenShotIds.add(mapped.shotId)
 
+    const omniQuote = await quoteOmniForShot(mapped.omniDuration)
+    if (!omniQuote) {
+      return { ok: false, error: `omni quote failed for shot ${mapped.shotId}` }
+    }
+
     const veoQuote = await quoteVeoForShot(mapped.veoDuration)
     if (!veoQuote) {
       return { ok: false, error: `veo quote failed for shot ${mapped.shotId}` }
@@ -173,17 +210,28 @@ export async function quoteDirectorStoryboardBatch(input: {
 
     const recommendedProvider = pickDirectorShotProvider(rawShot, input.providerPreference)
     const recommendedWei =
-      recommendedProvider === 'seedance' ? seedanceQuote.minCrtvaiWei : veoQuote.crtvaiWei
+      recommendedProvider === 'omni'
+        ? omniQuote.crtvaiWei
+        : recommendedProvider === 'seedance'
+          ? seedanceQuote.minCrtvaiWei
+          : veoQuote.crtvaiWei
     const recommendedUsdc6 =
-      recommendedProvider === 'seedance' ? seedanceQuote.estimatedUsdc6 : veoQuote.estimatedUsdc6
+      recommendedProvider === 'omni'
+        ? omniQuote.estimatedUsdc6
+        : recommendedProvider === 'seedance'
+          ? seedanceQuote.estimatedUsdc6
+          : veoQuote.estimatedUsdc6
 
+    allOmniWei += omniQuote.crtvaiWei
     allVeoWei += veoQuote.crtvaiWei
     allSeedanceWei += seedanceQuote.minCrtvaiWei
     mixWei += recommendedWei
     mixUsdc6 += recommendedUsdc6
-    if (recommendedProvider === 'veo') mixVeo += 1
+    if (recommendedProvider === 'omni') mixOmni += 1
+    else if (recommendedProvider === 'veo') mixVeo += 1
     else mixSeedance += 1
 
+    const omniFormatted = formatQuoteLine(omniQuote.estimatedUsdc6, omniQuote.crtvaiWei)
     const veoFormatted = formatQuoteLine(veoQuote.estimatedUsdc6, veoQuote.crtvaiWei)
     const seedanceFormatted = formatQuoteLine(
       seedanceQuote.estimatedUsdc6,
@@ -196,10 +244,16 @@ export async function quoteDirectorStoryboardBatch(input: {
       generate: {
         prompt: mapped.prompt,
         duration: mapped.duration,
+        omniDuration: mapped.omniDuration,
         veoDuration: mapped.veoDuration,
         seedanceDuration: mapped.seedanceDuration,
         aspect_ratio: mapped.aspect_ratio,
         resolution: mapped.resolution,
+      },
+      omni: {
+        provider: 'omni',
+        duration: mapped.omniDuration,
+        ...omniFormatted,
       },
       veo: {
         provider: 'veo',
@@ -219,11 +273,14 @@ export async function quoteDirectorStoryboardBatch(input: {
       shotId: mapped.shotId,
       prompt: mapped.prompt,
       duration: mapped.duration,
+      omniDuration: mapped.omniDuration,
       veoDuration: mapped.veoDuration,
       seedanceDuration: mapped.seedanceDuration,
       aspect_ratio: mapped.aspect_ratio,
       resolution: mapped.resolution,
       recommendedProvider,
+      omniCrtvaiWei: omniQuote.crtvaiWei.toString(),
+      omniUsdc6: omniQuote.estimatedUsdc6,
       veoCrtvaiWei: veoQuote.crtvaiWei.toString(),
       veoUsdc6: veoQuote.estimatedUsdc6,
       seedanceQuoteId: seedanceQuote.quoteId,
@@ -238,6 +295,7 @@ export async function quoteDirectorStoryboardBatch(input: {
     providerPreference: input.providerPreference ?? null,
     shots: storeShots,
     totals: {
+      allOmniCrtvaiWei: allOmniWei.toString(),
       allVeoCrtvaiWei: allVeoWei.toString(),
       allSeedanceCrtvaiWei: allSeedanceWei.toString(),
       recommendedMixCrtvaiWei: mixWei.toString(),
@@ -249,6 +307,7 @@ export async function quoteDirectorStoryboardBatch(input: {
     stored.expiresAtMs,
   )
 
+  const allOmniUsdc6 = shotResults.reduce((sum, shot) => sum + shot.omni.estimatedUsdc6, 0)
   const allVeoUsdc6 = shotResults.reduce((sum, shot) => sum + shot.veo.estimatedUsdc6, 0)
   const allSeedanceUsdc6 = shotResults.reduce((sum, shot) => sum + shot.seedance.estimatedUsdc6, 0)
 
@@ -260,6 +319,10 @@ export async function quoteDirectorStoryboardBatch(input: {
       shotCount: shotResults.length,
       shots: shotResults,
       totals: {
+        allOmni: {
+          ...formatQuoteLine(allOmniUsdc6, allOmniWei),
+          estimatedUsdc6: allOmniUsdc6,
+        },
         allVeo: {
           ...formatQuoteLine(allVeoUsdc6, allVeoWei),
           estimatedUsdc6: allVeoUsdc6,
@@ -271,7 +334,11 @@ export async function quoteDirectorStoryboardBatch(input: {
         recommendedMix: {
           ...formatQuoteLine(mixUsdc6, mixWei),
           estimatedUsdc6: mixUsdc6,
-          providers: { veo: mixVeo, seedance: mixSeedance },
+          providers: {
+            veo: mixVeo,
+            seedance: mixSeedance,
+            ...(mixOmni > 0 ? { omni: mixOmni } : {}),
+          },
         },
       },
     },
@@ -329,13 +396,25 @@ export async function bindDirectorBatchSelections(
     if (!stored) {
       return { ok: false, error: 'selection_mismatch' }
     }
-    if (selection.provider !== 'veo' && selection.provider !== 'seedance') {
+    if (
+      selection.provider !== 'omni' &&
+      selection.provider !== 'veo' &&
+      selection.provider !== 'seedance'
+    ) {
       return { ok: false, error: 'selection_mismatch' }
     }
     const estimatedUsdc6 =
-      selection.provider === 'veo' ? stored.veoUsdc6 : stored.seedanceUsdc6
+      selection.provider === 'omni'
+        ? stored.omniUsdc6
+        : selection.provider === 'veo'
+          ? stored.veoUsdc6
+          : stored.seedanceUsdc6
     const minCrtvaiWei = BigInt(
-      selection.provider === 'veo' ? stored.veoCrtvaiWei : stored.seedanceCrtvaiWei,
+      selection.provider === 'omni'
+        ? stored.omniCrtvaiWei
+        : selection.provider === 'veo'
+          ? stored.veoCrtvaiWei
+          : stored.seedanceCrtvaiWei,
     )
     try {
       const { minAmountWei } = await validateSettlementAgainstQuote({

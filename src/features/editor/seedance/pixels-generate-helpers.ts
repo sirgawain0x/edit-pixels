@@ -3,6 +3,7 @@ import type { SeedanceAspectRatio } from '@/config/seedance'
 import { buildDirectorPaymentOp } from '../director/build-director-payment'
 import {
   cancelPixelsGenerate,
+  generateOmniPixels,
   generateSeedance,
   generateVeoPixels,
   getPixelsGenerateTask,
@@ -149,7 +150,7 @@ async function runSeedanceProviderGenerate(
   return result.output.video_url
 }
 
-async function runVeoProviderGenerate(
+async function runVertexProviderGenerate(
   auth: SignedRequestParams,
   input: PixelsGenerateActiveJob,
   crtvaiRequired: string,
@@ -157,6 +158,7 @@ async function runVeoProviderGenerate(
   sendOps: (ops: ReturnType<typeof buildDirectorPaymentOp>[]) => Promise<{ txHash: string }>,
   refreshBalance: () => void,
   onProgress: (pct: number) => void,
+  startFn: typeof generateVeoPixels,
   signal?: AbortSignal,
 ): Promise<string> {
   let veoTaskId = input.veoTaskId
@@ -170,7 +172,7 @@ async function runVeoProviderGenerate(
     if (paymentTxHash) {
       savePixelsGenerateJob({ ...input, paymentTxHash })
     }
-    const started = await generateVeoPixels(
+    const started = await startFn(
       auth,
       {
         prompt: input.brief.prompt,
@@ -213,7 +215,8 @@ export async function runProviderGenerate(
       options.signal,
     )
   }
-  return runVeoProviderGenerate(
+  const startFn = input.provider === 'omni' ? generateOmniPixels : generateVeoPixels
+  return runVertexProviderGenerate(
     auth,
     input,
     crtvaiRequired,
@@ -221,6 +224,7 @@ export async function runProviderGenerate(
     options.sendOps,
     options.refreshBalance,
     options.onProgress,
+    startFn,
     options.signal,
   )
 }

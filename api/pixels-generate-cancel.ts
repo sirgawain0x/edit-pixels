@@ -8,6 +8,7 @@ import { authenticateGenerativePost } from './_pixels-generate-route-auth.js'
 import { isSeedanceGenerateEnabled } from './_seedance-pricing.js'
 import { getPixelsGenerateJob } from './_pixels-generate-jobs.js'
 import { canCancelPixelsGenerateJob, cancelPixelsGenerateJob } from './_pixels-generate-payment.js'
+import { cancelOmniInteraction } from './_vertex-omni.js'
 
 export async function POST(request: Request): Promise<Response> {
   if (!isSeedanceGenerateEnabled()) {
@@ -44,6 +45,10 @@ export async function POST(request: Request): Promise<Response> {
       status: job.status,
       paymentReleased: job.paymentReleased ?? false,
     })
+  }
+
+  if (job.provider === 'omni' && job.veoTaskId) {
+    await cancelOmniInteraction(job.veoTaskId)
   }
 
   await cancelPixelsGenerateJob(requestId)

@@ -36,6 +36,9 @@
     "api/pixels-render-veo.ts": {
       "maxDuration": 300
     },
+    "api/pixels-render-omni.ts": {
+      "maxDuration": 300
+    },
     "api/pixels-render-quote.ts": {
       "maxDuration": 30
     },

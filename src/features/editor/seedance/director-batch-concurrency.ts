@@ -34,3 +34,10 @@ export function resolveDirectorBatchSeedanceConcurrency(): number {
 export function resolveDirectorBatchVeoConcurrency(queuedVeoCount: number): number {
   return Math.max(0, queuedVeoCount)
 }
+
+/**
+ * Gemini Omni batch enqueue concurrency — uncapped relative to batch size (pay-as-you-go Vertex AI).
+ */
+export function resolveDirectorBatchOmniConcurrency(queuedOmniCount: number): number {
+  return Math.max(0, queuedOmniCount)
+}

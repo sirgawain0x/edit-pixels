@@ -14,6 +14,7 @@ import {
   releaseDirectorBatchShotClaim,
   tryClaimDirectorBatchShot,
 } from './_director-batch-store.js'
+import type { PixelsRenderProvider } from './_director-generate-map.js'
 
 export type BatchGenerateAuthResult =
   | {
@@ -86,10 +87,11 @@ export interface BatchShotGenerateParams {
   prompt: string
   aspect_ratio: string
   resolution: '480p' | '720p'
+  omniDuration: number
   veoDuration: number
   seedanceDuration: number
   seedanceQuoteId: string
-  provider: 'veo' | 'seedance'
+  provider: PixelsRenderProvider
 }
 
 // fallow-ignore-next-line complexity
@@ -125,6 +127,7 @@ export async function getBatchShotGenerateParams(input: {
       prompt: shotQuote.prompt,
       aspect_ratio: shotQuote.aspect_ratio,
       resolution: shotQuote.resolution,
+      omniDuration: shotQuote.omniDuration,
       veoDuration: shotQuote.veoDuration,
       seedanceDuration: shotQuote.seedanceDuration,
       seedanceQuoteId: shotQuote.seedanceQuoteId,

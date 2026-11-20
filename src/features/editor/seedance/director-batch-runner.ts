@@ -8,6 +8,7 @@ import {
   type DirectorBatchQuoteResponse,
 } from './seedance-client'
 import {
+  resolveDirectorBatchOmniConcurrency,
   resolveDirectorBatchSeedanceConcurrency,
   resolveDirectorBatchVeoConcurrency,
 } from './director-batch-concurrency'
@@ -88,7 +89,7 @@ async function pollBatchShotToVideo(
       auth,
       {
         requestId: job.requestId,
-        provider: 'veo',
+        provider: job.provider,
         projectId: '',
         playheadFrame: 0,
         brief: { prompt: '', duration: 5, aspect_ratio: '16:9', framing: '' },
@@ -270,7 +271,7 @@ export async function runDirectorBatchQueue(input: {
   callbacks.onJobs(jobs)
   callbacks.onPhase('running')
 
-  const { veo: veoQueued } = splitQueuedJobsByProvider(jobs)
+  const { veo: veoQueued, omni: omniQueued } = splitQueuedJobsByProvider(jobs)
 
   const updateJob = (updated: DirectorBatchShotJob) => {
     jobs = jobs.map((job) => (job.shotId === updated.shotId ? updated : job))
@@ -283,6 +284,7 @@ export async function runDirectorBatchQueue(input: {
     {
       seedance: resolveDirectorBatchSeedanceConcurrency(),
       veo: resolveDirectorBatchVeoConcurrency(veoQueued.length),
+      omni: resolveDirectorBatchOmniConcurrency(omniQueued.length),
     },
     async (job) => {
       await runSingleBatchShot(auth, active.batchConfirmId, job, projectId, signal, updateJob)

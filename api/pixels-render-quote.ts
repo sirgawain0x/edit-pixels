@@ -1,5 +1,5 @@
 /**
- * POST /api/pixels-render-quote — dual CRTVAI quotes (Veo + Seedance) before render spend.
+ * POST /api/pixels-render-quote — multi-provider CRTVAI quotes (Omni + Veo + Seedance) before render spend.
  */
 // fallow-ignore-file complexity
 
@@ -9,8 +9,9 @@ import { type SeedanceResolution } from './_seedance-pricing.js'
 import { guardSeedanceQuoteRequest } from './_pixels-generate-guards.js'
 import {
   clampFlowDuration,
+  clampOmniDuration,
   quoteFlowTotalCredits,
-  quoteNanobananaCredits,
+  quoteOmniCredits,
   type NanobananaQuality,
 } from './_generative-pricing.js'
 import { quoteFlowCreditsUsdc6 } from './flow-billing.js'
@@ -18,6 +19,7 @@ import { checkPixelsRateLimits } from './_rate-limit.js'
 
 const PIXELS_VEO_TIER = 'standard' as const
 const PIXELS_VEO_QUALITY = '720p'
+const PIXELS_OMNI_QUALITY = '720p'
 const PIXELS_STILL_QUALITY: NanobananaQuality = '2K'
 
 export async function POST(request: Request): Promise<Response> {
@@ -37,6 +39,16 @@ export async function POST(request: Request): Promise<Response> {
   const durationRaw = typeof body.duration === 'number' ? body.duration : 5
   const resolution: SeedanceResolution = body.resolution === '480p' ? '480p' : '720p'
 
+  const omniDuration = clampOmniDuration(durationRaw)
+  const omniCredits = quoteOmniCredits({
+    duration: omniDuration,
+    quality: PIXELS_OMNI_QUALITY,
+  })
+  const omniQuote = await quoteFlowCreditsUsdc6(omniCredits)
+  if (!omniQuote) {
+    return Response.json({ error: 'invalid omni quote' }, { status: 400 })
+  }
+
   const veoDuration = clampFlowDuration(durationRaw)
   const veoCredits = quoteFlowTotalCredits({
     duration: veoDuration,
@@ -53,6 +65,17 @@ export async function POST(request: Request): Promise<Response> {
   const seedanceQuote = await quoteSeedanceSpend({ duration: durationRaw, resolution })
 
   return Response.json({
+    omni: {
+      provider: 'omni',
+      duration: omniDuration,
+      stillCount: 0,
+      estimatedUsdc6: omniQuote.estimatedUsdc6,
+      crtvaiRequired: omniQuote.minCrtvaiWei.toString(),
+      crtvaiDisplay: Number(omniQuote.minCrtvaiWei) / 1e18,
+      formattedUsd: `$${(omniQuote.estimatedUsdc6 / 1_000_000).toFixed(2)}`,
+      label: 'Gemini Omni 1.2 Flash',
+      detail: 'Fast text-to-video with native audio (best value)',
+    },
     veo: {
       provider: 'veo',
       duration: veoDuration,
