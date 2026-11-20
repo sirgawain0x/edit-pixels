@@ -80,9 +80,11 @@ describe('director batch bridge', () => {
         consistentCharacter: true,
       })
       expect(mapped?.veoDuration).toBe(6)
+      expect(mapped?.omniDuration).toBe(7)
       expect(mapped?.seedanceDuration).toBe(7)
       expect(mapped?.aspect_ratio).toBe('9:16')
       expect(pickDirectorShotProvider({ consistentCharacter: true }, 'veo')).toBe('seedance')
+      expect(pickDirectorShotProvider({ consistentCharacter: false }, 'omni')).toBe('omni')
     })
   })
 
@@ -100,7 +102,31 @@ describe('director batch bridge', () => {
       expect(result.ok).toBe(true)
       if (!result.ok) return
       expect(result.quote.shotCount).toBe(2)
+      expect(result.quote.totals.allOmni.estimatedUsdc6).toBeLessThan(
+        result.quote.totals.allVeo.estimatedUsdc6,
+      )
       expect(result.quote.totals.recommendedMix.providers).toEqual({ veo: 1, seedance: 1 })
+    })
+
+    it('uses omni when providerPreference is omni', async () => {
+      const { quoteDirectorStoryboardBatch } =
+        await import('../../../../api/_director-batch-quote-core')
+      const result = await quoteDirectorStoryboardBatch({
+        wallet: '0xabc',
+        providerPreference: 'omni',
+        shots: [
+          { shotId: 'a', prompt: 'Shot A', duration: 10 },
+          { shotId: 'b', prompt: 'Shot B', duration: 12 },
+        ],
+      })
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      expect(result.quote.shots.every((s) => s.recommendedProvider === 'omni')).toBe(true)
+      expect(result.quote.totals.recommendedMix.providers).toEqual({
+        veo: 0,
+        seedance: 0,
+        omni: 2,
+      })
     })
 
     it('rejects duplicate shotId in quote request', async () => {
@@ -151,7 +177,7 @@ describe('director batch bridge', () => {
 
       expect(
         await bindDirectorBatchSelections(stored, '0xabc', [
-          { shotId: 'a', provider: 'veo' },
+          { shotId: 'a', provider: 'omni' },
           { shotId: 'b', provider: 'seedance' },
         ]),
       ).toMatchObject({ ok: true })
@@ -179,7 +205,9 @@ describe('director batch bridge', () => {
 
       const stored = await getSeedanceQuote(seedanceQuoteId)
       expect(stored).toBeTruthy()
-      expect(stored?.expiresAtMs).toBeLessThanOrEqual(Date.now() + METOKEN_QUOTE_EXPIRY_SECONDS * 1000)
+      expect(stored?.expiresAtMs).toBeLessThanOrEqual(
+        Date.now() + METOKEN_QUOTE_EXPIRY_SECONDS * 1000,
+      )
       expect(stored?.expiresAtMs).toBeGreaterThan(Date.now())
     })
   })
@@ -192,9 +220,9 @@ describe('director batch bridge', () => {
       const { resolveBatchConfirmSettlementMinWei } =
         await import('../../../../api/_director-batch-confirm-core')
       const curve = await import('../../../../api/_metoken-curve-quote.js')
-      const spy = vi.spyOn(curve, 'validateSettlementAgainstQuote').mockRejectedValue(
-        new curve.MetokenQuoteError('quote_slippage', 'Price moved'),
-      )
+      const spy = vi
+        .spyOn(curve, 'validateSettlementAgainstQuote')
+        .mockRejectedValue(new curve.MetokenQuoteError('quote_slippage', 'Price moved'))
 
       const quoted = await quoteDirectorStoryboardBatch({
         wallet: '0xabc',
@@ -207,9 +235,7 @@ describe('director batch bridge', () => {
       if (!stored) return
 
       await expect(
-        resolveBatchConfirmSettlementMinWei(stored, [
-          { shotId: 'shot-1', provider: 'veo' },
-        ]),
+        resolveBatchConfirmSettlementMinWei(stored, [{ shotId: 'shot-1', provider: 'veo' }]),
       ).rejects.toMatchObject({ code: 'quote_slippage' })
 
       spy.mockRestore()
@@ -274,6 +300,33 @@ describe('director batch bridge', () => {
       expect(second.ok).toBe(false)
       if (second.ok) return
       expect(second.error).toBe('quote_already_confirmed')
+    })
+
+    it('maps omni selections to /api/pixels-render-omni generateEndpoint', async () => {
+      const { quoteDirectorStoryboardBatch } =
+        await import('../../../../api/_director-batch-quote-core')
+      const { confirmDirectorStoryboardBatch } =
+        await import('../../../../api/_director-batch-confirm-core')
+
+      const quoted = await quoteDirectorStoryboardBatch({
+        wallet: '0xabc',
+        shots: [{ shotId: 'shot-omni', prompt: 'Test Omni', duration: 10 }],
+      })
+      expect(quoted.ok).toBe(true)
+      if (!quoted.ok) return
+
+      const confirmed = await confirmDirectorStoryboardBatch({
+        wallet: '0xabc',
+        batchQuoteId: quoted.quote.batchQuoteId,
+        selections: [{ shotId: 'shot-omni', provider: 'omni', requestId: 'req-omni-1' }],
+      })
+      expect(confirmed.ok).toBe(true)
+      if (!confirmed.ok) return
+      expect(confirmed.confirm.jobs[0]).toMatchObject({
+        shotId: 'shot-omni',
+        provider: 'omni',
+        generateEndpoint: '/api/pixels-render-omni',
+      })
     })
   })
 

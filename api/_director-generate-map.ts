@@ -9,9 +9,9 @@ import {
   type SeedanceAspectRatio,
   type SeedanceResolution,
 } from './_seedance-pricing.js'
-import { clampFlowDuration } from './_generative-pricing.js'
+import { clampFlowDuration, clampOmniDuration } from './_generative-pricing.js'
 
-export type PixelsRenderProvider = 'veo' | 'seedance'
+export type PixelsRenderProvider = 'omni' | 'veo' | 'seedance'
 
 export type DirectorProviderPreference = PixelsRenderProvider
 
@@ -33,7 +33,8 @@ export interface DirectorGenerateRequest {
   duration: number
   aspect_ratio: SeedanceAspectRatio
   resolution: SeedanceResolution
-  /** Veo uses clamped flow duration; Seedance uses seedance duration. */
+  /** Omni uses 3-15s; Veo uses clamped flow duration; Seedance uses seedance duration. */
+  omniDuration: number
   veoDuration: number
   seedanceDuration: number
 }
@@ -70,6 +71,7 @@ export function mapDirectorShotToGenerate(
     duration: rawDuration,
     aspect_ratio,
     resolution,
+    omniDuration: clampOmniDuration(rawDuration),
     veoDuration: clampFlowDuration(rawDuration),
     seedanceDuration: clampSeedanceDuration(rawDuration),
   }
@@ -84,7 +86,7 @@ export function pickDirectorShotProvider(
   preference?: DirectorProviderPreference | null,
 ): PixelsRenderProvider {
   if (shot.consistentCharacter) return 'seedance'
-  if (preference === 'veo' || preference === 'seedance') return preference
+  if (preference === 'omni' || preference === 'veo' || preference === 'seedance') return preference
   return 'veo'
 }
 

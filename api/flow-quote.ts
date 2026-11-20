@@ -5,25 +5,25 @@
 
 import { authenticateGenerativePost } from './_pixels-generate-route-auth.js'
 import {
-  clampFlowDuration,
-  normalizeVeoQuality,
+  clampFlowDurationForTier,
+  normalizeFlowQuality,
   quoteFlowTotalCredits,
   quoteNanobananaCredits,
+  type FlowTier,
   type NanobananaQuality,
-  type VeoTier,
 } from './_generative-pricing.js'
 import { quoteFlowCreditsUsdc6 } from './flow-billing.js'
 import { MetokenQuoteError } from './_metoken-curve-quote.js'
 import { checkPixelsRateLimits } from './_rate-limit.js'
 
-function parseTier(body: Record<string, unknown>): VeoTier {
+function parseTier(body: Record<string, unknown>): FlowTier {
   const raw =
     typeof body.tier === 'string'
       ? body.tier
       : typeof body.speed === 'string'
         ? body.speed
         : 'standard'
-  if (raw === 'fast' || raw === 'lite') return raw
+  if (raw === 'omni' || raw === 'fast' || raw === 'lite') return raw
   return 'standard'
 }
 
@@ -43,8 +43,11 @@ export async function POST(request: Request): Promise<Response> {
 
   const tier = parseTier(body)
   const qualityRaw = typeof body.quality === 'string' ? body.quality : '720p'
-  const quality = normalizeVeoQuality(qualityRaw, tier)
-  const duration = clampFlowDuration(typeof body.duration === 'number' ? body.duration : 8)
+  const quality = normalizeFlowQuality(qualityRaw, tier)
+  const duration = clampFlowDurationForTier(
+    typeof body.duration === 'number' ? body.duration : 8,
+    tier,
+  )
   const stillCount = Math.min(
     2,
     Math.max(0, Math.floor(typeof body.stillCount === 'number' ? body.stillCount : 0)),
@@ -74,8 +77,7 @@ export async function POST(request: Request): Promise<Response> {
       stillCount: 0,
       stillQuality,
     })
-    const stillCredits =
-      stillCount > 0 ? stillCount * quoteNanobananaCredits(stillQuality) : 0
+    const stillCredits = stillCount > 0 ? stillCount * quoteNanobananaCredits(stillQuality) : 0
 
     return Response.json({
       quoteId: quote.quoteId,

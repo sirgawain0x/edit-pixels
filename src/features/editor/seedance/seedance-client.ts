@@ -4,10 +4,7 @@ import { createLogger } from '@/shared/logging/logger'
 import type { SeedanceAspectRatio, SeedanceResolution } from '@/config/seedance'
 import type { PixelsRenderProvider } from '@/config/pixels-render'
 import type { GenerativeTaskDetail, SignedRequestParams } from '@/features/editor/deps/generative'
-import {
-  pixelsIdentityHeaders,
-  withPixelsIdentityBody,
-} from '@/features/editor/deps/generative'
+import { pixelsIdentityHeaders, withPixelsIdentityBody } from '@/features/editor/deps/generative'
 
 const log = createLogger('SeedanceClient')
 
@@ -47,6 +44,7 @@ export interface PixelsRenderQuoteLine {
 }
 
 export interface PixelsRenderQuotesResponse {
+  omni?: PixelsRenderQuoteLine
   veo: PixelsRenderQuoteLine
   seedance: PixelsRenderQuoteLine & { quoteId: string }
 }
@@ -283,6 +281,26 @@ export async function generateVeoPixels(
   )
 }
 
+export async function generateOmniPixels(
+  auth: SignedRequestParams,
+  body: {
+    prompt: string
+    duration: number
+    aspect_ratio: string
+    requestId: string
+    paymentTxHash?: string
+  },
+  signal?: AbortSignal,
+): Promise<GenerativeTaskDetail> {
+  return postSeedanceApi<GenerativeTaskDetail>(
+    '/api/pixels-render-omni',
+    auth,
+    body,
+    'Gemini Omni render failed',
+    signal,
+  )
+}
+
 export async function cancelPixelsGenerate(
   auth: SignedRequestParams,
   requestId: string,
@@ -314,11 +332,13 @@ export interface DirectorBatchQuoteShot {
   generate: {
     prompt: string
     duration: number
+    omniDuration?: number
     veoDuration: number
     seedanceDuration: number
     aspect_ratio: string
     resolution: SeedanceResolution
   }
+  omni?: PixelsRenderQuoteLine
   veo: PixelsRenderQuoteLine
   seedance: PixelsRenderQuoteLine & { quoteId: string }
 }
@@ -329,13 +349,14 @@ export interface DirectorBatchQuoteResponse {
   shotCount: number
   shots: DirectorBatchQuoteShot[]
   totals: {
+    allOmni?: { crtvaiRequired: string; crtvaiDisplay: number; formattedUsd: string }
     allVeo: { crtvaiRequired: string; crtvaiDisplay: number; formattedUsd: string }
     allSeedance: { crtvaiRequired: string; crtvaiDisplay: number; formattedUsd: string }
     recommendedMix: {
       crtvaiRequired: string
       crtvaiDisplay: number
       formattedUsd: string
-      providers: { veo: number; seedance: number }
+      providers: { veo: number; seedance: number; omni?: number }
     }
   }
 }
@@ -348,7 +369,7 @@ export interface DirectorBatchConfirmJob {
   seedanceQuoteId: string | null
   crtvaiRequired: string
   pollUrl: string
-  generateEndpoint: '/api/seedance-generate' | '/api/pixels-render-veo'
+  generateEndpoint: '/api/seedance-generate' | '/api/pixels-render-veo' | '/api/pixels-render-omni'
 }
 
 export interface DirectorBatchConfirmResponse {
@@ -409,7 +430,7 @@ export interface DirectorBatchEnqueueResponse {
 
 export async function enqueueDirectorBatchShot(
   auth: SignedRequestParams,
-  endpoint: '/api/seedance-generate' | '/api/pixels-render-veo',
+  endpoint: '/api/seedance-generate' | '/api/pixels-render-veo' | '/api/pixels-render-omni',
   body: {
     batchConfirmId: string
     shotId: string

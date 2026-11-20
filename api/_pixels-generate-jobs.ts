@@ -10,7 +10,7 @@ const JOB_KEY_PREFIX = 'pixels:generate:job:'
 const VEO_INDEX_PREFIX = 'pixels:generate:veo:'
 const JOB_TTL_SECONDS = 60 * 60 * 24 // 24h
 
-export type PixelsGenerateProvider = 'seedance' | 'veo'
+export type PixelsGenerateProvider = 'omni' | 'seedance' | 'veo'
 
 export type PixelsGenerateJobStatus = 'processing' | 'completed' | 'failed' | 'cancelled'
 

@@ -13,7 +13,7 @@ import {
 import { POST as directorQuotePost } from './api/director-quote'
 import { GET as directorSessionsGet } from './api/director-sessions'
 import { GET as generateTaskGet } from './api/generate-task'
-import { POST as flowFramePost } from './api/flow-frame'
+import { GET as flowFrameGet, POST as flowFramePost } from './api/flow-frame'
 import { POST as flowQuotePost } from './api/flow-quote'
 import { POST as flowRunPost } from './api/flow-run'
 import { POST as generateImagePost } from './api/generate-image'
@@ -33,6 +33,7 @@ import { POST as seedancePlanPost } from './api/seedance-plan'
 import { POST as seedanceQuotePost } from './api/seedance-quote'
 import { POST as seedanceGeneratePost } from './api/seedance-generate'
 import { POST as pixelsRenderQuotePost } from './api/pixels-render-quote'
+import { POST as pixelsRenderOmniPost } from './api/pixels-render-omni'
 import { POST as pixelsRenderVeoPost } from './api/pixels-render-veo'
 import { GET as pixelsGenerateTaskGet } from './api/pixels-generate-task'
 import { POST as pixelsGenerateCancelPost } from './api/pixels-generate-cancel'
@@ -159,6 +160,7 @@ void seedancePlanPost
 void seedanceQuotePost
 void seedanceGeneratePost
 void pixelsRenderQuotePost
+void pixelsRenderOmniPost
 void pixelsRenderVeoPost
 void pixelsGenerateTaskGet
 void pixelsGenerateCancelPost
@@ -203,7 +205,7 @@ async function proxyEarnDevRequest(
   response.headers.forEach((value, key) => {
     res.setHeader(key, value)
   })
-  res.end(await response.text())
+  res.end(Buffer.from(await response.arrayBuffer()))
 }
 
 function directorApiDevPlugin(): Plugin {
@@ -313,6 +315,13 @@ function directorApiDevPlugin(): Plugin {
           })
           return
         }
+        if (path === '/api/flow-frame' && (req.method === 'GET' || req.method === 'POST')) {
+          const handler = req.method === 'GET' ? flowFrameGet : flowFramePost
+          void proxyEarnDevRequest(req, res, handler).catch((error) => {
+            sendDevProxyError(res, 'Flow frame', error)
+          })
+          return
+        }
         if (path === '/api/flow-quote' && req.method === 'POST') {
           void proxyEarnDevRequest(req, res, flowQuotePost).catch((error) => {
             console.error('Flow quote API middleware error', error)
@@ -321,6 +330,18 @@ function directorApiDevPlugin(): Plugin {
               res.setHeader('Content-Type', 'application/json')
               res.end(JSON.stringify({ error: 'Flow quote proxy failed' }))
             }
+          })
+          return
+        }
+        if (path === '/api/flow-run' && req.method === 'POST') {
+          void proxyEarnDevRequest(req, res, flowRunPost).catch((error) => {
+            sendDevProxyError(res, 'Flow run', error)
+          })
+          return
+        }
+        if (path === '/api/generate-task' && req.method === 'GET') {
+          void proxyEarnDevRequest(req, res, generateTaskGet).catch((error) => {
+            sendDevProxyError(res, 'Generate task', error)
           })
           return
         }
@@ -376,6 +397,12 @@ function directorApiDevPlugin(): Plugin {
               res.setHeader('Content-Type', 'application/json')
               res.end(JSON.stringify({ error: 'Pixels render quote proxy failed' }))
             }
+          })
+          return
+        }
+        if (path === '/api/pixels-render-omni' && req.method === 'POST') {
+          void proxyEarnDevRequest(req, res, pixelsRenderOmniPost).catch((error) => {
+            sendDevProxyError(res, 'Pixels render omni', error)
           })
           return
         }

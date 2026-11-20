@@ -1,7 +1,11 @@
 import type { PixelsRenderProvider } from '@/config/pixels-render'
-import type { DirectorBatchQuoteResponse } from './seedance-client'
+import type {
+  DirectorBatchQuoteResponse,
+  DirectorBatchQuoteShot,
+  PixelsRenderQuoteLine,
+} from './seedance-client'
 
-export type DirectorBatchPath = 'allVeo' | 'allSeedance' | 'recommendedMix'
+export type DirectorBatchPath = 'allOmni' | 'allVeo' | 'allSeedance' | 'recommendedMix'
 
 export type DirectorBatchShotStatus = 'queued' | 'running' | 'succeeded' | 'failed'
 
@@ -14,8 +18,43 @@ export interface DirectorBatchShotJob {
   error?: string
   videoUrl?: string
   mediaId?: string
-  generateEndpoint: '/api/seedance-generate' | '/api/pixels-render-veo'
+  generateEndpoint: '/api/seedance-generate' | '/api/pixels-render-veo' | '/api/pixels-render-omni'
   veoTaskId?: string
+}
+
+function providerForBatchPath(
+  shotRecommended: PixelsRenderProvider,
+  path: DirectorBatchPath,
+): PixelsRenderProvider {
+  if (path === 'allOmni') return 'omni'
+  if (path === 'allVeo') return 'veo'
+  if (path === 'allSeedance') return 'seedance'
+  return shotRecommended
+}
+
+function quoteLineForProvider(
+  shot: DirectorBatchQuoteShot,
+  provider: PixelsRenderProvider,
+): PixelsRenderQuoteLine {
+  if (provider === 'omni' && shot.omni) return shot.omni
+  if (provider === 'seedance') return shot.seedance
+  return shot.veo
+}
+
+function estimateFormattedUsd(
+  totalUsdc6: number,
+  hasAllUsdc6: boolean,
+  crtvaiDisplay: number,
+  quote: DirectorBatchQuoteResponse,
+): string {
+  if (hasAllUsdc6) {
+    return `$${(totalUsdc6 / 1_000_000).toFixed(2)}`
+  }
+  if (quote.totals.allVeo.crtvaiDisplay > 0) {
+    const usd = quote.totals.allVeo.formattedUsd.replace(/^\$/, '')
+    return `$${(crtvaiDisplay * (Number.parseFloat(usd) / quote.totals.allVeo.crtvaiDisplay)).toFixed(2)}`
+  }
+  return '$0.00'
 }
 
 export function buildBatchSelections(
@@ -26,8 +65,7 @@ export function buildBatchSelections(
   return quote.shots.map((shot) => ({
     shotId: shot.shotId,
     provider:
-      perShotOverrides?.[shot.shotId] ??
-      (path === 'allVeo' ? 'veo' : path === 'allSeedance' ? 'seedance' : shot.recommendedProvider),
+      perShotOverrides?.[shot.shotId] ?? providerForBatchPath(shot.recommendedProvider, path),
     requestId: crypto.randomUUID(),
   }))
 }
@@ -39,6 +77,8 @@ export function totalCrtvaiForPath(
 ): { crtvaiRequired: string; crtvaiDisplay: number; formattedUsd: string } {
   if (!perShotOverrides || Object.keys(perShotOverrides).length === 0) {
     switch (path) {
+      case 'allOmni':
+        return quote.totals.allOmni ?? quote.totals.recommendedMix
       case 'allVeo':
         return quote.totals.allVeo
       case 'allSeedance':
@@ -53,22 +93,25 @@ export function totalCrtvaiForPath(
   }
 
   let totalWei = 0n
+  let totalUsdc6 = 0
+  let hasAllUsdc6 = true
   for (const shot of quote.shots) {
     const provider =
-      perShotOverrides[shot.shotId] ??
-      (path === 'allVeo' ? 'veo' : path === 'allSeedance' ? 'seedance' : shot.recommendedProvider)
-    const line = provider === 'veo' ? shot.veo : shot.seedance
+      perShotOverrides[shot.shotId] ?? providerForBatchPath(shot.recommendedProvider, path)
+    const line = quoteLineForProvider(shot, provider)
     totalWei += BigInt(line.crtvaiRequired)
+    if (typeof line.estimatedUsdc6 === 'number') {
+      totalUsdc6 += line.estimatedUsdc6
+    } else {
+      hasAllUsdc6 = false
+    }
   }
 
   const crtvaiDisplay = Number(totalWei) / 1e18
-  const usd = quote.totals.allVeo.formattedUsd.replace(/^\$/, '')
-  const formattedUsd = `$${(crtvaiDisplay * (Number.parseFloat(usd) / quote.totals.allVeo.crtvaiDisplay)).toFixed(2)}`
-
   return {
     crtvaiRequired: totalWei.toString(),
     crtvaiDisplay,
-    formattedUsd,
+    formattedUsd: estimateFormattedUsd(totalUsdc6, hasAllUsdc6, crtvaiDisplay, quote),
   }
 }
 
@@ -140,23 +183,26 @@ export function isBatchQuoteExpired(expiresAt: string, nowMs = Date.now()): bool
 export function splitQueuedJobsByProvider(jobs: readonly DirectorBatchShotJob[]): {
   seedance: DirectorBatchShotJob[]
   veo: DirectorBatchShotJob[]
+  omni: DirectorBatchShotJob[]
 } {
   const queued = jobs.filter((job) => job.status === 'queued')
   return {
     seedance: queued.filter((job) => job.provider === 'seedance'),
     veo: queued.filter((job) => job.provider === 'veo'),
+    omni: queued.filter((job) => job.provider === 'omni'),
   }
 }
 
-/** Run Seedance and Veo worker pools in parallel under provider-specific limits. */
+/** Run Seedance, Veo, and Omni worker pools in parallel under provider-specific limits. */
 export async function runBatchJobsByProvider(
   jobs: readonly DirectorBatchShotJob[],
-  limits: { seedance: number; veo: number },
+  limits: { seedance: number; veo: number; omni?: number },
   worker: (job: DirectorBatchShotJob) => Promise<void>,
 ): Promise<void> {
-  const { seedance, veo } = splitQueuedJobsByProvider(jobs)
+  const { seedance, veo, omni } = splitQueuedJobsByProvider(jobs)
   await Promise.all([
     runWithConcurrency(seedance, limits.seedance, worker),
     runWithConcurrency(veo, limits.veo, worker),
+    runWithConcurrency(omni, limits.omni ?? omni.length, worker),
   ])
 }

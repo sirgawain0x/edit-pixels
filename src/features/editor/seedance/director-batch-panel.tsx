@@ -62,6 +62,8 @@ function pathLabel(
   t: (key: string, opts?: { defaultValue: string }) => string,
 ): string {
   switch (path) {
+    case 'allOmni':
+      return t('director.batch.pathAllOmni', { defaultValue: 'All Omni 1.2 Flash (best value)' })
     case 'allVeo':
       return t('director.batch.pathAllVeo', { defaultValue: 'All Veo' })
     case 'allSeedance':
@@ -73,6 +75,16 @@ function pathLabel(
       return _exhaustive
     }
   }
+}
+
+function defaultShotProviderLabel(
+  path: DirectorBatchPath,
+  shotRecommended: PixelsRenderProvider,
+): PixelsRenderProvider {
+  if (path === 'allOmni') return 'omni'
+  if (path === 'allVeo') return 'veo'
+  if (path === 'allSeedance') return 'seedance'
+  return shotRecommended
 }
 
 function statusIcon(status: DirectorBatchShotJob['status']) {
@@ -403,7 +415,9 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
 
   if (!enabled) return null
 
-  const paths: DirectorBatchPath[] = ['recommendedMix', 'allVeo', 'allSeedance']
+  const paths: DirectorBatchPath[] = quote?.totals.allOmni
+    ? ['recommendedMix', 'allOmni', 'allVeo', 'allSeedance']
+    : ['recommendedMix', 'allVeo', 'allSeedance']
 
   return (
     <div className="rounded-xl border border-primary/35 bg-secondary/25 p-3.5">
@@ -547,13 +561,8 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
                   })
                 }}
               >
-                <option value="">
-                  {path === 'recommendedMix'
-                    ? shot.recommendedProvider
-                    : path === 'allVeo'
-                      ? 'veo'
-                      : 'seedance'}
-                </option>
+                <option value="">{defaultShotProviderLabel(path, shot.recommendedProvider)}</option>
+                {quote.totals.allOmni && <option value="omni">Omni 1.2 Flash</option>}
                 <option value="veo">Veo</option>
                 <option value="seedance">Seedance</option>
               </select>

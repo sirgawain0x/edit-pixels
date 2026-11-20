@@ -19,11 +19,14 @@ export interface DirectorBatchShotQuoteRecord {
   shotId: string
   prompt: string
   duration: number
+  omniDuration: number
   veoDuration: number
   seedanceDuration: number
   aspect_ratio: string
   resolution: SeedanceResolution
   recommendedProvider: PixelsRenderProvider
+  omniCrtvaiWei: string
+  omniUsdc6: number
   veoCrtvaiWei: string
   veoUsdc6: number
   seedanceQuoteId: string
@@ -38,6 +41,7 @@ export interface DirectorBatchQuoteRecord {
   providerPreference: PixelsRenderProvider | null
   shots: DirectorBatchShotQuoteRecord[]
   totals: {
+    allOmniCrtvaiWei: string
     allVeoCrtvaiWei: string
     allSeedanceCrtvaiWei: string
     recommendedMixCrtvaiWei: string

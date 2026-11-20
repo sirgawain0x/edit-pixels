@@ -24,7 +24,10 @@ function parseSelections(raw: unknown): Array<{
     if (typeof item !== 'object' || item === null || Array.isArray(item)) return null
     const row = item as Record<string, unknown>
     if (typeof row.shotId !== 'string' || typeof row.requestId !== 'string') return null
-    const provider = row.provider === 'veo' || row.provider === 'seedance' ? row.provider : null
+    const provider =
+      row.provider === 'omni' || row.provider === 'veo' || row.provider === 'seedance'
+        ? row.provider
+        : null
     if (!provider) return null
     selections.push({
       shotId: row.shotId,
