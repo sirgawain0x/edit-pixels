@@ -9,12 +9,13 @@ import {
 } from './_pixels-generate-route-auth.js'
 import { checkMetokenSufficient } from './_metoken-server.js'
 import {
-  clampFlowDuration,
+  clampFlowDurationForTier,
+  normalizeFlowQuality,
   normalizeVeoQuality,
   quoteFlowTotalCredits,
   quoteNanobananaCredits,
+  type FlowTier,
   type NanobananaQuality,
-  type VeoTier,
 } from './_generative-pricing.js'
 import {
   fetchImageBytes,
@@ -23,6 +24,7 @@ import {
   shortTaskId,
   startVeoVideo,
 } from './_vertex-generative.js'
+import { startOmniVideo } from './_vertex-omni.js'
 import {
   isFlowBillingEnforced,
   quoteFlowCreditsUsdc6,
@@ -55,14 +57,14 @@ async function stillToPublicUrl(
   return storeFlowFrameFromDataUri(dataUri, origin)
 }
 
-function parseTier(body: Record<string, unknown>): VeoTier {
+function parseTier(body: Record<string, unknown>): FlowTier {
   const raw =
     typeof body.tier === 'string'
       ? body.tier
       : typeof body.speed === 'string'
         ? body.speed
         : 'standard'
-  if (raw === 'fast' || raw === 'lite') return raw
+  if (raw === 'omni' || raw === 'fast' || raw === 'lite') return raw
   return 'standard'
 }
 
@@ -107,8 +109,11 @@ export async function POST(request: Request): Promise<Response> {
   ) as NanobananaQuality
   const tier = parseTier(body)
   const qualityRaw = typeof body.quality === 'string' ? body.quality : '720p'
-  const quality = normalizeVeoQuality(qualityRaw, tier)
-  const duration = clampFlowDuration(typeof body.duration === 'number' ? body.duration : 8)
+  const quality = normalizeFlowQuality(qualityRaw, tier)
+  const duration = clampFlowDurationForTier(
+    typeof body.duration === 'number' ? body.duration : 8,
+    tier,
+  )
 
   const needStartStill = !startUrl && Boolean(startPrompt)
   const needEndStill = !endUrl && Boolean(endPrompt)
@@ -216,29 +221,53 @@ export async function POST(request: Request): Promise<Response> {
 
     const startImage = await fetchImageBytes(startUrl)
     const endImage = await fetchImageBytes(endUrl)
+    const aspectRatio = typeof body.aspect_ratio === 'string' ? body.aspect_ratio : '16:9'
 
-    const started = await startVeoVideo({
-      tier,
-      prompt,
-      startImage,
-      endImage,
-      duration,
-      quality,
-      aspectRatio: typeof body.aspect_ratio === 'string' ? body.aspect_ratio : '16:9',
-    })
-
-    const taskId = shortTaskId(started.operationName)
     const { registerGenerativeTask } = await import('./_task-registry.js')
-    await registerGenerativeTask(taskId, signer, {
-      operationName: started.operationName,
-      modelId: started.modelId,
-    })
+    let taskId: string
+    let modelId: string
+
+    if (tier === 'omni') {
+      const started = await startOmniVideo({
+        prompt,
+        startImage,
+        endImage,
+        duration,
+        quality,
+        aspectRatio,
+      })
+      taskId = started.interactionId
+      modelId = started.modelId
+      await registerGenerativeTask(taskId, signer, {
+        operationName: started.interactionId,
+        interactionId: started.interactionId,
+        modelId,
+        kind: 'omni',
+      })
+    } else {
+      const started = await startVeoVideo({
+        tier,
+        prompt,
+        startImage,
+        endImage,
+        duration: duration === 10 ? 8 : (duration as 4 | 6 | 8),
+        quality: normalizeVeoQuality(qualityRaw, tier),
+        aspectRatio,
+      })
+      taskId = shortTaskId(started.operationName)
+      modelId = started.modelId
+      await registerGenerativeTask(taskId, signer, {
+        operationName: started.operationName,
+        modelId,
+        kind: 'veo',
+      })
+    }
 
     return Response.json({
       id: taskId,
       status: 'processing',
       progress: 0,
-      model: started.modelId,
+      model: modelId,
       startImageUrl: startUrl,
       endImageUrl: endUrl,
       costUsdc6: quote.estimatedUsdc6,

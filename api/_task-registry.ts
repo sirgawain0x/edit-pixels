@@ -13,6 +13,9 @@ const TASK_TTL_SECONDS = 60 * 60 * 24 // 24h
 export interface GenerativeTaskMeta {
   operationName: string
   modelId: string
+  kind?: 'veo' | 'omni'
+  interactionId?: string
+  mediaUrl?: string
 }
 
 interface MemoryTaskEntry {
@@ -105,4 +108,31 @@ export async function getGenerativeTaskMeta(taskId: string): Promise<GenerativeT
   const entry = memoryTasks.get(id)
   if (!entry || entry.expiresAt < Date.now()) return null
   return entry.meta ?? null
+}
+
+export async function updateGenerativeTaskMeta(
+  taskId: string,
+  patch: Partial<GenerativeTaskMeta>,
+): Promise<void> {
+  const id = taskId.trim()
+  if (!id) return
+  const existing = await getGenerativeTaskMeta(id)
+  if (!existing) return
+  const next: GenerativeTaskMeta = { ...existing, ...patch }
+
+  if (isRedisConfigured()) {
+    const redis = await getRedis()
+    if (redis) {
+      await redis.set(`${TASK_META_PREFIX}${id}`, JSON.stringify(next), {
+        ex: TASK_TTL_SECONDS,
+      })
+      return
+    }
+  }
+
+  if (!allowMemoryFallback()) return
+  const entry = memoryTasks.get(id)
+  if (!entry) return
+  entry.meta = next
+  entry.expiresAt = Date.now() + TASK_TTL_SECONDS * 1000
 }

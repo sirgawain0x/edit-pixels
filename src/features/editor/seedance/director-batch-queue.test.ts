@@ -9,6 +9,7 @@ import {
   runWithConcurrency,
   selectShotsForRetry,
   splitQueuedJobsByProvider,
+  totalCrtvaiForPath,
   type DirectorBatchShotJob,
 } from './director-batch-queue'
 import type { DirectorBatchQuoteResponse } from './seedance-client'
@@ -30,17 +31,28 @@ const mockQuote = (): DirectorBatchQuoteResponse => ({
       generate: {
         prompt: 'A',
         duration: 5,
+        omniDuration: 5,
         veoDuration: 6,
         seedanceDuration: 5,
         aspect_ratio: '16:9',
         resolution: '720p',
       },
+      omni: {
+        provider: 'omni',
+        duration: 5,
+        estimatedUsdc6: 400_000,
+        crtvaiRequired: '800000000000000000',
+        crtvaiDisplay: 0.8,
+        formattedUsd: '$0.40',
+        label: 'Gemini Omni 1.2 Flash',
+        detail: '',
+      },
       veo: {
         provider: 'veo',
         duration: 6,
         estimatedUsdc6: 500_000,
-        crtvaiRequired: '1000',
-        crtvaiDisplay: 0.5,
+        crtvaiRequired: '1000000000000000000',
+        crtvaiDisplay: 1,
         formattedUsd: '$0.50',
         label: 'Veo',
         detail: '',
@@ -49,8 +61,8 @@ const mockQuote = (): DirectorBatchQuoteResponse => ({
         provider: 'seedance',
         duration: 5,
         estimatedUsdc6: 600_000,
-        crtvaiRequired: '1200',
-        crtvaiDisplay: 0.6,
+        crtvaiRequired: '1200000000000000000',
+        crtvaiDisplay: 1.2,
         formattedUsd: '$0.60',
         label: 'Seedance',
         detail: '',
@@ -63,17 +75,28 @@ const mockQuote = (): DirectorBatchQuoteResponse => ({
       generate: {
         prompt: 'B',
         duration: 6,
+        omniDuration: 6,
         veoDuration: 6,
         seedanceDuration: 6,
         aspect_ratio: '9:16',
         resolution: '720p',
       },
+      omni: {
+        provider: 'omni',
+        duration: 6,
+        estimatedUsdc6: 500_000,
+        crtvaiRequired: '1000000000000000000',
+        crtvaiDisplay: 1,
+        formattedUsd: '$0.50',
+        label: 'Gemini Omni 1.2 Flash',
+        detail: '',
+      },
       veo: {
         provider: 'veo',
         duration: 6,
         estimatedUsdc6: 500_000,
-        crtvaiRequired: '1000',
-        crtvaiDisplay: 0.5,
+        crtvaiRequired: '1000000000000000000',
+        crtvaiDisplay: 1,
         formattedUsd: '$0.50',
         label: 'Veo',
         detail: '',
@@ -82,8 +105,8 @@ const mockQuote = (): DirectorBatchQuoteResponse => ({
         provider: 'seedance',
         duration: 6,
         estimatedUsdc6: 700_000,
-        crtvaiRequired: '1400',
-        crtvaiDisplay: 0.7,
+        crtvaiRequired: '1400000000000000000',
+        crtvaiDisplay: 1.4,
         formattedUsd: '$0.70',
         label: 'Seedance',
         detail: '',
@@ -92,12 +115,25 @@ const mockQuote = (): DirectorBatchQuoteResponse => ({
     },
   ],
   totals: {
-    allVeo: { crtvaiRequired: '2000', crtvaiDisplay: 1, formattedUsd: '$1.00' },
-    allSeedance: { crtvaiRequired: '2600', crtvaiDisplay: 1.3, formattedUsd: '$1.30' },
+    allOmni: {
+      crtvaiRequired: '1800000000000000000',
+      crtvaiDisplay: 1.8,
+      formattedUsd: '$0.90',
+    },
+    allVeo: {
+      crtvaiRequired: '2000000000000000000',
+      crtvaiDisplay: 2,
+      formattedUsd: '$1.00',
+    },
+    allSeedance: {
+      crtvaiRequired: '2600000000000000000',
+      crtvaiDisplay: 2.6,
+      formattedUsd: '$1.30',
+    },
     recommendedMix: {
-      crtvaiRequired: '2200',
-      crtvaiDisplay: 1.1,
-      formattedUsd: '$1.10',
+      crtvaiRequired: '2400000000000000000',
+      crtvaiDisplay: 2.4,
+      formattedUsd: '$1.20',
       providers: { veo: 1, seedance: 1 },
     },
   },
@@ -114,7 +150,12 @@ function makeJob(
     provider,
     status,
     progress: 0,
-    generateEndpoint: provider === 'seedance' ? '/api/seedance-generate' : '/api/pixels-render-veo',
+    generateEndpoint:
+      provider === 'seedance'
+        ? '/api/seedance-generate'
+        : provider === 'omni'
+          ? '/api/pixels-render-omni'
+          : '/api/pixels-render-veo',
   }
 }
 
@@ -128,6 +169,7 @@ describe('director batch queue', () => {
 
   it('builds selections for each path', () => {
     const quote = mockQuote()
+    expect(buildBatchSelections(quote, 'allOmni').map((s) => s.provider)).toEqual(['omni', 'omni'])
     expect(buildBatchSelections(quote, 'allVeo').map((s) => s.provider)).toEqual(['veo', 'veo'])
     expect(buildBatchSelections(quote, 'allSeedance').map((s) => s.provider)).toEqual([
       'seedance',
@@ -137,6 +179,12 @@ describe('director batch queue', () => {
       'veo',
       'seedance',
     ])
+    expect(totalCrtvaiForPath(quote, 'allOmni').formattedUsd).toBe('$0.90')
+    expect(totalCrtvaiForPath(quote, 'allVeo', { 'shot-1': 'omni' })).toEqual({
+      crtvaiRequired: '1800000000000000000',
+      crtvaiDisplay: 1.8,
+      formattedUsd: '$0.90',
+    })
   })
 
   it('selects only failed shots for retry', () => {
@@ -233,26 +281,35 @@ describe('director batch queue', () => {
     expect(reset[1]?.error).toBeUndefined()
   })
 
-  it('caps Seedance workers at 20 but not Veo in dual-pool enqueue', async () => {
+  it('caps Seedance workers at 20 but not Veo or Omni in multi-pool enqueue', async () => {
     const seedanceJobs = Array.from({ length: 30 }, (_, index) => makeJob(`s${index}`, 'seedance'))
     const veoJobs = Array.from({ length: 30 }, (_, index) => makeJob(`v${index}`, 'veo'))
-    const jobs = [...seedanceJobs, ...veoJobs]
+    const omniJobs = Array.from({ length: 12 }, (_, index) => makeJob(`o${index}`, 'omni'))
+    const jobs = [...seedanceJobs, ...veoJobs, ...omniJobs]
 
-    const { seedance, veo } = splitQueuedJobsByProvider(jobs)
+    const { seedance, veo, omni } = splitQueuedJobsByProvider(jobs)
     expect(seedance).toHaveLength(30)
     expect(veo).toHaveLength(30)
+    expect(omni).toHaveLength(12)
 
     let seedanceInFlight = 0
     let veoInFlight = 0
+    let omniInFlight = 0
     let maxSeedanceInFlight = 0
     let maxVeoInFlight = 0
+    let maxOmniInFlight = 0
 
-    await runBatchJobsByProvider(jobs, { seedance: 20, veo: 30 }, async (job) => {
+    await runBatchJobsByProvider(jobs, { seedance: 20, veo: 30, omni: 12 }, async (job) => {
       if (job.provider === 'seedance') {
         seedanceInFlight += 1
         maxSeedanceInFlight = Math.max(maxSeedanceInFlight, seedanceInFlight)
         await new Promise((resolve) => setTimeout(resolve, 5))
         seedanceInFlight -= 1
+      } else if (job.provider === 'omni') {
+        omniInFlight += 1
+        maxOmniInFlight = Math.max(maxOmniInFlight, omniInFlight)
+        await new Promise((resolve) => setTimeout(resolve, 5))
+        omniInFlight -= 1
       } else {
         veoInFlight += 1
         maxVeoInFlight = Math.max(maxVeoInFlight, veoInFlight)
@@ -264,6 +321,7 @@ describe('director batch queue', () => {
     expect(maxSeedanceInFlight).toBeLessThanOrEqual(20)
     expect(maxSeedanceInFlight).toBeGreaterThan(1)
     expect(maxVeoInFlight).toBe(30)
+    expect(maxOmniInFlight).toBe(12)
   })
 
   it('caps generic worker pool when limit is set', async () => {

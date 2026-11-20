@@ -20,7 +20,9 @@ export async function importRenderVideoToLibrary(
   const tags =
     provider === 'seedance'
       ? ['ai-generated', 'director', 'seedance']
-      : ['ai-generated', 'director', 'veo', 'pixels']
+      : provider === 'omni'
+        ? ['ai-generated', 'director', 'omni', 'pixels']
+        : ['ai-generated', 'director', 'veo', 'pixels']
   const { mediaLibraryService } = await importMediaLibraryService()
   const media = await mediaLibraryService.importGeneratedVideo(file, projectId, { tags })
   await useMediaLibraryStore.getState().loadMediaItems()

@@ -54,9 +54,13 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const providerPreference =
-    body.providerPreference === 'veo' || body.providerPreference === 'seedance'
+    body.providerPreference === 'omni' ||
+    body.providerPreference === 'veo' ||
+    body.providerPreference === 'seedance'
       ? body.providerPreference
-      : body.provider_preference === 'veo' || body.provider_preference === 'seedance'
+      : body.provider_preference === 'omni' ||
+          body.provider_preference === 'veo' ||
+          body.provider_preference === 'seedance'
         ? body.provider_preference
         : null
 

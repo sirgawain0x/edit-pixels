@@ -41,7 +41,7 @@ export interface DirectorBatchConfirmJob {
   seedanceQuoteId: string | null
   crtvaiRequired: string
   pollUrl: string
-  generateEndpoint: '/api/seedance-generate' | '/api/pixels-render-veo'
+  generateEndpoint: '/api/seedance-generate' | '/api/pixels-render-veo' | '/api/pixels-render-omni'
 }
 
 export async function resolveBatchConfirmSettlementMinWei(
@@ -61,15 +61,22 @@ export async function resolveBatchConfirmSettlementMinWei(
     if (selection.provider === 'seedance') {
       const stored = await getSeedanceQuote(shot.seedanceQuoteId)
       if (!stored) {
-        throw new MetokenQuoteError('quote_invalid', 'Seedance quote expired — refresh batch quote.')
+        throw new MetokenQuoteError(
+          'quote_invalid',
+          'Seedance quote expired — refresh batch quote.',
+        )
       }
       total += await resolveSeedanceSettlementMinWei(stored)
       continue
     }
 
+    const estimatedUsdc6 = selection.provider === 'omni' ? shot.omniUsdc6 : shot.veoUsdc6
+    const minCrtvaiWei = BigInt(
+      selection.provider === 'omni' ? shot.omniCrtvaiWei : shot.veoCrtvaiWei,
+    )
     const { minAmountWei } = await validateSettlementAgainstQuote({
-      estimatedUsdc6: shot.veoUsdc6,
-      minCrtvaiWei: BigInt(shot.veoCrtvaiWei),
+      estimatedUsdc6,
+      minCrtvaiWei,
       expiresAtMs: quote.expiresAtMs,
       slippageBps: METOKEN_QUOTE_SLIPPAGE_BPS,
     })
@@ -161,7 +168,9 @@ export async function confirmDirectorStoryboardBatch(input: {
     const totalUsdc6 = input.selections.reduce((sum, selection) => {
       const shot = quote.shots.find((entry) => entry.shotId === selection.shotId.trim())
       if (!shot) return sum
-      return sum + (selection.provider === 'veo' ? shot.veoUsdc6 : shot.seedanceUsdc6)
+      if (selection.provider === 'omni') return sum + shot.omniUsdc6
+      if (selection.provider === 'veo') return sum + shot.veoUsdc6
+      return sum + shot.seedanceUsdc6
     }, 0)
     try {
       const balanceCheck = await checkMetokenSufficient(input.wallet, totalUsdc6)
@@ -214,6 +223,7 @@ function buildConfirmJobs(
     shots: Array<{
       shotId: string
       seedanceQuoteId: string
+      omniCrtvaiWei: string
       veoCrtvaiWei: string
       seedanceCrtvaiWei: string
     }>
@@ -227,7 +237,11 @@ function buildConfirmJobs(
     const shot = shotById.get(selection.shotId.trim())
     const provider = selection.provider
     const crtvaiRequired =
-      provider === 'veo' ? (shot?.veoCrtvaiWei ?? '0') : (shot?.seedanceCrtvaiWei ?? '0')
+      provider === 'omni'
+        ? (shot?.omniCrtvaiWei ?? '0')
+        : provider === 'veo'
+          ? (shot?.veoCrtvaiWei ?? '0')
+          : (shot?.seedanceCrtvaiWei ?? '0')
     const requestId = selection.requestId.trim()
 
     return {
@@ -239,7 +253,11 @@ function buildConfirmJobs(
       crtvaiRequired,
       pollUrl: `/api/pixels-generate-task?id=${encodeURIComponent(requestId)}`,
       generateEndpoint:
-        provider === 'seedance' ? '/api/seedance-generate' : '/api/pixels-render-veo',
+        provider === 'seedance'
+          ? '/api/seedance-generate'
+          : provider === 'omni'
+            ? '/api/pixels-render-omni'
+            : '/api/pixels-render-veo',
     }
   })
 }

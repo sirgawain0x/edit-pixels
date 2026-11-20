@@ -23,6 +23,7 @@ import { DirectorInvoiceCard, type PendingDirectorInvoice } from './director-inv
 import { DirectorSessionPacks } from './director-session-packs'
 import { DirectorPastBriefs } from './director-past-briefs'
 import { DirectorMarkdown } from './director-markdown'
+import { splitTextWithDirectorLinks } from './director-links'
 import { DirectorMessageActions } from './director-message-actions'
 import { useSpeechRecognition } from './use-speech-recognition'
 import {
@@ -103,6 +104,29 @@ function directorMessageText(content: unknown): string {
   return typeof content === 'string' ? content : 'Director request failed'
 }
 
+function DirectorPlainTextWithLinks({ text }: { text: string }) {
+  const segments = splitTextWithDirectorLinks(text)
+  return (
+    <>
+      {segments.map((segment, index) =>
+        segment.type === 'link' ? (
+          <a
+            key={index}
+            href={segment.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-2 wrap-anywhere hover:opacity-80"
+          >
+            {segment.text}
+          </a>
+        ) : (
+          segment.text
+        ),
+      )}
+    </>
+  )
+}
+
 function DirectorMessage({
   role,
   content,
@@ -140,14 +164,14 @@ function DirectorMessage({
       <AgentMark variant={markVariant} />
       <div
         className={cn(
-          'min-w-0 max-w-[88%] whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-[12px] leading-relaxed',
+          'max-w-[88%] min-w-0 wrap-anywhere whitespace-pre-wrap text-[12px] leading-relaxed',
           role === 'tool' &&
             'rounded-md border border-border/80 bg-secondary/25 px-2.5 py-1.5 font-mono text-[11px] text-muted-foreground',
           role === 'error' &&
             'rounded-md border border-destructive/40 bg-destructive/10 px-2.5 py-1.5 text-destructive',
         )}
       >
-        {text}
+        <DirectorPlainTextWithLinks text={text} />
       </div>
     </div>
   )

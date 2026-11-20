@@ -39,7 +39,7 @@ export type BatchConfirmBindingResult =
 export interface BatchConfirmShotBindingInput {
   shotId: string
   requestId: string
-  provider: 'veo' | 'seedance'
+  provider: 'omni' | 'veo' | 'seedance'
   started?: boolean
 }
 

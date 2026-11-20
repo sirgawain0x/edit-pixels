@@ -6,6 +6,7 @@ import remarkGfm from 'remark-gfm'
 import type { Plugin } from 'unified'
 import { useReducedMotion } from 'motion/react'
 import { cn } from '@/shared/ui/cn'
+import { remarkLinkifyDirectorUrls, splitTextWithDirectorLinks } from './director-links'
 
 const DIRECTOR_STREAMING_CARET_PROP = 'dataDirectorCaret'
 
@@ -65,16 +66,11 @@ interface DirectorMarkdownProps {
   isStreaming?: boolean
 }
 
-function createMarkdownComponents(
-  isStreaming: boolean,
-  reduceMotion: boolean | null,
-): Components {
+function createMarkdownComponents(isStreaming: boolean, reduceMotion: boolean | null): Components {
   const caret = (node: Element | undefined, children: ReactNode) => (
     <>
       {children}
-      {isStreaming && isStreamingCaretHost(node) && (
-        <StreamingCaret reduceMotion={reduceMotion} />
-      )}
+      {isStreaming && isStreamingCaretHost(node) && <StreamingCaret reduceMotion={reduceMotion} />}
     </>
   )
 
@@ -105,7 +101,9 @@ function createMarkdownComponents(
     strong: ({ children, node }) => (
       <strong className="font-semibold text-foreground">{caret(node, children)}</strong>
     ),
-    em: ({ children, node }) => <em className="italic text-foreground/90">{caret(node, children)}</em>,
+    em: ({ children, node }) => (
+      <em className="italic text-foreground/90">{caret(node, children)}</em>
+    ),
     del: ({ children, node }) => (
       <del className="line-through text-muted-foreground">{caret(node, children)}</del>
     ),
@@ -128,16 +126,19 @@ function createMarkdownComponents(
       </blockquote>
     ),
     hr: () => <hr className="my-3 border-border/60" />,
-    a: ({ href, children, node }) => (
-      <a
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="font-medium text-primary underline underline-offset-2 hover:text-primary/80 transition-colors"
-      >
-        {caret(node, children)}
-      </a>
-    ),
+    a: ({ href, children, node }) =>
+      href ? (
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-medium text-primary underline decoration-primary/60 underline-offset-2 wrap-anywhere transition-colors hover:text-primary/80 hover:decoration-primary [&_code]:border-primary/40 [&_code]:bg-primary/10 [&_code]:text-inherit [&_code]:wrap-anywhere [&_code]:hover:border-primary/60"
+        >
+          {caret(node, children)}
+        </a>
+      ) : (
+        <span>{caret(node, children)}</span>
+      ),
     pre: ({ children }) => (
       <pre className="my-2 max-w-full overflow-x-auto rounded-md border border-border/70 bg-secondary/40 p-2.5 font-mono text-[11px] leading-snug text-foreground/95">
         {children}
@@ -148,16 +149,34 @@ function createMarkdownComponents(
       if (!className && !isMultiline) {
         return (
           <code
-            className="rounded border border-border/60 bg-secondary/60 px-1 py-0.5 font-mono text-[11px] text-foreground/90"
+            className="rounded border border-border/60 bg-secondary/60 px-1 py-0.5 font-mono text-[11px] wrap-anywhere text-foreground/90"
             {...props}
           >
             {caret(node, children)}
           </code>
         )
       }
+      const renderedChildren =
+        typeof children === 'string'
+          ? splitTextWithDirectorLinks(children).map((segment, index) =>
+              segment.type === 'link' ? (
+                <a
+                  key={index}
+                  href={segment.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary underline decoration-primary/60 underline-offset-2 wrap-anywhere transition-colors hover:text-primary/80 hover:decoration-primary"
+                >
+                  {segment.text}
+                </a>
+              ) : (
+                segment.text
+              ),
+            )
+          : children
       return (
         <code className={cn('font-mono text-[11px]', className)} {...props}>
-          {caret(node, children)}
+          {caret(node, renderedChildren)}
         </code>
       )
     },
@@ -200,7 +219,7 @@ export const DirectorMarkdown = memo(function DirectorMarkdown({
   return (
     <div className={cn('min-w-0 break-words text-[12px] leading-relaxed', className)}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMarkStreamingCaretHost]}
+        remarkPlugins={[remarkGfm, remarkLinkifyDirectorUrls, remarkMarkStreamingCaretHost]}
         components={components}
       >
         {content}

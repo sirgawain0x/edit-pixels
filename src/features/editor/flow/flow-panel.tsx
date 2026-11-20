@@ -42,9 +42,9 @@ import {
 } from '../director/build-director-payment'
 import { useSmartWalletOps } from '@/hooks/use-smart-wallet-ops'
 import {
-  FLOW_ALLOWED_DURATIONS,
   FLOW_DURATION_DEFAULT_SEC,
-  clampFlowDuration,
+  clampFlowDurationForTier,
+  getFlowAllowedDurations,
   normalizeFlowQuality,
   type FlowQuality,
   type FlowTier,
@@ -68,7 +68,7 @@ const emptySlot = (): FrameSlot => ({
   mode: 'upload',
 })
 
-async function importRemoteVideo(url: string, projectId: string): Promise<void> {
+async function importRemoteVideo(url: string, projectId: string, tier: FlowTier): Promise<void> {
   const response = await fetch(url)
   if (!response.ok) throw new Error('Failed to download generated video')
   const blob = await response.blob()
@@ -77,7 +77,7 @@ async function importRemoteVideo(url: string, projectId: string): Promise<void> 
   })
   const { mediaLibraryService } = await importMediaLibraryService()
   await mediaLibraryService.importGeneratedVideo(file, projectId, {
-    tags: ['ai-generated', 'flow', 'veo'],
+    tags: ['ai-generated', 'flow', tier === 'omni' ? 'omni' : 'veo'],
   })
 }
 
@@ -106,7 +106,7 @@ export const FlowPanel = memo(function FlowPanel() {
   const [start, setStart] = useState<FrameSlot>(emptySlot)
   const [end, setEnd] = useState<FrameSlot>(emptySlot)
   const [prompt, setPrompt] = useState('')
-  const [duration, setDuration] = useState(FLOW_DURATION_DEFAULT_SEC)
+  const [duration, setDuration] = useState<number>(FLOW_DURATION_DEFAULT_SEC)
   const [quality, setQuality] = useState<FlowQuality>('720p')
   const [tier, setTier] = useState<FlowTier>('standard')
   const [chainNext, setChainNext] = useState(false)
@@ -117,6 +117,8 @@ export const FlowPanel = memo(function FlowPanel() {
   const [lastEndUrl, setLastEndUrl] = useState<string | null>(null)
 
   const effectiveQuality = normalizeFlowQuality(quality, tier)
+  const effectiveDuration = clampFlowDurationForTier(duration, tier)
+  const allowedDurations = getFlowAllowedDurations(tier)
 
   const stillCount =
     (start.mode === 'generate' && !start.publicUrl && start.generatePrompt.trim() ? 1 : 0) +
@@ -125,12 +127,12 @@ export const FlowPanel = memo(function FlowPanel() {
   const baseQuote = useMemo(
     () =>
       quoteFlowGeneration({
-        duration,
+        duration: effectiveDuration,
         quality: effectiveQuality,
         tier,
         stillCount,
       }),
-    [duration, effectiveQuality, tier, stillCount],
+    [effectiveDuration, effectiveQuality, tier, stillCount],
   )
 
   const [serverCrtvai, setServerCrtvai] = useState<{
@@ -151,7 +153,7 @@ export const FlowPanel = memo(function FlowPanel() {
       const priced = await fetchFlowServerQuote(
         { token, signerAddress: auth.signerAddress },
         {
-          duration,
+          duration: effectiveDuration,
           quality: effectiveQuality,
           tier,
           stillCount,
@@ -167,7 +169,7 @@ export const FlowPanel = memo(function FlowPanel() {
     return () => {
       cancelled = true
     }
-  }, [auth, duration, effectiveQuality, tier, stillCount])
+  }, [auth, effectiveDuration, effectiveQuality, tier, stillCount])
 
   const quote = useMemo(
     () =>
@@ -186,9 +188,8 @@ export const FlowPanel = memo(function FlowPanel() {
 
   const onTierChange = useCallback((next: FlowTier) => {
     setTier(next)
-    if (next === 'lite') {
-      setQuality((q) => (q === '4K' ? '1080p' : q))
-    }
+    setDuration((d) => clampFlowDurationForTier(d, next))
+    setQuality((q) => normalizeFlowQuality(q, next))
   }, [])
 
   const assignFile = useCallback(
@@ -285,7 +286,7 @@ export const FlowPanel = memo(function FlowPanel() {
       const serverQuote = await fetchFlowServerQuote(
         { token, signerAddress: auth.signerAddress },
         {
-          duration: clampFlowDuration(duration),
+          duration: effectiveDuration,
           quality: effectiveQuality,
           tier,
           stillCount,
@@ -313,7 +314,7 @@ export const FlowPanel = memo(function FlowPanel() {
       setStatus(t('flow.status.generating', { defaultValue: 'Generating segment…' }))
       const task = await proxyFlowRun(auth, {
         prompt: prompt.trim(),
-        duration: clampFlowDuration(duration),
+        duration: effectiveDuration,
         quality: effectiveQuality,
         tier,
         ...(start.publicUrl ? { startImageUrl: start.publicUrl } : {}),
@@ -371,7 +372,7 @@ export const FlowPanel = memo(function FlowPanel() {
       }
 
       setStatus(t('flow.status.importing', { defaultValue: 'Importing to library…' }))
-      await importRemoteVideo(final.output.video_url, currentProjectId)
+      await importRemoteVideo(final.output.video_url, currentProjectId, tier)
       await loadMediaItems()
       toast.success(t('flow.success', { defaultValue: 'Flow segment added to media library.' }))
 
@@ -399,7 +400,7 @@ export const FlowPanel = memo(function FlowPanel() {
     chainNext,
     connect,
     currentProjectId,
-    duration,
+    effectiveDuration,
     effectiveQuality,
     end,
     insufficient,
@@ -488,15 +489,15 @@ export const FlowPanel = memo(function FlowPanel() {
         <div className="space-y-1">
           <Label className="text-[11px]">{t('flow.duration', { defaultValue: 'Duration' })}</Label>
           <Select
-            value={String(duration)}
-            onValueChange={(v) => setDuration(clampFlowDuration(Number(v)))}
+            value={String(effectiveDuration)}
+            onValueChange={(v) => setDuration(clampFlowDurationForTier(Number(v), tier))}
             disabled={busy}
           >
             <SelectTrigger className="h-8 text-[11px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {FLOW_ALLOWED_DURATIONS.map((sec) => (
+              {allowedDurations.map((sec) => (
                 <SelectItem key={sec} value={String(sec)}>
                   {sec}s
                 </SelectItem>
@@ -509,14 +510,15 @@ export const FlowPanel = memo(function FlowPanel() {
           <div className="space-y-1">
             <Label className="text-[11px]">{t('flow.quality', { defaultValue: 'Quality' })}</Label>
             <Select
-              value={quality}
-              onValueChange={(v) => setQuality(v as FlowQuality)}
+              value={effectiveQuality}
+              onValueChange={(v) => setQuality(normalizeFlowQuality(v, tier))}
               disabled={busy}
             >
               <SelectTrigger className="h-8 text-[11px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                {tier === 'omni' && <SelectItem value="360p">360p</SelectItem>}
                 <SelectItem value="720p">720p</SelectItem>
                 <SelectItem value="1080p">1080p</SelectItem>
                 {tier !== 'lite' && <SelectItem value="4K">4K</SelectItem>}
@@ -533,6 +535,7 @@ export const FlowPanel = memo(function FlowPanel() {
                 <SelectItem value="standard">Standard</SelectItem>
                 <SelectItem value="fast">Fast</SelectItem>
                 <SelectItem value="lite">Lite</SelectItem>
+                <SelectItem value="omni">Omni 1.2 Flash (budget)</SelectItem>
               </SelectContent>
             </Select>
           </div>

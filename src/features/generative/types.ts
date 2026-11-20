@@ -1,4 +1,3 @@
-// fallow-ignore-file unused-export,unused-type
 // ---------------------------------------------------------------------------
 // Generative / Vertex AI shared types
 // ---------------------------------------------------------------------------
@@ -41,6 +40,10 @@ export type EvolinkTaskDetail = GenerativeTaskDetail
 export type VeoTier = 'standard' | 'fast' | 'lite'
 
 export type VeoQuality = '720p' | '1080p' | '4K'
+
+export type FlowTier = VeoTier | 'omni'
+
+export type FlowQuality = VeoQuality | '360p'
 
 /** @deprecated Use VeoTier */
 export type SeedanceSpeed = VeoTier
