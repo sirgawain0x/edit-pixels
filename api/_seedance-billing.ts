@@ -118,8 +118,16 @@ async function loadQuote(quoteId: string): Promise<SeedanceBillingQuote | null> 
   const redis = await getRedis()
   if (!redis) return null
 
-  const raw = await redis.get<string>(`${QUOTE_KEY_PREFIX}${id}`)
-  if (typeof raw !== 'string') return null
+  const raw = await redis.get<SeedanceBillingQuote | string>(`${QUOTE_KEY_PREFIX}${id}`)
+  // @upstash/redis auto-deserializes JSON values to objects; accept both shapes.
+  if (typeof raw !== 'string') {
+    if (raw && typeof raw === 'object') {
+      const quote = fromStoredQuote(raw as unknown as StoredQuote)
+      memoryQuotes.set(id, quote)
+      return quote
+    }
+    return null
+  }
 
   try {
     const stored = JSON.parse(raw) as StoredQuote
@@ -158,8 +166,16 @@ async function loadReservation(reservationId: string): Promise<SeedanceBillingRe
   const redis = await getRedis()
   if (!redis) return null
 
-  const raw = await redis.get<string>(`${RESERVATION_KEY_PREFIX}${id}`)
-  if (typeof raw !== 'string') return null
+  const raw = await redis.get<SeedanceBillingReservation | string>(`${RESERVATION_KEY_PREFIX}${id}`)
+  // @upstash/redis auto-deserializes JSON values to objects; accept both shapes.
+  if (typeof raw !== 'string') {
+    if (raw && typeof raw === 'object') {
+      const reservation = raw as SeedanceBillingReservation
+      memoryReservations.set(id, reservation)
+      return reservation
+    }
+    return null
+  }
 
   try {
     const reservation = JSON.parse(raw) as SeedanceBillingReservation
