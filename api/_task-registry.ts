@@ -93,10 +93,13 @@ export async function getGenerativeTaskMeta(taskId: string): Promise<GenerativeT
   if (isRedisConfigured()) {
     const redis = await getRedis()
     if (redis) {
-      const raw = await redis.get<string>(`${TASK_META_PREFIX}${id}`)
-      if (typeof raw !== 'string') return null
+      const raw = await redis.get<GenerativeTaskMeta | string>(`${TASK_META_PREFIX}${id}`)
+      // @upstash/redis auto-deserializes JSON values to objects; accept both shapes.
+      if (!raw || (typeof raw !== 'string' && typeof raw !== 'object')) return null
       try {
-        return JSON.parse(raw) as GenerativeTaskMeta
+        return typeof raw === 'string'
+          ? (JSON.parse(raw) as GenerativeTaskMeta)
+          : (raw as GenerativeTaskMeta)
       } catch {
         return null
       }

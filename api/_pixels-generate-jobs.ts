@@ -159,8 +159,10 @@ export async function getPixelsGenerateJob(id: string): Promise<PixelsGenerateJo
   if (isRedisConfigured()) {
     const redis = await getRedis()
     if (redis) {
-      const raw = await redis.get<string>(`${JOB_KEY_PREFIX}${trimmed}`)
+      const raw = await redis.get<PixelsGenerateJob | string>(`${JOB_KEY_PREFIX}${trimmed}`)
+      // @upstash/redis auto-deserializes JSON values to objects; accept both shapes.
       if (typeof raw === 'string') return parseJob(raw)
+      if (raw && typeof raw === 'object') return parseJob(JSON.stringify(raw))
     }
   }
 

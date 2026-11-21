@@ -77,17 +77,26 @@ async function loadFrame(id: string): Promise<{ contentType: string; bytes: Uint
   if (isRedisConfigured()) {
     const redis = await getRedis()
     if (redis) {
-      const raw = await redis.get<string>(`${FRAME_KEY_PREFIX}${id}`)
-      if (!raw || typeof raw !== 'string') return null
-      try {
-        const parsed = JSON.parse(raw) as { contentType?: string; b64?: string }
-        if (!parsed.b64) return null
-        return {
-          contentType: parsed.contentType || 'application/octet-stream',
-          bytes: Uint8Array.from(Buffer.from(parsed.b64, 'base64')),
+      const raw = await redis.get<{ contentType?: string; b64?: string } | string>(
+        `${FRAME_KEY_PREFIX}${id}`,
+      )
+      // @upstash/redis auto-deserializes JSON values to objects; accept both shapes.
+      let parsed: { contentType?: string; b64?: string } | null
+      if (typeof raw === 'string') {
+        try {
+          parsed = JSON.parse(raw) as { contentType?: string; b64?: string }
+        } catch {
+          return null
         }
-      } catch {
+      } else if (raw && typeof raw === 'object') {
+        parsed = raw
+      } else {
         return null
+      }
+      if (!parsed.b64) return null
+      return {
+        contentType: parsed.contentType || 'application/octet-stream',
+        bytes: Uint8Array.from(Buffer.from(parsed.b64, 'base64')),
       }
     }
   }

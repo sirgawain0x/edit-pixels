@@ -96,13 +96,17 @@ async function loadJson<T>(key: string): Promise<T | null> {
   if (!isRedisConfigured()) return null
   const redis = await getRedis()
   if (!redis) return null
-  const raw = await redis.get<string>(key)
-  if (typeof raw !== 'string') return null
-  try {
-    return JSON.parse(raw) as T
-  } catch {
-    return null
+  const raw = await redis.get<T | string>(key)
+  // @upstash/redis auto-deserializes JSON values to objects on get(); accept both shapes.
+  if (typeof raw === 'string') {
+    try {
+      return JSON.parse(raw) as T
+    } catch {
+      return null
+    }
   }
+  if (raw && typeof raw === 'object') return raw as T
+  return null
 }
 
 export async function isDirectorBatchQuoteConsumed(batchQuoteId: string): Promise<boolean> {
