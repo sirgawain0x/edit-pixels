@@ -215,3 +215,91 @@ describe('useDirectorStore released payment retry', () => {
     expect(useDirectorStore.getState().releasedPayment).toBeNull()
   })
 })
+
+describe('director conversation switching', () => {
+  beforeEach(() => {
+    useDirectorStore.setState({ parkedConversations: [] })
+    useDirectorStore.getState().clearChat()
+  })
+
+  function seedActive(sessionId: string | null, brief: string) {
+    useDirectorStore.setState({
+      sessionId,
+      messages: [
+        { id: `${brief}-u`, role: 'user', content: brief },
+        { id: `${brief}-a`, role: 'assistant', content: `Reply to ${brief}` },
+      ],
+    })
+  }
+
+  it('opens a past brief and parks the current conversation', () => {
+    seedActive('sess-current', 'Current brief')
+    const ok = useDirectorStore.getState().openConversation({
+      sessionId: 'sess-past',
+      messages: [
+        { role: 'user', content: 'Past brief' },
+        { role: 'assistant', content: 'Past reply' },
+      ],
+    })
+    const state = useDirectorStore.getState()
+    expect(ok).toBe(true)
+    expect(state.sessionId).toBe('sess-past')
+    expect(state.messages.map((m) => m.content)).toEqual(['Past brief', 'Past reply'])
+    expect(state.parkedConversations).toHaveLength(1)
+    expect(state.parkedConversations[0]).toMatchObject({
+      key: 'sess-current',
+      sessionId: 'sess-current',
+      title: 'Current brief',
+    })
+  })
+
+  it('switches back to the parked conversation with its messages intact', () => {
+    seedActive('sess-current', 'Current brief')
+    useDirectorStore.getState().openConversation({
+      sessionId: 'sess-past',
+      messages: [{ role: 'user', content: 'Past brief' }],
+    })
+    expect(useDirectorStore.getState().switchConversation('sess-current')).toBe(true)
+    const state = useDirectorStore.getState()
+    expect(state.sessionId).toBe('sess-current')
+    expect(state.messages.map((m) => m.content)).toEqual([
+      'Current brief',
+      'Reply to Current brief',
+    ])
+    expect(state.parkedConversations.map((c) => c.key)).toEqual(['sess-past'])
+  })
+
+  it('parks a not-yet-saved draft under a local key when starting a new brief', () => {
+    seedActive(null, 'Draft brief')
+    const draftKey = useDirectorStore.getState().activeKey
+    useDirectorStore.getState().startNewConversation()
+    const state = useDirectorStore.getState()
+    expect(state.messages).toEqual([])
+    expect(state.sessionId).toBeNull()
+    expect(state.parkedConversations[0]).toMatchObject({ key: draftKey, sessionId: null })
+  })
+
+  it('refuses to switch while the Director is streaming', () => {
+    seedActive('sess-current', 'Current brief')
+    useDirectorStore.setState({ phase: 'streaming' })
+    const ok = useDirectorStore
+      .getState()
+      .openConversation({ sessionId: 'sess-past', messages: [] })
+    expect(ok).toBe(false)
+    expect(useDirectorStore.getState().sessionId).toBe('sess-current')
+    useDirectorStore.setState({ phase: 'idle' })
+  })
+
+  it('forgets a deleted session whether active or parked', () => {
+    seedActive('sess-a', 'Brief A')
+    useDirectorStore.getState().openConversation({
+      sessionId: 'sess-b',
+      messages: [{ role: 'user', content: 'Brief B' }],
+    })
+    useDirectorStore.getState().forgetConversation('sess-a')
+    expect(useDirectorStore.getState().parkedConversations).toEqual([])
+    useDirectorStore.getState().forgetConversation('sess-b')
+    expect(useDirectorStore.getState().sessionId).toBeNull()
+    expect(useDirectorStore.getState().messages).toEqual([])
+  })
+})

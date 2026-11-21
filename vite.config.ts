@@ -11,7 +11,11 @@ import {
   OPTIONS as directorAgentInfoOptions,
 } from './api/director-agent-info'
 import { POST as directorQuotePost } from './api/director-quote'
-import { GET as directorSessionsGet } from './api/director-sessions'
+import {
+  DELETE as directorSessionsDelete,
+  GET as directorSessionsGet,
+} from './api/director-sessions'
+import { POST as directorTtsPost } from './api/director-tts'
 import { GET as generateTaskGet } from './api/generate-task'
 import { GET as flowFrameGet, POST as flowFramePost } from './api/flow-frame'
 import { POST as flowQuotePost } from './api/flow-quote'
@@ -462,30 +466,30 @@ function directorApiDevPlugin(): Plugin {
           return
         }
 
-        if (path === '/api/director-sessions' && req.method === 'GET') {
-          // fallow-ignore-next-line complexity
-          void (async () => {
-            const host = req.headers.host ?? 'localhost'
-            const request = new Request(`http://${host}${req.url ?? '/api/director-sessions'}`, {
-              method: 'GET',
-              headers: {
-                origin: req.headers.origin ?? '',
-                referer: req.headers.referer ?? '',
-                host: req.headers.host ?? '',
-              },
-            })
-            const response = await directorSessionsGet(request)
-            res.statusCode = response.status
-            response.headers.forEach((value, key) => {
-              res.setHeader(key, value)
-            })
-            res.end(await response.text())
-          })().catch((error) => {
+        if (
+          path === '/api/director-sessions' &&
+          (req.method === 'GET' || req.method === 'DELETE')
+        ) {
+          // Forward all headers — the route needs `Authorization` + `x-pixels-signer`.
+          const handler = req.method === 'DELETE' ? directorSessionsDelete : directorSessionsGet
+          void proxyEarnDevRequest(req, res, handler).catch((error) => {
             console.error('Director sessions API middleware error', error)
             if (!res.headersSent) {
               res.statusCode = 500
               res.setHeader('Content-Type', 'application/json')
               res.end(JSON.stringify({ error: 'Director sessions proxy failed' }))
+            }
+          })
+          return
+        }
+
+        if (path === '/api/director-tts' && req.method === 'POST') {
+          void proxyEarnDevRequest(req, res, directorTtsPost).catch((error) => {
+            console.error('Director TTS API middleware error', error)
+            if (!res.headersSent) {
+              res.statusCode = 500
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Director TTS proxy failed' }))
             }
           })
           return

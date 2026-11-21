@@ -63,6 +63,20 @@ interface ReleasedDirectorPayment {
   quoteTier?: 'retail' | 'premium'
 }
 
+/** A conversation kept in memory while another one is active in the Director window. */
+export interface DirectorConversation {
+  key: string
+  sessionId: string | null
+  title: string
+  messages: DirectorChatMessage[]
+  updatedAt: number
+}
+
+interface DirectorOpenConversationInput {
+  sessionId: string
+  messages: Array<{ role: 'user' | 'assistant'; content: string }>
+}
+
 interface DirectorState {
   messages: DirectorChatMessage[]
   phase: DirectorPhase
@@ -71,10 +85,20 @@ interface DirectorState {
   sessionId: string | null
   lastError: string | null
   releasedPayment: ReleasedDirectorPayment | null
+  /** Stable key for the active conversation before the server assigns a sessionId. */
+  activeKey: string
+  /** Other conversations open in this window (most recent first). */
+  parkedConversations: DirectorConversation[]
 
   submit: (text: string, options?: DirectorSubmitOptions) => Promise<void>
-  /** Resume an Agent Engine session from Firestore index. */
-  resumeSession: (sessionId: string) => void
+  /** Park the current conversation and load a past brief (idle only). Returns false when busy. */
+  openConversation: (input: DirectorOpenConversationInput) => boolean
+  /** Swap the active conversation with a parked one (idle only). */
+  switchConversation: (key: string) => boolean
+  /** Park the current conversation and start an empty one. */
+  startNewConversation: () => boolean
+  /** Drop a deleted session from the window (active or parked). */
+  forgetConversation: (sessionId: string) => void
   /** Local UX error (e.g. missing timeline audio) — does not call the API. */
   reportLocalError: (message: string) => void
   clearReleasedPayment: () => void
@@ -281,6 +305,41 @@ function setDirectorFailure(
   }))
 }
 
+const PARKED_CONVERSATION_LIMIT = 8
+
+function conversationTitle(messages: DirectorChatMessage[]): string {
+  const firstUser = messages.find((message) => message.role === 'user')?.content ?? ''
+  const title =
+    firstUser
+      .trim()
+      .split(/\n\s*\n/)[0]
+      ?.trim() ?? ''
+  return title.slice(0, 120) || 'Untitled brief'
+}
+
+/** Snapshot the active conversation into the parked list (no-op when empty). */
+function parkActive(state: DirectorState, excludeKey?: string): DirectorConversation[] {
+  const others = state.parkedConversations.filter((c) => c.key !== excludeKey)
+  if (state.messages.length === 0) return others
+  const key = state.sessionId ?? state.activeKey
+  const snapshot: DirectorConversation = {
+    key,
+    sessionId: state.sessionId,
+    title: conversationTitle(state.messages),
+    messages: state.messages,
+    updatedAt: Date.now(),
+  }
+  return [snapshot, ...others.filter((c) => c.key !== key)].slice(0, PARKED_CONVERSATION_LIMIT)
+}
+
+const RESET_TURN_STATE = {
+  phase: 'idle' as const,
+  streamingText: '',
+  toolCalls: [],
+  lastError: null,
+  releasedPayment: null,
+}
+
 export const useDirectorStore = create<DirectorState>((set, get) => ({
   messages: [],
   phase: 'idle',
@@ -289,6 +348,8 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
   sessionId: null,
   lastError: null,
   releasedPayment: null,
+  activeKey: newId(),
+  parkedConversations: [],
 
   reportLocalError: (message) => {
     const trimmed = message.trim()
@@ -340,6 +401,7 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
         },
         body: JSON.stringify({
           prompt: apiPrompt,
+          displayPrompt: trimmed,
           token: accessToken,
           userId: options?.userId,
           sessionId: get().sessionId ?? undefined,
@@ -393,13 +455,70 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
     finalizeAssistantReply(set, get)
   },
 
-  resumeSession: (sessionId) => {
+  openConversation: ({ sessionId, messages }) => {
+    const state = get()
     const trimmed = sessionId.trim()
-    if (!trimmed) return
+    if (!trimmed || state.phase !== 'idle') return false
+    if (state.sessionId === trimmed) return true
+
+    // Prefer the in-window copy (keeps tool rows) when this session is already parked.
+    const parked = state.parkedConversations.find((c) => c.key === trimmed)
+    const loaded: DirectorChatMessage[] =
+      parked?.messages ??
+      messages.map((message) => ({ id: newId(), role: message.role, content: message.content }))
+
     set({
+      ...RESET_TURN_STATE,
+      parkedConversations: parkActive(state, trimmed),
+      messages: loaded,
       sessionId: trimmed,
-      lastError: null,
+      activeKey: trimmed,
     })
+    return true
+  },
+
+  switchConversation: (key) => {
+    const state = get()
+    if (state.phase !== 'idle') return false
+    const target = state.parkedConversations.find((c) => c.key === key)
+    if (!target) return false
+    set({
+      ...RESET_TURN_STATE,
+      parkedConversations: parkActive(state, key),
+      messages: target.messages,
+      sessionId: target.sessionId,
+      activeKey: target.key,
+    })
+    return true
+  },
+
+  startNewConversation: () => {
+    const state = get()
+    if (state.phase !== 'idle') return false
+    set({
+      ...RESET_TURN_STATE,
+      parkedConversations: parkActive(state),
+      messages: [],
+      sessionId: null,
+      activeKey: newId(),
+    })
+    return true
+  },
+
+  forgetConversation: (sessionId) => {
+    const state = get()
+    const parkedConversations = state.parkedConversations.filter((c) => c.sessionId !== sessionId)
+    if (state.sessionId === sessionId && state.phase === 'idle') {
+      set({
+        ...RESET_TURN_STATE,
+        parkedConversations,
+        messages: [],
+        sessionId: null,
+        activeKey: newId(),
+      })
+      return
+    }
+    set({ parkedConversations })
   },
 
   clearChat: () => {
@@ -413,6 +532,7 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
       sessionId: null,
       lastError: null,
       releasedPayment: null,
+      activeKey: newId(),
     })
   },
 }))

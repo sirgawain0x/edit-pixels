@@ -2,7 +2,18 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useParams } from '@tanstack/react-router'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { Clapperboard, Loader2, Mic, MicOff, Send, Square, Trash2, Wrench } from 'lucide-react'
+import {
+  Clapperboard,
+  History,
+  Loader2,
+  Mic,
+  MicOff,
+  Plus,
+  Send,
+  Square,
+  Trash2,
+  Wrench,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/shared/ui/cn'
@@ -21,10 +32,12 @@ import { confirmDirectorInvoice } from './confirm-director-invoice'
 import { fetchDirectorServerQuote } from './fetch-director-server-quote'
 import { DirectorInvoiceCard, type PendingDirectorInvoice } from './director-invoice-card'
 import { DirectorSessionPacks } from './director-session-packs'
-import { DirectorPastBriefs } from './director-past-briefs'
+import { DirectorConversationSwitcher, DirectorHistoryDialog } from './director-past-briefs'
+import { briefTitleFromPrompt, type DirectorSessionTranscript } from './director-past-sessions'
 import { DirectorMarkdown } from './director-markdown'
 import { splitTextWithDirectorLinks } from './director-links'
 import { DirectorMessageActions } from './director-message-actions'
+import type { DirectorTtsAuth } from './director-tts'
 import { useSpeechRecognition } from './use-speech-recognition'
 import {
   isReleasedDirectorPaymentExpired,
@@ -130,9 +143,11 @@ function DirectorPlainTextWithLinks({ text }: { text: string }) {
 function DirectorMessage({
   role,
   content,
+  getTtsAuth,
 }: {
   role: 'user' | 'assistant' | 'tool' | 'error'
   content: unknown
+  getTtsAuth?: () => Promise<DirectorTtsAuth | null>
 }) {
   const text = directorMessageText(content)
   if (role === 'user') {
@@ -151,7 +166,7 @@ function DirectorMessage({
         <AgentMark variant="agent" />
         <div className="max-w-[88%] min-w-0 pt-0.5 text-foreground/95">
           <DirectorMarkdown content={text} />
-          <DirectorMessageActions text={text} />
+          <DirectorMessageActions text={text} getTtsAuth={getTtsAuth} />
         </div>
       </div>
     )
@@ -257,7 +272,12 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
   const cancel = useDirectorStore((s) => s.cancel)
   const clearChat = useDirectorStore((s) => s.clearChat)
   const sessionId = useDirectorStore((s) => s.sessionId)
-  const resumeSession = useDirectorStore((s) => s.resumeSession)
+  const openConversation = useDirectorStore((s) => s.openConversation)
+  const switchConversation = useDirectorStore((s) => s.switchConversation)
+  const startNewConversation = useDirectorStore((s) => s.startNewConversation)
+  const forgetConversation = useDirectorStore((s) => s.forgetConversation)
+  const parkedConversations = useDirectorStore((s) => s.parkedConversations)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const releasedPayment = useDirectorStore((s) => s.releasedPayment)
   const clearReleasedPayment = useDirectorStore((s) => s.clearReleasedPayment)
 
@@ -271,6 +291,11 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
     getAccessToken,
   } = useWalletContext()
   const generativeAuth = useGenerativeAuth()
+  const getTtsAuth = useCallback(async (): Promise<DirectorTtsAuth | null> => {
+    if (!generativeAuth) return null
+    const token = (await generativeAuth.getAccessToken())?.trim()
+    return token ? { token, signerAddress: generativeAuth.signerAddress } : null
+  }, [generativeAuth])
   const { balance, refreshBalance } = useCredits()
   const { isPremiumMember } = usePremiumMembership(account)
   const liveStyleFeatureReady = isLiveStyleEnabledClient()
@@ -292,6 +317,44 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const busy = phase !== 'idle' || paying || pendingInvoice !== null
+
+  const handleOpenTranscript = useCallback(
+    (transcript: DirectorSessionTranscript) => {
+      const messages = transcript.messages.map((message) =>
+        message.role === 'user'
+          ? {
+              role: message.role,
+              content: briefTitleFromPrompt(message.content) || message.content,
+            }
+          : { role: message.role, content: message.content },
+      )
+      if (!openConversation({ sessionId: transcript.sessionId, messages })) {
+        toast.error('Wait for the Director to finish before switching briefs.')
+        return
+      }
+      if (transcript.source === 'empty') {
+        toast.info('No saved transcript for this brief — you can still continue it.')
+      } else if (transcript.source === 'storyboards') {
+        toast.info('Older brief: only the Director’s replies were saved.')
+      }
+    },
+    [openConversation],
+  )
+
+  const handleSwitchConversation = useCallback(
+    (key: string) => {
+      if (!switchConversation(key)) {
+        toast.error('Wait for the Director to finish before switching briefs.')
+      }
+    },
+    [switchConversation],
+  )
+
+  const handleNewConversation = useCallback(() => {
+    if (busy) return
+    setInput('')
+    startNewConversation()
+  }, [busy, startNewConversation])
   const runningTools = toolCalls.filter((call) => call.status === 'running')
   const isEmpty = messages.length === 0 && phase === 'idle' && !pendingInvoice
   const status = statusLabel(phase, streamingText, runningTools.length, paying, t)
@@ -603,6 +666,31 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
                     })}
           </p>
         </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 shrink-0 text-muted-foreground"
+          onClick={() => setHistoryOpen(true)}
+          aria-label={t('director.history.open', { defaultValue: 'Briefs & conversations' })}
+          title={t('director.history.open', { defaultValue: 'Briefs & conversations' })}
+        >
+          <History className="h-3.5 w-3.5" />
+        </Button>
+        {messages.length > 0 && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0 text-muted-foreground"
+            onClick={handleNewConversation}
+            disabled={busy}
+            aria-label={t('director.newBrief', { defaultValue: 'New brief' })}
+            title={t('director.newBrief', {
+              defaultValue: 'New brief (keeps this conversation open)',
+            })}
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </Button>
+        )}
         {messages.length > 0 && (
           <Button
             variant="ghost"
@@ -620,14 +708,25 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
         )}
       </header>
 
-      <DirectorPastBriefs
+      <DirectorConversationSwitcher
+        conversations={parkedConversations}
+        busy={busy}
+        onSwitch={handleSwitchConversation}
+      />
+
+      <DirectorHistoryDialog
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
         walletAddress={account}
+        signerAddress={generativeAuth?.signerAddress}
+        getAccessToken={getAccessToken}
         projectId={projectId}
         activeSessionId={sessionId}
-        disabled={busy}
-        onResume={resumeSession}
-        getAccessToken={getAccessToken}
-        signerAddress={generativeAuth?.signerAddress}
+        busy={busy}
+        parkedConversations={parkedConversations}
+        onOpenTranscript={handleOpenTranscript}
+        onSwitchConversation={handleSwitchConversation}
+        onDeleted={forgetConversation}
       />
 
       <div
@@ -715,7 +814,12 @@ export const DirectorChatPanel = memo(function DirectorChatPanel() {
         </AnimatePresence>
 
         {messages.map((message) => (
-          <DirectorMessage key={message.id} role={message.role} content={message.content} />
+          <DirectorMessage
+            key={message.id}
+            role={message.role}
+            content={message.content}
+            getTtsAuth={getTtsAuth}
+          />
         ))}
 
         {canRetryReleasedPayment && (
