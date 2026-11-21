@@ -204,7 +204,13 @@ export async function confirmPaidDirectorBatch(input: {
   const pending = loadDirectorBatchPendingConfirm()
   let paymentTxHash: string | undefined
 
-  if (pending?.batchQuoteId === quote.batchQuoteId && pending.paymentTxHash) {
+  // Reuse an on-chain payment that was never server-confirmed. The first confirm
+  // can fail AFTER the wallet transfer landed (e.g. the quote's Redis record
+  // expired between the tx and the confirm call): the server never verified or
+  // consumed the tx, so re-applying the same paymentTxHash to the fresh quote is
+  // safe — verifyFlowPayment re-checks (payer, treasury, amount >= new minimum)
+  // and consumes the tx once. A shortfall fails 402 instead of charging again.
+  if (pending?.paymentTxHash) {
     paymentTxHash = pending.paymentTxHash
   } else {
     callbacks.onPhase('confirming')
