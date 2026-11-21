@@ -15,7 +15,6 @@ import {
   RpcRequestError,
   SocketClosedError,
   TimeoutError,
-  type Hex,
 } from 'viem'
 import { base } from 'viem/chains'
 import {
@@ -337,8 +336,7 @@ export async function validateSettlementAgainstQuote(stored: {
   expiresAtMs: number
   slippageBps: number
 }): Promise<{ minAmountWei: bigint }> {
-  const settlementDeadlineMs =
-    stored.expiresAtMs + METOKEN_QUOTE_SETTLEMENT_GRACE_SECONDS * 1000
+  const settlementDeadlineMs = stored.expiresAtMs + METOKEN_QUOTE_SETTLEMENT_GRACE_SECONDS * 1000
   if (Date.now() > settlementDeadlineMs) {
     throw new MetokenQuoteError('quote_expired', 'Quote expired — request a new price.')
   }

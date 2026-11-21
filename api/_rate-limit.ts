@@ -93,7 +93,7 @@ function buildRateLimitHeaders(result: LimitResult): Record<string, string> {
   }
 }
 
-function redisUnavailableResponse(routeClass: RateLimitRouteClass): Response {
+function redisUnavailableResponse(_routeClass: RateLimitRouteClass): Response {
   return Response.json(
     { error: 'rate_limit_unavailable', message: 'Rate limiting temporarily unavailable' },
     {
@@ -142,10 +142,7 @@ function backendFailureOutcome(
 async function loadLimiterForRequest(
   routeClass: RateLimitRouteClass,
   dimension: 'ip' | 'identity',
-): Promise<
-  | { ok: true; limiter: Ratelimit }
-  | { ok: false; outcome: 'allow' | 'backend_failed' }
-> {
+): Promise<{ ok: true; limiter: Ratelimit } | { ok: false; outcome: 'allow' | 'backend_failed' }> {
   try {
     const limiter = await getSlidingWindowLimiter(routeClass, dimension)
     if (limiter) return { ok: true, limiter }
@@ -182,9 +179,7 @@ async function runLimit(
   dimension: 'ip' | 'identity',
   identifier: string,
 ): Promise<
-  | { outcome: 'allow' }
-  | { outcome: 'block'; response: Response }
-  | { outcome: 'backend_failed' }
+  { outcome: 'allow' } | { outcome: 'block'; response: Response } | { outcome: 'backend_failed' }
 > {
   if (!isRateLimitEnabled()) {
     return { outcome: 'allow' }
@@ -239,7 +234,7 @@ export async function rateLimitByClientIp(
 
 /** Per verified signer wallet — call after identity resolution. */
 export async function rateLimitByIdentity(
-  request: Request,
+  _request: Request,
   routeClass: RateLimitRouteClass,
   signer: string,
 ): Promise<Response | null> {

@@ -86,10 +86,7 @@ async function listLinkedSignerAddresses(userId: string): Promise<`0x${string}`[
 export async function resolvePrivySignerFromToken(
   token: string,
   hint?: string,
-): Promise<
-  | { ok: true; signer: `0x${string}` }
-  | { ok: false; response: Response }
-> {
+): Promise<{ ok: true; signer: `0x${string}` } | { ok: false; response: Response }> {
   const client = getPrivyClient()
   if (!client) {
     return {
@@ -132,8 +129,9 @@ export async function resolvePrivySignerFromToken(
       return { ok: true, signer: normalized }
     }
 
-    if (linked.length === 1) {
-      return { ok: true, signer: linked[0] }
+    const onlyLinked = linked.length === 1 ? linked[0] : undefined
+    if (onlyLinked) {
+      return { ok: true, signer: onlyLinked }
     }
 
     return {
@@ -246,10 +244,7 @@ export async function resolvePixelsIdentity(
 
 export async function resolvePixelsIdentityGet(
   request: Request,
-): Promise<
-  | { ok: true; identity: PixelsIdentity }
-  | { ok: false; response: Response }
-> {
+): Promise<{ ok: true; identity: PixelsIdentity } | { ok: false; response: Response }> {
   const token = getBearerToken(request)
   if (!token) {
     return {

@@ -228,7 +228,7 @@ function buildConfirmJobs(
       seedanceCrtvaiWei: string
     }>
   },
-  confirm: DirectorBatchConfirmRecord,
+  _confirm: DirectorBatchConfirmRecord,
   selections: DirectorBatchConfirmSelection[],
 ): DirectorBatchConfirmJob[] {
   const shotById = new Map(quote.shots.map((shot) => [shot.shotId, shot]))
