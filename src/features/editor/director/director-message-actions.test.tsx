@@ -21,7 +21,7 @@ describe('DirectorMessageActions', () => {
     const { getByRole, getByTitle } = render(
       <DirectorMessageActions text="Here is your storyboard." />,
     )
-    expect(getByTitle(/Read aloud with local TTS/)).toBeInTheDocument()
+    expect(getByTitle(/Read aloud/)).toBeInTheDocument()
     expect(getByTitle(/Copy response/)).toBeInTheDocument()
     expect(getByRole('button', { name: /Copy response/ })).toBeInTheDocument()
   })
