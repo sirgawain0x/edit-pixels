@@ -63,84 +63,72 @@ function extractInteractionAudio(
   return found
 }
 
-export async function POST(request: Request): Promise<Response> {
-  const ipLimited = await rateLimitByClientIp(request, 'tts')
-  if (ipLimited) return ipLimited
+function buildTtsRequestBody(text: string): string {
+  return JSON.stringify({
+    model: directorTtsModel(),
+    store: false,
+    input: [
+      {
+        type: 'user_input',
+        content: [
+          {
+            type: 'text',
+            text,
+            annotations: [{ type: 'speech_metadata', style: DIRECTOR_TTS_STYLE }],
+          },
+        ],
+      },
+    ],
+    response_format: { type: 'audio' },
+    generation_config: {
+      speech_config: [{ voice: directorTtsVoice() }],
+    },
+  })
+}
 
-  const identity = await resolvePixelsIdentity(request)
-  if (!identity.ok) return identity.response
-
-  const identityLimited = await rateLimitByIdentity(request, 'tts', identity.identity.signer)
-  if (identityLimited) return identityLimited
-
-  const text = typeof identity.body.text === 'string' ? identity.body.text.trim() : ''
+/** Validated chunk text, or an error response. */
+function readTtsText(
+  body: Record<string, unknown>,
+): { ok: true; text: string } | { ok: false; response: Response } {
+  const text = typeof body.text === 'string' ? body.text.trim() : ''
   if (!text) {
-    return Response.json({ error: 'text required' }, { status: 400 })
+    return { ok: false, response: Response.json({ error: 'text required' }, { status: 400 }) }
   }
   if (text.length > DIRECTOR_TTS_MAX_CHARS) {
-    return Response.json(
-      { error: `text too long (max ${DIRECTOR_TTS_MAX_CHARS} chars per request)` },
-      { status: 413 },
-    )
+    return {
+      ok: false,
+      response: Response.json(
+        { error: `text too long (max ${DIRECTOR_TTS_MAX_CHARS} chars per request)` },
+        { status: 413 },
+      ),
+    }
   }
+  return { ok: true, text }
+}
 
-  const apiKey = geminiApiKey()
-  if (!apiKey) {
-    return Response.json({ error: 'tts_unavailable' }, { status: 503 })
-  }
-
+async function synthesizeSpeech(text: string, apiKey: string): Promise<Response> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), TTS_UPSTREAM_TIMEOUT_MS)
   try {
     const upstream = await fetch(GEMINI_INTERACTIONS_URL, {
       method: 'POST',
       signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey,
-      },
-      body: JSON.stringify({
-        model: directorTtsModel(),
-        store: false,
-        input: [
-          {
-            type: 'user_input',
-            content: [
-              {
-                type: 'text',
-                text,
-                annotations: [{ type: 'speech_metadata', style: DIRECTOR_TTS_STYLE }],
-              },
-            ],
-          },
-        ],
-        response_format: { type: 'audio' },
-        generation_config: {
-          speech_config: [{ voice: directorTtsVoice() }],
-        },
-      }),
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: buildTtsRequestBody(text),
     })
-
     if (!upstream.ok) {
       const detail = await upstream.text().catch(() => '')
       console.error('Director TTS upstream error', upstream.status, detail.slice(0, 500))
       return Response.json({ error: 'tts_failed' }, { status: 502 })
     }
-
-    const payload = (await upstream.json()) as InteractionResponse
-    const audio = extractInteractionAudio(payload)
+    const audio = extractInteractionAudio((await upstream.json()) as InteractionResponse)
     if (!audio) {
       console.error('Director TTS: no audio in response')
       return Response.json({ error: 'tts_failed' }, { status: 502 })
     }
-
-    const bytes = Buffer.from(audio.data, 'base64')
-    return new Response(bytes, {
+    return new Response(Buffer.from(audio.data, 'base64'), {
       status: 200,
-      headers: {
-        'Content-Type': audio.mimeType,
-        'Cache-Control': 'private, no-store',
-      },
+      headers: { 'Content-Type': audio.mimeType, 'Cache-Control': 'private, no-store' },
     })
   } catch (error) {
     const aborted = error instanceof Error && error.name === 'AbortError'
@@ -152,4 +140,25 @@ export async function POST(request: Request): Promise<Response> {
   } finally {
     clearTimeout(timer)
   }
+}
+
+export async function POST(request: Request): Promise<Response> {
+  const ipLimited = await rateLimitByClientIp(request, 'tts')
+  if (ipLimited) return ipLimited
+
+  const identity = await resolvePixelsIdentity(request)
+  if (!identity.ok) return identity.response
+
+  const identityLimited = await rateLimitByIdentity(request, 'tts', identity.identity.signer)
+  if (identityLimited) return identityLimited
+
+  const parsed = readTtsText(identity.body)
+  if (!parsed.ok) return parsed.response
+
+  const apiKey = geminiApiKey()
+  if (!apiKey) {
+    return Response.json({ error: 'tts_unavailable' }, { status: 503 })
+  }
+
+  return synthesizeSpeech(parsed.text, apiKey)
 }

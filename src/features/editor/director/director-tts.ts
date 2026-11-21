@@ -232,20 +232,100 @@ function playBlob(session: GeminiSession, blob: Blob): Promise<void> {
   })
 }
 
+type GeminiNarrationOptions = {
+  getAuth?: () => Promise<DirectorTtsAuth | null>
+  onStart?: () => void
+  onEnd?: () => void
+  onError?: (error: unknown) => void
+}
+
+/** Play chunks in order, prefetching the next one. Resolves `false` if cancelled. */
+async function playGeminiChunks(
+  session: GeminiSession,
+  auth: DirectorTtsAuth,
+  chunks: string[],
+  onFirstAudio: () => void,
+): Promise<boolean> {
+  let next: Promise<Blob> | null = fetchGeminiChunk(session, auth, chunks[0] ?? '')
+  for (let i = 0; i < chunks.length && next; i++) {
+    const blob: Blob = await next
+    if (session.cancelled) return false
+    const following = chunks[i + 1]
+    next = following !== undefined ? fetchGeminiChunk(session, auth, following) : null
+    next?.catch(() => {})
+    if (i === 0) onFirstAudio()
+    await playBlob(session, blob)
+    if (session.cancelled) return false
+  }
+  return true
+}
+
+function endGeminiSession(session: GeminiSession): void {
+  session.onCancel = undefined
+  if (activeGeminiSession === session) cancelActiveGeminiSession()
+}
+
+async function resolveNarrationAuth(
+  options: GeminiNarrationOptions,
+): Promise<DirectorTtsAuth | null> {
+  if (!options.getAuth) return null
+  const auth = await options.getAuth().catch(() => null)
+  return auth?.token ? auth : null
+}
+
+async function runGeminiNarration(
+  session: GeminiSession,
+  cleanText: string,
+  options: GeminiNarrationOptions,
+  fallback: () => void,
+): Promise<void> {
+  const auth = await resolveNarrationAuth(options)
+  if (session.cancelled) return
+  if (!auth) {
+    fallback()
+    return
+  }
+
+  const chunks = splitTextForSpeech(cleanText).slice(0, DIRECTOR_TTS_MAX_CHUNKS)
+  let started = false
+  try {
+    const finished = await playGeminiChunks(session, auth, chunks, () => {
+      started = true
+      options.onStart?.()
+    })
+    if (!finished) return
+    endGeminiSession(session)
+    options.onEnd?.()
+  } catch (error) {
+    handleNarrationError(session, error, started, options, fallback)
+  }
+}
+
+function handleNarrationError(
+  session: GeminiSession,
+  error: unknown,
+  started: boolean,
+  options: GeminiNarrationOptions,
+  fallback: () => void,
+): void {
+  if (session.cancelled) return
+  endGeminiSession(session)
+  if (!started) {
+    // Nothing played yet — use the browser voice instead.
+    session.cancelled = false
+    fallback()
+    return
+  }
+  options.onError?.(error)
+  options.onEnd?.()
+}
+
 /**
  * Read a Director reply aloud with Gemini TTS (natural voice). Falls back to the
  * browser `speechSynthesis` voice when unauthenticated, unconfigured, or on error
  * before any Gemini audio has played. Returns a stop function.
  */
-export function speakDirectorText(
-  text: string,
-  options: {
-    getAuth?: () => Promise<DirectorTtsAuth | null>
-    onStart?: () => void
-    onEnd?: () => void
-    onError?: (error: unknown) => void
-  } = {},
-): () => void {
+export function speakDirectorText(text: string, options: GeminiNarrationOptions = {}): () => void {
   stopSpeech()
 
   const cleanText = cleanMarkdownForSpeech(text)
@@ -270,48 +350,7 @@ export function speakDirectorText(
     speakText(cleanText, options)
   }
 
-  void (async () => {
-    const auth = options.getAuth ? await options.getAuth().catch(() => null) : null
-    if (session.cancelled) return
-    if (!auth?.token) {
-      fallback()
-      return
-    }
-
-    const chunks = splitTextForSpeech(cleanText).slice(0, DIRECTOR_TTS_MAX_CHUNKS)
-    let started = false
-    try {
-      let next: Promise<Blob> | null = fetchGeminiChunk(session, auth, chunks[0] ?? '')
-      for (let i = 0; i < chunks.length; i++) {
-        const blob: Blob = await (next as Promise<Blob>)
-        if (session.cancelled) return
-        // Prefetch the following chunk while this one plays.
-        next = i + 1 < chunks.length ? fetchGeminiChunk(session, auth, chunks[i + 1] ?? '') : null
-        next?.catch(() => {})
-        if (!started) {
-          started = true
-          options.onStart?.()
-        }
-        await playBlob(session, blob)
-        if (session.cancelled) return
-      }
-      session.onCancel = undefined
-      if (activeGeminiSession === session) cancelActiveGeminiSession()
-      options.onEnd?.()
-    } catch (error) {
-      if (session.cancelled) return
-      session.onCancel = undefined
-      if (!started) {
-        if (activeGeminiSession === session) cancelActiveGeminiSession()
-        session.cancelled = false
-        fallback()
-        return
-      }
-      if (activeGeminiSession === session) cancelActiveGeminiSession()
-      options.onError?.(error)
-      options.onEnd?.()
-    }
-  })()
+  void runGeminiNarration(session, cleanText, options, fallback)
 
   return () => {
     if (activeGeminiSession === session) cancelActiveGeminiSession()

@@ -175,45 +175,64 @@ function parseStructuredScenes(markdown: string): DirectorStoryboardShotPayload[
   const globalAspect = markdown.match(ASPECT_RE)?.[1]
 
   return splitStructuredSceneSections(markdown)
-    .map(({ heading, body }, index) => {
-      const visual = readSceneField(body, 'visual_prompt')
-      if (!visual) return null
-      const camera = readSceneField(body, 'camera_movement')
-      const lighting = readSceneField(body, 'lighting')
-      const prompt = [
-        stripTrailingPeriod(visual),
-        camera ? `Camera movement: ${stripTrailingPeriod(camera)}` : null,
-        lighting ? `Lighting: ${stripTrailingPeriod(lighting)}` : null,
-      ]
-        .filter(Boolean)
-        .join('. ')
-        .concat('.')
-
-      const sceneIndex =
-        readSceneField(body, 'scene_index')?.match(/\d+/)?.[0] ??
-        heading.match(STRUCTURED_SCENE_HEADING_RE)?.[1] ??
-        String(index + 1)
-      const startSeconds = parseClockToSeconds(readSceneField(body, 'timestamp_start'))
-      const endSeconds = parseClockToSeconds(readSceneField(body, 'timestamp_end'))
-      const durationField = Number.parseFloat(readSceneField(body, 'duration_seconds') ?? '')
-      const duration = Number.isFinite(durationField)
-        ? Math.max(1, Math.round(durationField))
-        : startSeconds !== undefined && endSeconds !== undefined && endSeconds > startSeconds
-          ? Math.max(1, Math.round(endSeconds - startSeconds))
-          : undefined
-      const aspect = body.match(ASPECT_RE)?.[1] ?? globalAspect
-
-      return {
-        shotId: `shot-${sceneIndex}`,
-        prompt,
-        ...(duration !== undefined ? { duration } : {}),
-        ...(startSeconds !== undefined ? { startSeconds } : {}),
-        ...(endSeconds !== undefined ? { endSeconds } : {}),
-        ...(aspect ? { aspectRatio: aspect } : {}),
-        ...(CONSISTENT_CHARACTER_RE.test(body) ? { consistentCharacter: true } : {}),
-      }
-    })
+    .map(({ heading, body }, index) => structuredSceneToShot(heading, body, index, globalAspect))
     .filter((shot): shot is DirectorStoryboardShotPayload => shot !== null)
+}
+
+function buildStructuredPrompt(body: string): string | null {
+  const visual = readSceneField(body, 'visual_prompt')
+  if (!visual) return null
+  const camera = readSceneField(body, 'camera_movement')
+  const lighting = readSceneField(body, 'lighting')
+  const parts = [stripTrailingPeriod(visual)]
+  if (camera) parts.push(`Camera movement: ${stripTrailingPeriod(camera)}`)
+  if (lighting) parts.push(`Lighting: ${stripTrailingPeriod(lighting)}`)
+  return `${parts.join('. ')}.`
+}
+
+function structuredTiming(body: string): {
+  duration?: number
+  startSeconds?: number
+  endSeconds?: number
+} {
+  const startSeconds = parseClockToSeconds(readSceneField(body, 'timestamp_start'))
+  const endSeconds = parseClockToSeconds(readSceneField(body, 'timestamp_end'))
+  const durationField = Number.parseFloat(readSceneField(body, 'duration_seconds') ?? '')
+  let duration: number | undefined
+  if (Number.isFinite(durationField)) {
+    duration = Math.max(1, Math.round(durationField))
+  } else if (startSeconds !== undefined && endSeconds !== undefined && endSeconds > startSeconds) {
+    duration = Math.max(1, Math.round(endSeconds - startSeconds))
+  }
+  return {
+    ...(duration !== undefined ? { duration } : {}),
+    ...(startSeconds !== undefined ? { startSeconds } : {}),
+    ...(endSeconds !== undefined ? { endSeconds } : {}),
+  }
+}
+
+function structuredSceneIndex(heading: string, body: string, index: number): string {
+  const fromField = readSceneField(body, 'scene_index')?.match(/\d+/)?.[0]
+  if (fromField) return fromField
+  return heading.match(STRUCTURED_SCENE_HEADING_RE)?.[1] ?? String(index + 1)
+}
+
+function structuredSceneToShot(
+  heading: string,
+  body: string,
+  index: number,
+  globalAspect: string | undefined,
+): DirectorStoryboardShotPayload | null {
+  const prompt = buildStructuredPrompt(body)
+  if (!prompt) return null
+  const aspect = body.match(ASPECT_RE)?.[1] ?? globalAspect
+  return {
+    shotId: `shot-${structuredSceneIndex(heading, body, index)}`,
+    prompt,
+    ...structuredTiming(body),
+    ...(aspect ? { aspectRatio: aspect } : {}),
+    ...(CONSISTENT_CHARACTER_RE.test(body) ? { consistentCharacter: true } : {}),
+  }
 }
 
 /** Parse Director storyboard markdown into batch quote shot payloads. */
