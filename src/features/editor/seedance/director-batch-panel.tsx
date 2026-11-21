@@ -25,7 +25,11 @@ import {
   type DirectorBatchShotJob,
 } from './director-batch-queue'
 import { DIRECTOR_BATCH_SEEDANCE_CONCURRENCY_DEFAULT } from './director-batch-concurrency'
-import { loadDirectorBatchJob, type DirectorBatchActiveJob } from './director-batch-job-store'
+import {
+  loadDirectorBatchJob,
+  loadDirectorBatchPendingConfirm,
+  type DirectorBatchActiveJob,
+} from './director-batch-job-store'
 import { formatDirectorBatchQuoteError } from './director-batch-quote-errors'
 import {
   clearDirectorBatchRemoteQuote,
@@ -347,7 +351,18 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
       setActiveJob(result)
       await finishBatchSuccess(result.jobs)
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Batch render failed'
+      const raw = err instanceof Error ? err.message : 'Batch render failed'
+      // A paid-but-unconfirmed payment must never read as money lost. When the
+      // quote expired between the wallet transfer and the server confirm, the
+      // pending payment stays in sessionStorage and gets re-applied on the
+      // refreshed quote (director-batch-runner reuse) — say so instead of
+      // implying the user owes another charge.
+      const expiredQuote = /quote[_ ]?(expired|not_found|mismatch|invalid)|Batch quote expired/i
+      const paymentPreserved = loadDirectorBatchPendingConfirm()?.paymentTxHash
+      const message =
+        raw && expiredQuote.test(raw) && paymentPreserved
+          ? 'Your CRTVAI payment already went through and is safe — the quote expired before the server could confirm it. Refresh the quote and confirm again: the same payment is applied and nothing new is charged.'
+          : raw
       setError(message)
       toast.error(message)
       setPhase(activeJob ? 'done' : 'idle')
