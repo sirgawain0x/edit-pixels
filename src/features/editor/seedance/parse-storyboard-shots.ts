@@ -119,8 +119,108 @@ function shotIdFromSection(section: string, index: number): string {
   return `shot-${index + 1}`
 }
 
+// ---------------------------------------------------------------------------
+// Structured Creative Director scenes (`#### Scene 1: …` + `**visual_prompt**: …`)
+// ---------------------------------------------------------------------------
+
+const STRUCTURED_SCENE_HEADING_RE =
+  /^\s*(?:#{1,6}\s*)?(?:[-*]\s*)?(?:\*\*)?(?:shot|scene)\s*(\d+)\b(?!_)/i
+const MARKDOWN_HEADING_RE = /^\s*#{1,6}\s/
+const HORIZONTAL_RULE_RE = /^\s*(?:[-*_]\s*){3,}$/
+
+function readSceneField(section: string, name: string): string | null {
+  const re = new RegExp(`\\*{0,2}${name}\\*{0,2}\\s*:\\s*([^|\\n]+)`, 'i')
+  const match = section.match(re)
+  if (!match?.[1]) return null
+  const value = match[1].replace(/`/g, '').replace(/\*\*/g, '').trim()
+  return value || null
+}
+
+/** `00:15`, `02:28.23`, or `1:02:03` → seconds. */
+function parseClockToSeconds(value: string | null): number | undefined {
+  if (!value) return undefined
+  const parts = value.trim().split(':')
+  if (parts.length < 2 || parts.length > 3) return undefined
+  const nums = parts.map((part) => Number.parseFloat(part))
+  if (nums.some((n) => !Number.isFinite(n))) return undefined
+  return nums.reduce((total, n) => total * 60 + n, 0)
+}
+
+function stripTrailingPeriod(value: string): string {
+  return value.replace(/[.\s]+$/, '')
+}
+
+function splitStructuredSceneSections(markdown: string): Array<{ heading: string; body: string }> {
+  const sections: Array<{ heading: string; body: string[] }> = []
+  let current: { heading: string; body: string[] } | null = null
+  for (const line of markdown.split('\n')) {
+    if (STRUCTURED_SCENE_HEADING_RE.test(line)) {
+      current = { heading: line, body: [] }
+      sections.push(current)
+      continue
+    }
+    if (!current) continue
+    // A rule or an unrelated heading (e.g. "### Next Step") ends the scene.
+    if (HORIZONTAL_RULE_RE.test(line) || MARKDOWN_HEADING_RE.test(line)) {
+      current = null
+      continue
+    }
+    current.body.push(line)
+  }
+  return sections.map((section) => ({ heading: section.heading, body: section.body.join('\n') }))
+}
+
+function parseStructuredScenes(markdown: string): DirectorStoryboardShotPayload[] {
+  if (!/visual_prompt\**\s*:/i.test(markdown)) return []
+  const globalAspect = markdown.match(ASPECT_RE)?.[1]
+
+  return splitStructuredSceneSections(markdown)
+    .map(({ heading, body }, index) => {
+      const visual = readSceneField(body, 'visual_prompt')
+      if (!visual) return null
+      const camera = readSceneField(body, 'camera_movement')
+      const lighting = readSceneField(body, 'lighting')
+      const prompt = [
+        stripTrailingPeriod(visual),
+        camera ? `Camera movement: ${stripTrailingPeriod(camera)}` : null,
+        lighting ? `Lighting: ${stripTrailingPeriod(lighting)}` : null,
+      ]
+        .filter(Boolean)
+        .join('. ')
+        .concat('.')
+
+      const sceneIndex =
+        readSceneField(body, 'scene_index')?.match(/\d+/)?.[0] ??
+        heading.match(STRUCTURED_SCENE_HEADING_RE)?.[1] ??
+        String(index + 1)
+      const startSeconds = parseClockToSeconds(readSceneField(body, 'timestamp_start'))
+      const endSeconds = parseClockToSeconds(readSceneField(body, 'timestamp_end'))
+      const durationField = Number.parseFloat(readSceneField(body, 'duration_seconds') ?? '')
+      const duration = Number.isFinite(durationField)
+        ? Math.max(1, Math.round(durationField))
+        : startSeconds !== undefined && endSeconds !== undefined && endSeconds > startSeconds
+          ? Math.max(1, Math.round(endSeconds - startSeconds))
+          : undefined
+      const aspect = body.match(ASPECT_RE)?.[1] ?? globalAspect
+
+      return {
+        shotId: `shot-${sceneIndex}`,
+        prompt,
+        ...(duration !== undefined ? { duration } : {}),
+        ...(startSeconds !== undefined ? { startSeconds } : {}),
+        ...(endSeconds !== undefined ? { endSeconds } : {}),
+        ...(aspect ? { aspectRatio: aspect } : {}),
+        ...(CONSISTENT_CHARACTER_RE.test(body) ? { consistentCharacter: true } : {}),
+      }
+    })
+    .filter((shot): shot is DirectorStoryboardShotPayload => shot !== null)
+}
+
 /** Parse Director storyboard markdown into batch quote shot payloads. */
 export function parseStoryboardShots(markdown: string): DirectorStoryboardShotPayload[] {
+  const structured = parseStructuredScenes(markdown)
+  if (structured.length > 0) return structured
+
   const sections = splitStoryboardSections(markdown)
   if (sections.length === 0) return []
 
