@@ -39,22 +39,39 @@ function parseSelections(raw: unknown): Array<{
 }
 
 export async function POST(request: Request): Promise<Response> {
+  const logStage = (stage: string, fields: Record<string, unknown> = {}) =>
+    console.info('batch-confirm stage', { stage, ...fields })
+
   if (!isSeedanceGenerateEnabled()) {
+    logStage('feature_disabled')
     return Response.json({ error: 'feature_disabled' }, { status: 404 })
   }
 
   const ipLimited = await checkPixelsRateLimits(request, 'render')
-  if (ipLimited) return ipLimited
+  if (ipLimited) {
+    logStage('rate_limited_ip')
+    return ipLimited
+  }
 
   const authorized = await authorizePixelsGeneratePost(request)
-  if (!authorized.ok) return authorized.response
+  if (!authorized.ok) {
+    logStage('auth_failed', { status: authorized.response.status })
+    return authorized.response
+  }
   const { auth, body } = authorized
+  logStage('authorized', {
+    signer: auth.signer,
+    payer: body.payerAddress ?? body.payer_address ?? auth.address,
+  })
 
   const identityLimited = await checkPixelsRateLimits(request, 'render', {
     ip: false,
     identity: auth.signer,
   })
-  if (identityLimited) return identityLimited
+  if (identityLimited) {
+    logStage('rate_limited_identity', { signer: auth.signer })
+    return identityLimited
+  }
 
   const batchQuoteId =
     typeof body.batchQuoteId === 'string'
@@ -63,13 +80,30 @@ export async function POST(request: Request): Promise<Response> {
         ? body.batch_quote_id
         : ''
   if (!batchQuoteId.trim()) {
+    logStage('missing_batch_quote_id')
     return Response.json({ error: 'batchQuoteId required' }, { status: 400 })
   }
 
   const selections = parseSelections(body.selections ?? body.shots)
   if (!selections || selections.length === 0) {
+    logStage('selections_missing', { batchQuoteId })
     return Response.json({ error: 'selections required' }, { status: 400 })
   }
+
+  const paymentTxHashPresent =
+    typeof body.paymentTxHash === 'string' && body.paymentTxHash.trim().length > 0
+  logStage('confirm_start', {
+    batchQuoteId,
+    shotCount: selections.length,
+    shots: selections.map((s) => s.shotId),
+    providers: selections.map((s) => s.provider),
+    paymentTxHashPresent,
+    paymentTxHash: paymentTxHashPresent
+      ? typeof body.paymentTxHash === 'string'
+        ? body.paymentTxHash.slice(0, 18) + '…'
+        : null
+      : null,
+  })
 
   const payerAddress =
     typeof body.payerAddress === 'string'
@@ -93,11 +127,19 @@ export async function POST(request: Request): Promise<Response> {
 
   if (!result.ok) {
     const status = result.status ?? 400
+    logStage('confirm_failed', { batchQuoteId, error: result.error, status })
     if (result.error === 'insufficient_crtvai') {
       return Response.json({ error: result.error }, { status })
     }
     return Response.json({ error: result.error }, { status })
   }
+
+  logStage('confirm_ok', {
+    batchQuoteId,
+    batchConfirmId: result.confirm.batchConfirmId,
+    jobCount: result.confirm.jobs.length,
+    totalCrtvaiDisplay: result.confirm.totalCrtvaiDisplay,
+  })
 
   return Response.json({
     ...result.confirm,
