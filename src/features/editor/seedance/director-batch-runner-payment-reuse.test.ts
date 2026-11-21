@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { confirmPaidDirectorBatch } from './director-batch-runner'
-import { confirmDirectorBatch } from './seedance-client'
+import { confirmDirectorBatch, lockDirectorBatch, PixelsGenerateApiError } from './seedance-client'
 import type { DirectorBatchQuoteResponse } from './seedance-client'
 
 const PENDING_CONFIRM_KEY = 'pixels:director-batch:pending-confirm'
@@ -10,6 +10,10 @@ vi.mock('./seedance-client', async (importOriginal) => {
   return {
     ...original,
     confirmDirectorBatch: vi.fn(),
+    lockDirectorBatch: vi.fn(async () => ({
+      ok: true,
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+    })),
   }
 })
 
@@ -36,6 +40,7 @@ vi.mock(
 )
 
 const confirmMock = vi.mocked(confirmDirectorBatch)
+const lockMock = vi.mocked(lockDirectorBatch)
 
 const TX = '0xadc590b68ef1afdee961177fe20e6bd100589278e7bb630462a79b516cb9b3c6'
 const NEW_QUOTE_ID = 'quote-new'
@@ -207,5 +212,112 @@ describe('confirmPaidDirectorBatch payment reuse', () => {
     })
     // Success clears the pending payment.
     expect(sessionStorage.getItem(PENDING_CONFIRM_KEY)).toBeNull()
+  })
+
+  it('refuses to open the wallet when the quote has less than 90s remaining', async () => {
+    const sendOps = vi.fn(async () => ({ txHash: 'should-not-pay' }))
+    const quote = makeQuote(NEW_QUOTE_ID, 30_000) // 30 seconds remaining
+
+    await expect(
+      confirmPaidDirectorBatch({
+        auth: {
+          signer: '0x04F5C5691E2F3e79246B08b98e912b3D2a786696',
+          payerAddress: '0x04F5C5691E2F3e79246B08b98e912b3D2a786696',
+        } as never,
+        quote,
+        path: 'recommendedMix',
+        canPayOnChain: true,
+        sendOps,
+        refreshBalance: vi.fn(),
+        callbacks: noOpCallbacks,
+      }),
+    ).rejects.toMatchObject({
+      code: 'quote_expired',
+      status: 400,
+    })
+
+    expect(sendOps).not.toHaveBeenCalled()
+    expect(lockMock).not.toHaveBeenCalled()
+  })
+
+  it('holds the quote server-side before a fresh payment', async () => {
+    const sendOps = vi.fn(async () => ({ txHash: '0xfresh' }))
+    const quote = makeQuote(NEW_QUOTE_ID)
+
+    await confirmPaidDirectorBatch({
+      auth: {
+        signer: '0x04F5C5691E2F3e79246B08b98e912b3D2a786696',
+        payerAddress: '0x04F5C5691E2F3e79246B08b98e912b3D2a786696',
+      } as never,
+      quote,
+      path: 'recommendedMix',
+      canPayOnChain: true,
+      sendOps,
+      refreshBalance: vi.fn(),
+      callbacks: noOpCallbacks,
+    })
+
+    expect(lockMock).toHaveBeenCalledTimes(1)
+    expect(lockMock).toHaveBeenCalledWith(expect.anything(), NEW_QUOTE_ID)
+    expect(sendOps).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not open the wallet when the server-side quote hold fails', async () => {
+    lockMock.mockRejectedValueOnce(
+      new PixelsGenerateApiError('quote_not_found', 'Batch quote not found', 400),
+    )
+    const sendOps = vi.fn(async () => ({ txHash: 'should-not-pay' }))
+    const quote = makeQuote(NEW_QUOTE_ID)
+
+    await expect(
+      confirmPaidDirectorBatch({
+        auth: {
+          signer: '0x04F5C5691E2F3e79246B08b98e912b3D2a786696',
+          payerAddress: '0x04F5C5691E2F3e79246B08b98e912b3D2a786696',
+        } as never,
+        quote,
+        path: 'recommendedMix',
+        canPayOnChain: true,
+        sendOps,
+        refreshBalance: vi.fn(),
+        callbacks: noOpCallbacks,
+      }),
+    ).rejects.toMatchObject({ code: 'quote_not_found', status: 400 })
+
+    expect(sendOps).not.toHaveBeenCalled()
+  })
+
+  it('does not charge again when a pending unconsumed payment exists', async () => {
+    sessionStorage.setItem(
+      PENDING_CONFIRM_KEY,
+      JSON.stringify({
+        batchQuoteId: 'quote-expired',
+        paymentTxHash: TX,
+        selections: [{ shotId: 'shot-1', provider: 'veo', requestId: 'req-old' }],
+      }),
+    )
+    const sendOps = vi.fn(async () => ({ txHash: 'should-not-pay-again' }))
+    const quote = makeQuote(NEW_QUOTE_ID)
+
+    await confirmPaidDirectorBatch({
+      auth: {
+        signer: '0x04F5C5691E2F3e79246B08b98e912b3D2a786696',
+        payerAddress: '0x04F5C5691E2F3e79246B08b98e912b3D2a786696',
+      } as never,
+      quote,
+      path: 'recommendedMix',
+      canPayOnChain: true,
+      sendOps,
+      refreshBalance: vi.fn(),
+      callbacks: noOpCallbacks,
+    })
+
+    expect(sendOps).not.toHaveBeenCalled()
+    expect(lockMock).not.toHaveBeenCalled()
+    expect(confirmMock).toHaveBeenCalledTimes(1)
+    expect(confirmMock.mock.calls[0]?.[1]).toMatchObject({
+      batchQuoteId: NEW_QUOTE_ID,
+      paymentTxHash: TX,
+    })
   })
 })

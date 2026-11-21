@@ -3,6 +3,7 @@ import { buildDirectorPaymentOp } from '../director/build-director-payment'
 import {
   confirmDirectorBatch,
   enqueueDirectorBatchShot,
+  lockDirectorBatch,
   PixelsGenerateApiError,
   type DirectorBatchConfirmResponse,
   type DirectorBatchQuoteResponse,
@@ -15,7 +16,8 @@ import {
 import {
   buildBatchSelections,
   countBatchProgress,
-  isBatchQuoteExpired,
+  DIRECTOR_BATCH_QUOTE_LOCK_THRESHOLD_MS,
+  getBatchQuoteTimeRemainingMs,
   resetFailedJobsForRetry,
   runBatchJobsByProvider,
   splitQueuedJobsByProvider,
@@ -194,8 +196,20 @@ export async function confirmPaidDirectorBatch(input: {
   callbacks: DirectorBatchRunnerCallbacks
 }): Promise<DirectorBatchActiveJob | null> {
   const { auth, quote, path, callbacks } = input
-  if (isBatchQuoteExpired(quote.expiresAt)) {
-    throw new Error('Batch quote expired — refresh the quote before paying.')
+  const quoteRemainingMs = getBatchQuoteTimeRemainingMs(quote.expiresAt)
+  if (quoteRemainingMs === 0) {
+    throw new PixelsGenerateApiError(
+      'quote_expired',
+      'Batch quote expired — refresh the quote before paying.',
+      400,
+    )
+  }
+  if (quoteRemainingMs < DIRECTOR_BATCH_QUOTE_LOCK_THRESHOLD_MS) {
+    throw new PixelsGenerateApiError(
+      'quote_expired',
+      'Batch quote is about to expire — refresh the quote before paying.',
+      400,
+    )
   }
 
   const selections = buildBatchSelections(quote, path, input.perShotOverrides)
@@ -214,6 +228,9 @@ export async function confirmPaidDirectorBatch(input: {
     paymentTxHash = pending.paymentTxHash
   } else {
     callbacks.onPhase('confirming')
+    // Hold the quote server-side so it cannot expire between opening the wallet
+    // and the confirm call that actually verifies/consumes the payment.
+    await lockDirectorBatch(auth, quote.batchQuoteId)
     paymentTxHash = await confirmBatchPayment(
       input.canPayOnChain,
       total.crtvaiRequired,

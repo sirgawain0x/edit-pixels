@@ -39,11 +39,17 @@ vi.mock('../../../../api/_metoken-server.js', () => ({
   checkMetokenSufficient: vi.fn(async () => ({ sufficient: true })),
 }))
 
+const recordOrphanMock = vi.fn()
+vi.mock('../../../../api/_director-batch-orphan-payments.js', () => ({
+  recordOrphanBatchPayment: recordOrphanMock,
+}))
+
 describe('director batch bridge', () => {
   const originalVercel = process.env.VERCEL
 
   beforeEach(() => {
     delete process.env.VERCEL
+    recordOrphanMock.mockClear()
     mockQuoteSeq = 0
     vi.stubGlobal(
       'fetch',
@@ -384,6 +390,148 @@ describe('director batch bridge', () => {
           '0xabc',
         ),
       ).toEqual({ ok: true, paymentTxHash: '0xpay' })
+    })
+  })
+
+  describe('lockDirectorBatchQuote', () => {
+    it('extends the TTL of an existing batch quote', async () => {
+      const { quoteDirectorStoryboardBatch } =
+        await import('../../../../api/_director-batch-quote-core')
+      const { lockDirectorBatchQuote, getDirectorBatchQuote } =
+        await import('../../../../api/_director-batch-store')
+
+      const quoted = await quoteDirectorStoryboardBatch({
+        wallet: '0xabc',
+        shots: [{ shotId: 'shot-1', prompt: 'Test', duration: 5 }],
+      })
+      expect(quoted.ok).toBe(true)
+      if (!quoted.ok) return
+
+      const before = await getDirectorBatchQuote(quoted.quote.batchQuoteId)
+      expect(before).toBeTruthy()
+      if (!before) return
+
+      const lock = await lockDirectorBatchQuote(quoted.quote.batchQuoteId)
+      expect(lock.ok).toBe(true)
+      if (!lock.ok) return
+
+      const after = await getDirectorBatchQuote(quoted.quote.batchQuoteId)
+      expect(after).toBeTruthy()
+      if (!after) return
+      expect(after.expiresAtMs).toBeGreaterThanOrEqual(
+        before.expiresAtMs + 4 * 60 * 1000,
+      )
+    })
+
+    it('returns quote_not_found for a missing quote', async () => {
+      const { lockDirectorBatchQuote } = await import('../../../../api/_director-batch-store')
+      const lock = await lockDirectorBatchQuote('missing-quote-id')
+      expect(lock).toEqual({ ok: false, error: 'quote_not_found' })
+    })
+
+    it('returns quote_already_confirmed for a consumed quote', async () => {
+      const { quoteDirectorStoryboardBatch } =
+        await import('../../../../api/_director-batch-quote-core')
+      const { lockDirectorBatchQuote, consumeDirectorBatchQuote } =
+        await import('../../../../api/_director-batch-store')
+
+      const quoted = await quoteDirectorStoryboardBatch({
+        wallet: '0xabc',
+        shots: [{ shotId: 'shot-1', prompt: 'Test', duration: 5 }],
+      })
+      expect(quoted.ok).toBe(true)
+      if (!quoted.ok) return
+
+      const consumed = await consumeDirectorBatchQuote(quoted.quote.batchQuoteId)
+      expect(consumed.ok).toBe(true)
+
+      const lock = await lockDirectorBatchQuote(quoted.quote.batchQuoteId)
+      expect(lock).toEqual({ ok: false, error: 'quote_already_confirmed' })
+    })
+  })
+
+  describe('orphan batch payment capture', () => {
+    const TX = '0xadc590b68ef1afdee961177fe20e6bd100589278e7bb630462a79b516cb9b3c6'
+
+    it('records an orphan payment when the quote is not found and a tx hash is supplied', async () => {
+      const { confirmDirectorStoryboardBatch } =
+        await import('../../../../api/_director-batch-confirm-core')
+
+      const result = await confirmDirectorStoryboardBatch({
+        wallet: '0xabc',
+        batchQuoteId: 'missing-quote-id',
+        selections: [{ shotId: 'shot-1', provider: 'veo', requestId: 'req-1' }],
+        paymentTxHash: TX,
+      })
+
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.error).toBe('quote_not_found')
+      expect(recordOrphanMock).toHaveBeenCalledTimes(1)
+      expect(recordOrphanMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          wallet: '0xabc',
+          txHash: TX,
+          purpose: 'pixels-director-batch',
+          error: 'quote_not_found',
+          batchQuoteId: 'missing-quote-id',
+        }),
+      )
+    })
+
+    it('records an orphan payment when the quote expired and a tx hash is supplied', async () => {
+      const { quoteDirectorStoryboardBatch } =
+        await import('../../../../api/_director-batch-quote-core')
+      const { confirmDirectorStoryboardBatch } =
+        await import('../../../../api/_director-batch-confirm-core')
+      const curve = await import('../../../../api/_metoken-curve-quote.js')
+
+      const quoted = await quoteDirectorStoryboardBatch({
+        wallet: '0xabc',
+        shots: [{ shotId: 'shot-1', prompt: 'Test', duration: 5 }],
+      })
+      expect(quoted.ok).toBe(true)
+      if (!quoted.ok) return
+
+      vi.spyOn(curve, 'validateSettlementAgainstQuote').mockRejectedValueOnce(
+        new curve.MetokenQuoteError('quote_expired', 'Quote expired'),
+      )
+
+      const result = await confirmDirectorStoryboardBatch({
+        wallet: '0xabc',
+        batchQuoteId: quoted.quote.batchQuoteId,
+        selections: [{ shotId: 'shot-1', provider: 'veo', requestId: 'req-1' }],
+        paymentTxHash: TX,
+      })
+
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.error).toBe('quote_expired')
+      expect(recordOrphanMock).toHaveBeenCalledTimes(1)
+      expect(recordOrphanMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          wallet: '0xabc',
+          txHash: TX,
+          purpose: 'pixels-director-batch',
+          error: 'quote_expired',
+        }),
+      )
+    })
+
+    it('does not record an orphan payment when no tx hash is supplied', async () => {
+      const { confirmDirectorStoryboardBatch } =
+        await import('../../../../api/_director-batch-confirm-core')
+
+      const result = await confirmDirectorStoryboardBatch({
+        wallet: '0xabc',
+        batchQuoteId: 'missing-quote-id',
+        selections: [{ shotId: 'shot-1', provider: 'veo', requestId: 'req-1' }],
+      })
+
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.error).toBe('quote_not_found')
+      expect(recordOrphanMock).not.toHaveBeenCalled()
     })
   })
 })

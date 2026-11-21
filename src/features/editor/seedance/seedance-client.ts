@@ -419,6 +419,18 @@ export async function confirmDirectorBatch(
   )
 }
 
+export async function lockDirectorBatch(
+  auth: SignedRequestParams,
+  batchQuoteId: string,
+): Promise<{ ok: true; expiresAt: string }> {
+  return postSeedanceApi<{ ok: true; expiresAt: string }>(
+    '/api/pixels-director-batch-lock',
+    auth,
+    { batchQuoteId },
+    'Batch lock failed',
+  )
+}
+
 export interface DirectorBatchEnqueueResponse {
   id?: string
   status?: string

@@ -254,6 +254,43 @@ export async function refreshDirectorBatchConfirmTtl(batchConfirmId: string): Pr
   )
 }
 
+const BATCH_LOCK_TTL_SECONDS = 5 * 60
+
+/**
+ * Hold a batch quote before the wallet round-trip by extending its TTL.
+ * Returns the new expiry if the quote exists and has not been consumed.
+ */
+export async function lockDirectorBatchQuote(
+  batchQuoteId: string,
+): Promise<{ ok: true; expiresAtMs: number } | { ok: false; error: 'quote_not_found' | 'quote_already_confirmed' }> {
+  const id = batchQuoteId.trim()
+  if (!id) return { ok: false, error: 'quote_not_found' }
+
+  if (await isDirectorBatchQuoteConsumed(id)) {
+    return { ok: false, error: 'quote_already_confirmed' }
+  }
+
+  let quote: DirectorBatchQuoteRecord | null = memoryQuotes.get(id) ?? null
+  if (!quote) {
+    quote = await loadJson<DirectorBatchQuoteRecord>(`${BATCH_QUOTE_PREFIX}${id}`)
+  }
+  if (!quote) {
+    if (!allowMemoryFallback()) return { ok: false, error: 'quote_not_found' }
+    return { ok: false, error: 'quote_not_found' }
+  }
+  if (quote.expiresAtMs < Date.now()) {
+    return { ok: false, error: 'quote_not_found' }
+  }
+
+  const newExpiresAtMs = quote.expiresAtMs + BATCH_LOCK_TTL_SECONDS * 1000
+  const locked: DirectorBatchQuoteRecord = { ...quote, expiresAtMs: newExpiresAtMs }
+  memoryQuotes.set(id, locked)
+
+  const ttlSeconds = Math.max(60, Math.ceil((newExpiresAtMs - Date.now()) / 1000))
+  await persistJson(`${BATCH_QUOTE_PREFIX}${id}`, locked, ttlSeconds)
+  return { ok: true, expiresAtMs: newExpiresAtMs }
+}
+
 /**
  * Atomic per-shot claim (SETNX). Claim is taken only after pre-flight passes;
  * release on provider failure so the user can retry.

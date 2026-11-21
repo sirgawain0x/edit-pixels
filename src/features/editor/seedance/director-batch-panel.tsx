@@ -17,6 +17,8 @@ import type { DirectorStoryboardShotPayload, DirectorBatchQuoteResponse } from '
 import { quoteDirectorBatch } from './seedance-client'
 import {
   countBatchProgress,
+  DIRECTOR_BATCH_QUOTE_LOCK_THRESHOLD_MS,
+  getBatchQuoteTimeRemainingMs,
   isBatchQuoteExpired,
   prepareJobsForResume,
   selectShotsForRetry,
@@ -307,7 +309,13 @@ export const DirectorBatchPanel = memo(function DirectorBatchPanel({
       void loadQuote()
       return
     }
-    if (quoteExpired) {
+    const quoteRemainingMs = getBatchQuoteTimeRemainingMs(quote.expiresAt)
+    if (quoteExpired || quoteRemainingMs < DIRECTOR_BATCH_QUOTE_LOCK_THRESHOLD_MS) {
+      setError(
+        quoteExpired
+          ? 'Batch quote expired — refreshing. Confirm again after the new quote loads.'
+          : 'Batch quote is about to expire — refreshing before payment. Confirm again after the new quote loads.',
+      )
       void loadQuote()
       return
     }

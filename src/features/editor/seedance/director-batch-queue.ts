@@ -180,6 +180,15 @@ export function isBatchQuoteExpired(expiresAt: string, nowMs = Date.now()): bool
   return !Number.isFinite(expiresMs) || expiresMs <= nowMs
 }
 
+/** Minimum remaining TTL before we force a re-quote instead of opening the wallet. */
+export const DIRECTOR_BATCH_QUOTE_LOCK_THRESHOLD_MS = 90_000
+
+export function getBatchQuoteTimeRemainingMs(expiresAt: string, nowMs = Date.now()): number {
+  const expiresMs = new Date(expiresAt).getTime()
+  if (!Number.isFinite(expiresMs)) return 0
+  return Math.max(0, expiresMs - nowMs)
+}
+
 export function splitQueuedJobsByProvider(jobs: readonly DirectorBatchShotJob[]): {
   seedance: DirectorBatchShotJob[]
   veo: DirectorBatchShotJob[]

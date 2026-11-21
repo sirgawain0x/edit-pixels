@@ -26,6 +26,7 @@ import {
   MetokenQuoteError,
   validateSettlementAgainstQuote,
 } from './_metoken-curve-quote.js'
+import { recordOrphanBatchPayment } from './_director-batch-orphan-payments.js'
 
 export interface DirectorBatchConfirmSelection {
   shotId: string
@@ -86,6 +87,32 @@ export async function resolveBatchConfirmSettlementMinWei(
   return total
 }
 
+async function maybeCaptureOrphanBatchPayment(
+  input: {
+    wallet: string
+    paymentTxHash?: string | null
+    batchQuoteId: string
+  },
+  error: string,
+): Promise<void> {
+  const txHash = input.paymentTxHash?.trim()
+  if (!txHash) return
+  if (error !== 'quote_not_found' && error !== 'quote_expired') return
+
+  try {
+    await recordOrphanBatchPayment({
+      wallet: input.wallet,
+      txHash,
+      purpose: 'pixels-director-batch',
+      receivedAtMs: Date.now(),
+      batchQuoteId: input.batchQuoteId,
+      error,
+    })
+  } catch (error) {
+    console.error('Failed to capture orphan batch payment', error)
+  }
+}
+
 export interface DirectorBatchConfirmResult {
   batchConfirmId: string
   batchQuoteId: string
@@ -111,6 +138,7 @@ export async function confirmDirectorStoryboardBatch(input: {
 
   const quote = await getDirectorBatchQuote(batchQuoteId)
   if (!quote) {
+    await maybeCaptureOrphanBatchPayment(input, 'quote_not_found')
     return { ok: false, error: 'quote_not_found', status: 400 }
   }
 
@@ -123,6 +151,7 @@ export async function confirmDirectorStoryboardBatch(input: {
     })),
   )
   if (!binding.ok) {
+    await maybeCaptureOrphanBatchPayment(input, binding.error)
     return { ok: false, error: binding.error, status: 400 }
   }
 
