@@ -33,7 +33,7 @@ export interface FlowCreditsQuote {
 
 /** Convert legacy Flow credits ($0.10/credit) to usdc6 + live-curve CRTVAI wei. */
 export async function resolveFlowSettlementMinWei(quote: FlowCreditsQuote): Promise<bigint> {
-  if (isFlowBillingEnforced()) {
+  if (isDirectorBillingEnforced()) {
     if (!isQuoteSigningConfigured()) {
       throw new MetokenQuoteError(
         'quote_invalid',

@@ -12,6 +12,9 @@
     "api/director-sessions.ts": {
       "maxDuration": 30
     },
+    "api/director-tts.ts": {
+      "maxDuration": 60
+    },
     "api/flow-run.ts": {
       "maxDuration": 300
     },

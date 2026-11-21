@@ -1,5 +1,6 @@
 /**
- * Utility for local browser-based Text-to-Speech (TTS) using SpeechSynthesis.
+ * Director read-aloud: Gemini TTS via `/api/director-tts` (natural voice), with
+ * browser `speechSynthesis` as a fallback.
  */
 
 export function cleanMarkdownForSpeech(text: string): string {
@@ -52,7 +53,7 @@ export function isSpeechSynthesisSupported(): boolean {
   )
 }
 
-export function speakText(
+function speakText(
   text: string,
   callbacks?: {
     onStart?: () => void
@@ -105,7 +106,255 @@ export function speakText(
 }
 
 export function stopSpeech(): void {
+  cancelActiveGeminiSession()
   if (isSpeechSynthesisSupported()) {
     window.speechSynthesis.cancel()
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Gemini TTS (server: POST /api/director-tts) with browser-speech fallback
+// ---------------------------------------------------------------------------
+
+export interface DirectorTtsAuth {
+  token: string
+  signerAddress?: string | null
+}
+
+/** Per-request chunk size — keeps first audio fast and stays under the server cap (2,000). */
+const DIRECTOR_TTS_CHUNK_CHARS = 1_200
+/** Cost guard: longest reply we will narrate with Gemini in one click. */
+const DIRECTOR_TTS_MAX_CHUNKS = 15
+
+/** Split cleaned speech text into ≤`maxChars` chunks on line / sentence / word boundaries. */
+export function splitTextForSpeech(text: string, maxChars = DIRECTOR_TTS_CHUNK_CHARS): string[] {
+  const chunks: string[] = []
+  let current = ''
+  const push = () => {
+    const trimmed = current.trim()
+    if (trimmed) chunks.push(trimmed)
+    current = ''
+  }
+  const sentences = text
+    .split(/\n+/)
+    .flatMap((line) => line.match(/[^.!?]+(?:[.!?]+|$)/g) ?? [line])
+    .map((s) => s.trim())
+    .filter(Boolean)
+
+  for (const sentence of sentences) {
+    if (sentence.length > maxChars) {
+      push()
+      let rest = sentence
+      while (rest.length > maxChars) {
+        const cut = rest.lastIndexOf(' ', maxChars)
+        const at = cut > maxChars / 2 ? cut : maxChars
+        chunks.push(rest.slice(0, at).trim())
+        rest = rest.slice(at).trim()
+      }
+      current = rest
+      continue
+    }
+    if (current.length + sentence.length + 1 > maxChars) push()
+    current = current ? `${current} ${sentence}` : sentence
+  }
+  push()
+  return chunks
+}
+
+interface GeminiSession {
+  cancelled: boolean
+  audio: HTMLAudioElement | null
+  controllers: Set<AbortController>
+  objectUrls: string[]
+  /** Notifies the owning button when another message (or stop) cancels this session. */
+  onCancel?: () => void
+}
+
+let activeGeminiSession: GeminiSession | null = null
+
+function cancelActiveGeminiSession(): void {
+  const session = activeGeminiSession
+  if (!session) return
+  activeGeminiSession = null
+  session.cancelled = true
+  for (const controller of session.controllers) controller.abort()
+  session.controllers.clear()
+  if (session.audio) {
+    session.audio.onended = null
+    session.audio.onerror = null
+    session.audio.pause()
+    session.audio = null
+  }
+  for (const url of session.objectUrls) URL.revokeObjectURL(url)
+  session.objectUrls = []
+  const onCancel = session.onCancel
+  session.onCancel = undefined
+  onCancel?.()
+}
+
+async function fetchGeminiChunk(
+  session: GeminiSession,
+  auth: DirectorTtsAuth,
+  text: string,
+): Promise<Blob> {
+  const controller = new AbortController()
+  session.controllers.add(controller)
+  try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${auth.token}`,
+    }
+    if (auth.signerAddress) headers['x-pixels-signer'] = auth.signerAddress
+    const response = await fetch('/api/director-tts', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ text }),
+      signal: controller.signal,
+    })
+    if (!response.ok) {
+      throw new Error(`director-tts ${response.status}`)
+    }
+    return await response.blob()
+  } finally {
+    session.controllers.delete(controller)
+  }
+}
+
+function playBlob(session: GeminiSession, blob: Blob): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob)
+    session.objectUrls.push(url)
+    const audio = new Audio(url)
+    session.audio = audio
+    audio.onended = () => resolve()
+    audio.onerror = () => reject(new Error('audio playback failed'))
+    audio.play().catch(reject)
+  })
+}
+
+type GeminiNarrationOptions = {
+  getAuth?: () => Promise<DirectorTtsAuth | null>
+  onStart?: () => void
+  onEnd?: () => void
+  onError?: (error: unknown) => void
+}
+
+/** Play chunks in order, prefetching the next one. Resolves `false` if cancelled. */
+async function playGeminiChunks(
+  session: GeminiSession,
+  auth: DirectorTtsAuth,
+  chunks: string[],
+  onFirstAudio: () => void,
+): Promise<boolean> {
+  let next: Promise<Blob> | null = fetchGeminiChunk(session, auth, chunks[0] ?? '')
+  for (let i = 0; i < chunks.length && next; i++) {
+    const blob: Blob = await next
+    if (session.cancelled) return false
+    const following = chunks[i + 1]
+    next = following !== undefined ? fetchGeminiChunk(session, auth, following) : null
+    next?.catch(() => {})
+    if (i === 0) onFirstAudio()
+    await playBlob(session, blob)
+    if (session.cancelled) return false
+  }
+  return true
+}
+
+function endGeminiSession(session: GeminiSession): void {
+  session.onCancel = undefined
+  if (activeGeminiSession === session) cancelActiveGeminiSession()
+}
+
+async function resolveNarrationAuth(
+  options: GeminiNarrationOptions,
+): Promise<DirectorTtsAuth | null> {
+  if (!options.getAuth) return null
+  const auth = await options.getAuth().catch(() => null)
+  return auth?.token ? auth : null
+}
+
+async function runGeminiNarration(
+  session: GeminiSession,
+  cleanText: string,
+  options: GeminiNarrationOptions,
+  fallback: () => void,
+): Promise<void> {
+  const auth = await resolveNarrationAuth(options)
+  if (session.cancelled) return
+  if (!auth) {
+    fallback()
+    return
+  }
+
+  const chunks = splitTextForSpeech(cleanText).slice(0, DIRECTOR_TTS_MAX_CHUNKS)
+  let started = false
+  try {
+    const finished = await playGeminiChunks(session, auth, chunks, () => {
+      started = true
+      options.onStart?.()
+    })
+    if (!finished) return
+    endGeminiSession(session)
+    options.onEnd?.()
+  } catch (error) {
+    handleNarrationError(session, error, started, options, fallback)
+  }
+}
+
+function handleNarrationError(
+  session: GeminiSession,
+  error: unknown,
+  started: boolean,
+  options: GeminiNarrationOptions,
+  fallback: () => void,
+): void {
+  if (session.cancelled) return
+  endGeminiSession(session)
+  if (!started) {
+    // Nothing played yet — use the browser voice instead.
+    session.cancelled = false
+    fallback()
+    return
+  }
+  options.onError?.(error)
+  options.onEnd?.()
+}
+
+/**
+ * Read a Director reply aloud with Gemini TTS (natural voice). Falls back to the
+ * browser `speechSynthesis` voice when unauthenticated, unconfigured, or on error
+ * before any Gemini audio has played. Returns a stop function.
+ */
+export function speakDirectorText(text: string, options: GeminiNarrationOptions = {}): () => void {
+  stopSpeech()
+
+  const cleanText = cleanMarkdownForSpeech(text)
+  if (!cleanText) {
+    options.onEnd?.()
+    return () => {}
+  }
+
+  const session: GeminiSession = {
+    cancelled: false,
+    audio: null,
+    controllers: new Set(),
+    objectUrls: [],
+    onCancel: options.onEnd,
+  }
+  activeGeminiSession = session
+
+  const fallback = () => {
+    if (session.cancelled) return
+    session.onCancel = undefined
+    if (activeGeminiSession === session) activeGeminiSession = null
+    speakText(cleanText, options)
+  }
+
+  void runGeminiNarration(session, cleanText, options, fallback)
+
+  return () => {
+    if (activeGeminiSession === session) cancelActiveGeminiSession()
+    session.cancelled = true
+    if (isSpeechSynthesisSupported()) window.speechSynthesis.cancel()
   }
 }

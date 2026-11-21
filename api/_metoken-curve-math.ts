@@ -6,7 +6,6 @@
 const RW_PPM = 500_000n
 const BASE_Y = 1_000_000n
 const BASE_X = 10n ** 18n
-const ONE_E18 = 10n ** 18n
 
 export interface CurveState {
   /** CRTVAI total supply (wei, 18 decimals). */
@@ -16,10 +15,7 @@ export interface CurveState {
 }
 
 /** Tokens minted when depositing `assetsUsdc6` into the current pool. */
-export function calculateMeTokensMintedPure(
-  assetsUsdc6: bigint,
-  state: CurveState,
-): bigint {
+export function calculateMeTokensMintedPure(assetsUsdc6: bigint, state: CurveState): bigint {
   if (assetsUsdc6 <= 0n) return 0n
   const { supplyWei, balancePooledUsdc6 } = state
 

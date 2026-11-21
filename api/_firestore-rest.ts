@@ -95,11 +95,7 @@ export function documentIdFromName(name: string | undefined): string {
   return parts[parts.length - 1] || ''
 }
 
-export async function withTimeout<T>(
-  promise: Promise<T>,
-  ms: number,
-  label: string,
-): Promise<T> {
+export async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     return await Promise.race([
@@ -228,10 +224,72 @@ export async function runFirestoreStructuredQuery(input: {
 
     const rows = (await response.json()) as Array<{ document?: FirestoreRestDocument }>
     if (!Array.isArray(rows)) return []
-    return rows.map((row) => row.document).filter((doc): doc is FirestoreRestDocument => Boolean(doc))
+    return rows
+      .map((row) => row.document)
+      .filter((doc): doc is FirestoreRestDocument => Boolean(doc))
   } catch (error) {
     console.error('Director Firestore REST query failed', error)
     rethrowIfServiceAccountImpersonationDenied(error)
     return []
+  }
+}
+
+export function readFirestoreInteger(value: FirestoreRestValue | undefined): number | null {
+  if (value && 'integerValue' in value) {
+    const parsed = Number(value.integerValue)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
+}
+
+/** GET a single document by id (`null` when missing or Firestore disabled). */
+export async function getFirestoreDocument(input: {
+  collection: string
+  documentId: string
+  timeoutMs?: number
+}): Promise<FirestoreRestDocument | null> {
+  if (!isDirectorFirestoreEnabled()) return null
+
+  try {
+    const response = await firestoreFetch(
+      `/${input.collection}/${encodeURIComponent(input.documentId)}`,
+      { method: 'GET', timeoutMs: input.timeoutMs },
+    )
+    if (response.status === 404) return null
+    if (!response.ok) {
+      const body = await response.text().catch(() => '')
+      console.error('Director Firestore REST get failed', response.status, body)
+      return null
+    }
+    return (await response.json()) as FirestoreRestDocument
+  } catch (error) {
+    console.error('Director Firestore REST get failed', error)
+    rethrowIfServiceAccountImpersonationDenied(error)
+    return null
+  }
+}
+
+/** DELETE a document by id. Missing documents count as deleted. */
+export async function deleteFirestoreDocument(input: {
+  collection: string
+  documentId: string
+  timeoutMs?: number
+}): Promise<boolean> {
+  if (!isDirectorFirestoreEnabled()) return false
+
+  try {
+    const response = await firestoreFetch(
+      `/${input.collection}/${encodeURIComponent(input.documentId)}`,
+      { method: 'DELETE', timeoutMs: input.timeoutMs },
+    )
+    if (!response.ok && response.status !== 404) {
+      const body = await response.text().catch(() => '')
+      console.error('Director Firestore REST delete failed', response.status, body)
+      return false
+    }
+    return true
+  } catch (error) {
+    console.error('Director Firestore REST delete failed', error)
+    return false
   }
 }

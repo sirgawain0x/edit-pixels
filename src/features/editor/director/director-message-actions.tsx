@@ -1,17 +1,20 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { Check, Copy, Volume2, VolumeX } from 'lucide-react'
 import { toast } from 'sonner'
-import { speakText, stopSpeech, isSpeechSynthesisSupported } from './director-tts'
+import { speakDirectorText, stopSpeech, type DirectorTtsAuth } from './director-tts'
 import { cn } from '@/shared/ui/cn'
 
 interface DirectorMessageActionsProps {
   text: string
   className?: string
+  /** Privy auth for Gemini TTS; when absent or null, falls back to browser speech. */
+  getTtsAuth?: () => Promise<DirectorTtsAuth | null>
 }
 
 export const DirectorMessageActions = memo(function DirectorMessageActions({
   text,
   className,
+  getTtsAuth,
 }: DirectorMessageActionsProps) {
   const [copied, setCopied] = useState(false)
   const [speaking, setSpeaking] = useState(false)
@@ -42,23 +45,24 @@ export const DirectorMessageActions = memo(function DirectorMessageActions({
   }, [text])
 
   const handleToggleSpeech = useCallback(() => {
-    if (!isSpeechSynthesisSupported()) {
-      toast.error('Text-to-speech is not supported in this browser.')
-      return
-    }
-
     if (speaking) {
       stopSpeech()
       setSpeaking(false)
       return
     }
 
-    speakText(text, {
+    // Show the active state immediately — Gemini audio takes a moment to arrive.
+    setSpeaking(true)
+    speakDirectorText(text, {
+      getAuth: getTtsAuth,
       onStart: () => setSpeaking(true),
       onEnd: () => setSpeaking(false),
-      onError: () => setSpeaking(false),
+      onError: () => {
+        setSpeaking(false)
+        toast.error('Read aloud failed.')
+      },
     })
-  }, [speaking, text])
+  }, [getTtsAuth, speaking, text])
 
   return (
     <div className={cn('mt-2 flex items-center gap-1 text-muted-foreground', className)}>
@@ -69,7 +73,7 @@ export const DirectorMessageActions = memo(function DirectorMessageActions({
           'flex h-6 w-6 items-center justify-center rounded-md transition-colors hover:bg-secondary/60 hover:text-foreground',
           speaking && 'bg-primary/15 text-primary',
         )}
-        title={speaking ? 'Stop speaking' : 'Read aloud with local TTS'}
+        title={speaking ? 'Stop speaking' : 'Read aloud'}
         aria-label={speaking ? 'Stop speech' : 'Read aloud'}
       >
         {speaking ? (
