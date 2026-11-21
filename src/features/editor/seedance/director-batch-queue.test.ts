@@ -371,4 +371,47 @@ Hero walks through rain`
     expect(shots[1]?.startSeconds).toBe(5)
     expect(shots[1]?.endSeconds).toBe(15)
   })
+
+  it('parses structured Creative Director scenes (#### Scene N + visual_prompt fields)', () => {
+    const markdown = `### Detailed Shot Prompts (Veo-Ready)
+
+#### Scene 1: Intro — The Industrial Outskirts
+* **scene_index**: 1
+* **timestamp_start**: \`00:00\` | **timestamp_end**: \`00:15\` | **duration_seconds**: 15.00
+* **camera_movement**: Slow ground-level tracking shot rising smoothly into a low-angle medium profile
+* **lighting**: Cold industrial mercury-vapor blue backlight contrasting against warm distant sodium streetlight pools
+* **visual_prompt**: Cinematic 35mm anamorphic film capture of a focused young man in his mid-20s. No text, no logos.
+
+#### Scene 2: Verse 1A — The Rain-Slick Alleyway
+* **scene_index**: 2
+* **timestamp_start**: \`00:15\` | **timestamp_end**: \`00:29\` | **duration_seconds**: 14.00
+* **camera_movement**: Steadicam backwards tracking shot maintaining medium close-up as subject advances
+* **lighting**: Deep sodium-vapor orange from overhead alley armatures casting hard rim light on wet brick
+* **visual_prompt**: Eye-level Steadicam tracking backwards through a narrow brick alleyway.
+
+#### Scene 10: Outro — First Light on the Parapet
+* **scene_index**: 10
+* **timestamp_start**: \`02:14\` | **timestamp_end**: \`02:28.23\` | **duration_seconds**: 14.23
+* **camera_movement**: Slow, majestic dolly-out
+* **lighting**: Soft golden dawn
+* **visual_prompt**: Elegant 35mm slow dolly-out shot.
+
+---
+
+### Next Step
+Please review the storyboard.
+`
+    const shots = parseStoryboardShots(markdown)
+    expect(shots.map((shot) => shot.shotId)).toEqual(['shot-1', 'shot-2', 'shot-10'])
+    expect(shots[0]).toMatchObject({ duration: 15, startSeconds: 0, endSeconds: 15 })
+    expect(shots[0]?.prompt).toMatch(/^Cinematic 35mm anamorphic/)
+    expect(shots[0]?.prompt).toContain('Camera movement: Slow ground-level tracking')
+    expect(shots[0]?.prompt).toContain('Lighting: Cold industrial mercury-vapor')
+    // Metadata lines must not leak into the prompt.
+    expect(shots[0]?.prompt).not.toContain('scene_index')
+    expect(shots[0]?.prompt).not.toContain('timestamp_start')
+    expect(shots[2]).toMatchObject({ duration: 14, startSeconds: 134, endSeconds: 148.23 })
+    // "### Next Step" after the rule is not part of the last scene.
+    expect(shots[2]?.prompt).not.toContain('Please review')
+  })
 })

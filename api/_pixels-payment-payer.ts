@@ -2,7 +2,6 @@
 /**
  * Bind on-chain CRTVAI payer to the Privy-verified signer (EOA or predicted Alchemy SMA).
  */
-import type { Address } from 'viem'
 import { getAddress } from 'viem'
 import { predictPixelsSmartAccountForSigner } from './_pixels-smart-account.js'
 

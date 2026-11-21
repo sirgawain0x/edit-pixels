@@ -4,7 +4,7 @@
  * Spec baseline: docs in pixels-agent-access.md §5; P1a applies to existing quote/render/director routes.
  */
 
-export type RateLimitRouteClass = 'quote' | 'render' | 'director'
+export type RateLimitRouteClass = 'quote' | 'render' | 'director' | 'tts'
 
 export type RateLimitMode = 'off' | 'observe' | 'enforce'
 
@@ -37,6 +37,11 @@ export const PIXELS_RATE_LIMIT_RULES: Record<RateLimitRouteClass, RouteRateLimit
   director: {
     ip: { limit: 20, window: '1 m' },
     identity: { limit: 15, window: '1 m' },
+  },
+  /** Director read-aloud (Gemini TTS). One click may fetch several sentence chunks. */
+  tts: {
+    ip: { limit: 40, window: '1 m' },
+    identity: { limit: 30, window: '1 m' },
   },
 }
 

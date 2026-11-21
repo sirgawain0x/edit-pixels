@@ -67,6 +67,8 @@ const DEFAULT_ENGINE_ID = '7129954674127405056'
 
 interface DirectorRequestBody {
   prompt?: string
+  /** What the user typed (no timeline-audio context) — stored as the transcript user turn. */
+  displayPrompt?: string
   userId?: string
   sessionId?: string
   projectId?: string
@@ -85,6 +87,7 @@ interface DirectorRequestBody {
 
 interface ParsedDirectorRequest {
   prompt: string
+  displayPrompt?: string
   userId: string
   sessionId?: string
   projectId?: string
@@ -165,6 +168,10 @@ function parseDirectorBody(
     ok: true,
     data: {
       prompt,
+      displayPrompt:
+        typeof body.displayPrompt === 'string'
+          ? body.displayPrompt.trim().slice(0, 20_000) || undefined
+          : undefined,
       userId: body.userId?.trim() || 'creator-user',
       sessionId: body.sessionId?.trim(),
       projectId: body.projectId?.trim(),
@@ -176,20 +183,6 @@ function parseDirectorBody(
       billingQuote,
     },
   }
-}
-
-// fallow-ignore-next-line complexity
-async function parseDirectorRequest(
-  request: Request,
-  verifiedSignerAddress?: string,
-): Promise<{ ok: true; data: ParsedDirectorRequest } | { ok: false; response: Response }> {
-  let body: DirectorRequestBody
-  try {
-    body = (await request.json()) as DirectorRequestBody
-  } catch {
-    return { ok: false, response: Response.json({ error: 'Invalid JSON body' }, { status: 400 }) }
-  }
-  return parseDirectorBody(body, verifiedSignerAddress)
 }
 
 // fallow-ignore-next-line complexity
@@ -576,7 +569,9 @@ function buildPersistContext(data: ParsedDirectorRequest): DirectorPersistContex
     audioUri: data.audioUri,
     engineId: getEngineId(),
     initialSessionId: data.sessionId,
-    promptPreview: data.prompt,
+    promptPreview: data.displayPrompt ?? data.prompt,
+    userText: data.displayPrompt ?? data.prompt,
+    isNewSession: !data.sessionId,
   }
 }
 
