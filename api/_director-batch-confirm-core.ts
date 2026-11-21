@@ -191,17 +191,30 @@ export async function confirmDirectorStoryboardBatch(input: {
     return { ok: false, error: consumed.error, status: 400 }
   }
 
+  const shotById = new Map(quote.shots.map((shot) => [shot.shotId, shot]))
+
   const confirmRecord = await saveDirectorBatchConfirm({
     batchQuoteId,
     wallet: input.wallet.trim().toLowerCase(),
     paymentTxHash,
     totalCrtvaiWei: binding.totalCrtvaiWei.toString(),
-    shots: input.selections.map((selection) => ({
-      shotId: selection.shotId.trim(),
-      provider: selection.provider,
-      requestId: selection.requestId.trim(),
-      started: false,
-    })),
+    shots: input.selections.map((selection) => {
+      const shot = shotById.get(selection.shotId.trim())
+      return {
+        shotId: selection.shotId.trim(),
+        provider: selection.provider,
+        requestId: selection.requestId.trim(),
+        started: false,
+        // Snapshot generate params so per-shot enqueues survive quote-record expiry.
+        prompt: shot?.prompt ?? '',
+        aspect_ratio: shot?.aspect_ratio ?? '',
+        resolution: shot?.resolution,
+        omniDuration: shot?.omniDuration,
+        veoDuration: shot?.veoDuration,
+        seedanceDuration: shot?.seedanceDuration,
+        seedanceQuoteId: shot?.seedanceQuoteId ?? '',
+      }
+    }),
   })
 
   const jobs = buildConfirmJobs(quote, confirmRecord, input.selections)
