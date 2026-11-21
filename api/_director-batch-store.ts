@@ -55,6 +55,15 @@ export interface DirectorBatchConfirmShot {
   provider: PixelsRenderProvider
   requestId: string
   started?: boolean
+  /** Snapshot of the quote's per-shot generate params at confirm time — per-shot
+   * enqueues must not depend on the short-TTL quote record. */
+  prompt?: string
+  aspect_ratio?: string
+  resolution?: SeedanceResolution
+  omniDuration?: number
+  veoDuration?: number
+  seedanceDuration?: number
+  seedanceQuoteId?: string
 }
 
 export interface DirectorBatchConfirmRecord {
@@ -208,11 +217,11 @@ export async function saveDirectorBatchConfirm(
     ...record,
     batchConfirmId,
     createdAtMs,
-    expiresAtMs: createdAtMs + BATCH_TTL_SECONDS * 1000,
+    expiresAtMs: createdAtMs + BATCH_CONFIRM_REFRESH_SECONDS * 1000,
   }
 
   memoryConfirms.set(batchConfirmId, full)
-  await persistJson(`${BATCH_CONFIRM_PREFIX}${batchConfirmId}`, full)
+  await persistJson(`${BATCH_CONFIRM_PREFIX}${batchConfirmId}`, full, BATCH_CONFIRM_REFRESH_SECONDS)
   return full
 }
 

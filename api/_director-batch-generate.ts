@@ -13,6 +13,7 @@ import {
   refreshDirectorBatchConfirmTtl,
   releaseDirectorBatchShotClaim,
   tryClaimDirectorBatchShot,
+  type DirectorBatchShotQuoteRecord,
 } from './_director-batch-store.js'
 import type { PixelsRenderProvider } from './_director-generate-map.js'
 
@@ -102,6 +103,37 @@ async function loadBatchShotContext(batchConfirmId: string, shotId: string) {
   const trimmedShotId = shotId.trim()
   const shotConfirm = confirm.shots.find((shot) => shot.shotId === trimmedShotId)
   if (!shotConfirm) return null
+
+  // Preferred path: the confirm record snapshots the generate params at confirm
+  // time, so enqueues survive the quote record's short TTL (and its deletion).
+  if (shotConfirm.prompt) {
+    const quote = await getDirectorBatchQuote(confirm.batchQuoteId).catch(() => null)
+    const shotQuote = quote?.shots.find((shot) => shot.shotId === trimmedShotId)
+    if (quote && shotQuote && quote.wallet === confirm.wallet) {
+      return { shotConfirm, shotQuote }
+    }
+    return {
+      shotConfirm,
+      shotQuote: {
+        shotId: trimmedShotId,
+        prompt: shotConfirm.prompt ?? '',
+        duration: shotConfirm.veoDuration ?? 0,
+        omniDuration: shotConfirm.omniDuration ?? 0,
+        veoDuration: shotConfirm.veoDuration ?? 0,
+        seedanceDuration: shotConfirm.seedanceDuration ?? 0,
+        aspect_ratio: shotConfirm.aspect_ratio ?? '16:9',
+        resolution: shotConfirm.resolution ?? '720p',
+        recommendedProvider: shotConfirm.provider,
+        omniCrtvaiWei: '0',
+        omniUsdc6: 0,
+        veoCrtvaiWei: '0',
+        veoUsdc6: 0,
+        seedanceQuoteId: shotConfirm.seedanceQuoteId ?? '',
+        seedanceCrtvaiWei: '0',
+        seedanceUsdc6: 0,
+      } as DirectorBatchShotQuoteRecord,
+    }
+  }
 
   const quote = await getDirectorBatchQuote(confirm.batchQuoteId)
   if (!quote) return null
