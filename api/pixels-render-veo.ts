@@ -48,18 +48,29 @@ async function stillToPublicUrl(prompt: string, requestUrl: string): Promise<str
 }
 
 export async function POST(request: Request): Promise<Response> {
+  const logStage = (stage: string, fields: Record<string, unknown> = {}) =>
+    console.info('veo-enqueue stage', { stage, ...fields })
+
   if (!isSeedanceGenerateEnabled()) {
+    logStage('feature_disabled')
     return Response.json({ error: 'feature_disabled' }, { status: 404 })
   }
   if (!isVertexGenerativeConfigured()) {
+    logStage('vertex_not_configured')
     return Response.json({ error: 'service unavailable' }, { status: 503 })
   }
 
   const ipLimited = await checkPixelsRateLimits(request, 'render')
-  if (ipLimited) return ipLimited
+  if (ipLimited) {
+    logStage('rate_limited_ip')
+    return ipLimited
+  }
 
   const authenticated = await authenticateGenerativePost(request)
-  if (!authenticated.ok) return authenticated.response
+  if (!authenticated.ok) {
+    logStage('auth_failed', { status: authenticated.response.status })
+    return authenticated.response
+  }
   const { signer, payer, body } = authenticated
 
   const identityLimited = await checkPixelsRateLimits(request, 'render', {
@@ -102,6 +113,7 @@ export async function POST(request: Request): Promise<Response> {
       shotId: batchShotId,
     })
     if (!batchParams.ok || batchParams.params.provider !== 'veo') {
+      logStage('batch_params_mismatch', { batchConfirmId, batchShotId, requestId })
       return Response.json({ error: 'batch_confirm_mismatch' }, { status: 400 })
     }
     const batchAuth = await validateBatchGenerateAuthorization({
@@ -111,6 +123,12 @@ export async function POST(request: Request): Promise<Response> {
       wallet: signer,
     })
     if (!batchAuth.ok) {
+      logStage('batch_auth_failed', {
+        batchConfirmId,
+        batchShotId,
+        requestId,
+        error: batchAuth.error,
+      })
       return Response.json({ error: batchAuth.error }, { status: 400 })
     }
     const batchShot = batchParams.params
@@ -150,8 +168,15 @@ export async function POST(request: Request): Promise<Response> {
       costUsdc6: quote.estimatedUsdc6,
       crtvaiRequired: quote.minCrtvaiWei.toString(),
     })
+    logStage('job_registered', {
+      batchConfirmId,
+      batchShotId,
+      requestId,
+      crtvaiRequired: quote.minCrtvaiWei.toString(),
+    })
   } catch (e) {
     console.error('pixels-render-veo job registration failed', e)
+    logStage('job_registry_unavailable', { batchConfirmId, batchShotId, requestId })
     return Response.json({ error: 'job registry unavailable' }, { status: 503 })
   }
 
@@ -246,6 +271,7 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const startUrl = await stillToPublicUrl(prompt, request.url)
+    logStage('still_ready', { batchShotId, requestId, startUrl })
     const startImage = await fetchImageBytes(startUrl)
 
     const started = await startVeoVideo({
@@ -256,6 +282,7 @@ export async function POST(request: Request): Promise<Response> {
       quality,
       aspectRatio,
     })
+    logStage('veo_started', { batchShotId, requestId, modelId: started.modelId })
 
     const taskId = shortTaskId(started.operationName)
     const { registerGenerativeTask } = await import('./_task-registry.js')
@@ -290,6 +317,7 @@ export async function POST(request: Request): Promise<Response> {
     }
     console.error('pixels-render-veo error', e)
     const message = e instanceof Error ? e.message : 'generation failed'
+    logStage('generation_failed', { batchConfirmId, batchShotId, requestId, message })
     await failPixelsGenerateJob(requestId, {
       code: 'generation_failed',
       message,
