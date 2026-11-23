@@ -23,7 +23,7 @@ import type {
  * 3. (Optional) Add a thin wrapper in `workspace-fs/` that calls
  *    `readAiOutput/writeAiOutput` with that kind.
  */
-export type AiOutputKind = 'transcript' | 'captions' | 'scenes'
+export type AiOutputKind = 'transcript' | 'captions' | 'scenes' | 'transcriptOverridesArchive'
 
 /**
  * Typed payload per kind. Matches the `data` field on `AiOutput<T>`.
@@ -33,6 +33,7 @@ export interface AiOutputPayloads {
   transcript: TranscriptPayload
   captions: CaptionsPayload
   scenes: ScenesPayload
+  transcriptOverridesArchive: TranscriptOverridesArchivePayload
 }
 
 /**
@@ -65,6 +66,22 @@ export interface TranscriptPayload {
   text: string
   segments: MediaTranscriptSegment[]
   overrides?: TranscriptWordOverride[]
+}
+
+/**
+ * Snapshot of overrides that were skipped when a new recognizer model produced
+ * a transcript. Stored in the workspace (not Firestore) so it is deleted with
+ * the project and never becomes a silent archive of user text.
+ */
+export interface TranscriptOverridesArchivePayload {
+  /** The recognizer model that produced the previous transcript. */
+  previousModel: MediaTranscriptModel
+  /** The recognizer model that replaced it. */
+  newModel: MediaTranscriptModel
+  /** Overrides that were skipped, newest last. */
+  overrides: TranscriptWordOverride[]
+  /** Total number of skipped overrides (may exceed `overrides.length` if truncated). */
+  totalCount: number
 }
 
 export type CaptionsPayload = {

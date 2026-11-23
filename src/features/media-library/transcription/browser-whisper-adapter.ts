@@ -14,8 +14,12 @@ export const browserWhisperTranscriptionAdapter: MediaTranscriptionAdapter = {
   id: BROWSER_WHISPER_TRANSCRIPTION_ADAPTER_ID,
   label: 'Browser Whisper',
   defaultModel: DEFAULT_BROWSER_WHISPER_MODEL,
-  modelOptions: BROWSER_WHISPER_MODEL_OPTIONS,
+  modelOptions: [
+    ...BROWSER_WHISPER_MODEL_OPTIONS,
+    { value: 'chirp-3', label: 'Precision (Google Chirp 3)' },
+  ] as const,
   getModelLabel(model: MediaTranscriptModel): string {
+    if (model === 'chirp-3') return 'Precision (Google Chirp 3)'
     return BROWSER_WHISPER_MODEL_LABELS[model] ?? model
   },
   createTranscriber(options?: TranscribeOptions): MediaTranscriber {

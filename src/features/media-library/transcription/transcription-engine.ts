@@ -41,6 +41,10 @@ export function isParakeetModel(model: MediaTranscriptModel | undefined): boolea
   return model === PARAKEET_MODEL
 }
 
+export function isCloudTranscriptionModel(model: MediaTranscriptModel | undefined): boolean {
+  return model === 'chirp-3'
+}
+
 function detectWebGpu(): boolean {
   return typeof navigator !== 'undefined' && 'gpu' in navigator && navigator.gpu != null
 }
