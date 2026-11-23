@@ -124,6 +124,27 @@ describe('parseTranscriptionResponse', () => {
       /no text/,
     )
   })
+
+  it('refuses a transcript the model cut short, instead of returning the partial text', () => {
+    const truncated = {
+      candidates: [
+        {
+          content: { parts: [{ text: 'This is only the first half of the meeting' }] },
+          finishReason: 'MAX_TOKENS',
+        },
+      ],
+    }
+    expect(() => parseTranscriptionResponse(truncated)).toThrow(/stopped early \(MAX_TOKENS\)/)
+  })
+
+  it('accepts STOP and reports it, so a truncation can be told from a clean finish', () => {
+    expect(parseTranscriptionResponse(twoSpeakerResponse).finishReason).toBe('STOP')
+    // A missing reason is tolerated (older captures omit it) but reported as null.
+    expect(
+      parseTranscriptionResponse({ candidates: [{ content: { parts: [{ text: 'ok' }] } }] })
+        .finishReason,
+    ).toBeNull()
+  })
 })
 
 describe('secondsFromOffset', () => {

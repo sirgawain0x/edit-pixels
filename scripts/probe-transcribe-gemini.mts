@@ -89,7 +89,7 @@ function spanOf(segment: {
 
 function printTranscript(result: TranscriptionResult, elapsedMs: number): void {
   console.log(
-    `\nlatency ${elapsedMs}ms  model=${result.modelVersion}  usage=${JSON.stringify(result.usage)}`,
+    `\nlatency ${elapsedMs}ms  model=${result.modelVersion}  finish=${result.finishReason ?? 'unknown'}  usage=${JSON.stringify(result.usage)}`,
   )
   for (const segment of result.segments) {
     console.log(

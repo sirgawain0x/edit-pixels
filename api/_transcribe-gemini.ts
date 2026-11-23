@@ -100,6 +100,11 @@ export interface TranscriptionResult {
   text: string
   usage: TranscriptionUsage
   modelVersion: string | null
+  /**
+   * Vertex's stop reason. `STOP` (or an absent value) means the model finished;
+   * anything in INCOMPLETE_FINISH_REASONS throws instead of returning.
+   */
+  finishReason: string | null
 }
 
 export interface TranscribeFileInput {
@@ -248,6 +253,32 @@ function tokensByModality(raw: unknown, modality: string): number | null {
 }
 
 /**
+ * Finish reasons that mean the text is not the whole audio.
+ *
+ * Vertex reports a truncated generation only in `finishReason`; the candidate still
+ * carries whatever text it managed, so ignoring this field ships a partial
+ * transcript that reads as complete and has already been billed. The caller is
+ * expected to split the part and retry rather than store it.
+ */
+const INCOMPLETE_FINISH_REASONS = new Set([
+  'MAX_TOKENS',
+  'SAFETY',
+  'RECITATION',
+  'BLOCKLIST',
+  'PROHIBITED_CONTENT',
+  'SPII',
+  'LANGUAGE',
+  'MALFORMED_FUNCTION_CALL',
+  'UNEXPECTED_TOOL_CALL',
+])
+
+function assertComplete(finishReason: string | null): void {
+  if (finishReason === null) return
+  if (!INCOMPLETE_FINISH_REASONS.has(finishReason)) return
+  throw new Error(`transcription stopped early (${finishReason}); the transcript would be partial`)
+}
+
+/**
  * Read a generateContent body into segments.
  *
  * A 200 with no usable part is a failure, not an empty transcript: the caller has
@@ -255,12 +286,18 @@ function tokensByModality(raw: unknown, modality: string): number | null {
  */
 export function parseTranscriptionResponse(body: unknown): TranscriptionResult {
   const typed = (body ?? {}) as {
-    candidates?: Array<{ content?: { parts?: unknown } }>
+    candidates?: Array<{ content?: { parts?: unknown }; finishReason?: unknown }>
     usageMetadata?: unknown
     modelVersion?: unknown
   }
-  const parts = typed.candidates?.[0]?.content?.parts
+  const candidate = typed.candidates?.[0]
+  const parts = candidate?.content?.parts
   if (!Array.isArray(parts)) throw new Error('transcription response had no candidates')
+
+  // Checked before the segments so a truncated response fails on the reason rather
+  // than passing because the partial text happened to parse.
+  const finishReason = typeof candidate?.finishReason === 'string' ? candidate.finishReason : null
+  assertComplete(finishReason)
 
   const segments = parts
     .map((part) => segmentOf(part))
@@ -280,6 +317,7 @@ export function parseTranscriptionResponse(body: unknown): TranscriptionResult {
       outputTokens: tokenCount({ tokenCount: usageMetadata?.candidatesTokenCount }),
     },
     modelVersion: typeof typed.modelVersion === 'string' ? typed.modelVersion : null,
+    finishReason,
   }
 }
 
