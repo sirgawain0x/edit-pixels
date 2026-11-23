@@ -185,6 +185,11 @@ export interface MediaTranscriptSegment {
   start: number
   end: number
   words?: MediaTranscriptWord[]
+  /**
+   * `spk:0`, `spk:1`… when the recognizer did diarization, absent otherwise. Optional
+   * because on-device models do not produce it and older transcripts predate the field.
+   */
+  speaker?: string
 }
 
 export interface MediaTranscriptWord {
