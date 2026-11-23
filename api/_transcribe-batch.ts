@@ -169,6 +169,55 @@ function fileResultsFromResponse(response: unknown): BatchFileResult[] {
   })
 }
 
+/** Progress as 0-100; anything not a finite number reads as "not started". */
+function progressOf(metadata: unknown): number {
+  const value = (metadata as { progressPercent?: unknown } | undefined)?.progressPercent
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0
+  return Math.max(0, Math.min(100, value))
+}
+
+/** An operation-level error message, or null when the operation reports none. */
+function operationErrorOf(error: unknown): string | null {
+  const message = (error as { message?: unknown } | undefined)?.message
+  if (typeof message !== 'string' || message.length === 0) return null
+  return message
+}
+
+function runningSummary(
+  progressPercent: number,
+  errorMessage: string | null,
+): BatchOperationSummary {
+  return {
+    status: 'running',
+    progressPercent,
+    files: [],
+    totalBilledSeconds: null,
+    errorMessage,
+  }
+}
+
+function failedSummary(progressPercent: number, errorMessage: string): BatchOperationSummary {
+  return {
+    status: 'failed',
+    progressPercent,
+    files: [],
+    totalBilledSeconds: null,
+    errorMessage,
+  }
+}
+
+function completedSummary(response: unknown, progressPercent: number): BatchOperationSummary {
+  return {
+    status: 'completed',
+    progressPercent,
+    files: fileResultsFromResponse(response),
+    totalBilledSeconds: secondsFromProtoDuration(
+      (response as { totalBilledDuration?: unknown }).totalBilledDuration,
+    ),
+    errorMessage: null,
+  }
+}
+
 /**
  * Read an operation into the three states the job cares about.
  *
@@ -178,62 +227,17 @@ function fileResultsFromResponse(response: unknown): BatchFileResult[] {
 function parseBatchOperation(operation: unknown): BatchOperationSummary {
   const raw = (operation ?? {}) as {
     done?: unknown
-    error?: { message?: unknown }
-    metadata?: { progressPercent?: unknown }
+    error?: unknown
+    metadata?: unknown
     response?: unknown
   }
+  const progressPercent = progressOf(raw.metadata)
+  const operationError = operationErrorOf(raw.error)
 
-  const progressRaw = raw.metadata?.progressPercent
-  const progressPercent =
-    typeof progressRaw === 'number' && Number.isFinite(progressRaw)
-      ? Math.max(0, Math.min(100, progressRaw))
-      : 0
-
-  const operationError =
-    typeof raw.error?.message === 'string' && raw.error.message.length > 0
-      ? raw.error.message
-      : null
-
-  if (raw.done !== true) {
-    return {
-      status: 'running',
-      progressPercent,
-      files: [],
-      totalBilledSeconds: null,
-      errorMessage: operationError,
-    }
-  }
-
-  if (operationError) {
-    return {
-      status: 'failed',
-      progressPercent,
-      files: [],
-      totalBilledSeconds: null,
-      errorMessage: operationError,
-    }
-  }
-
-  if (!raw.response) {
-    return {
-      status: 'failed',
-      progressPercent,
-      files: [],
-      totalBilledSeconds: null,
-      errorMessage: 'operation finished without a response',
-    }
-  }
-
-  const totalBilledSeconds = secondsFromProtoDuration(
-    (raw.response as { totalBilledDuration?: unknown }).totalBilledDuration,
-  )
-  return {
-    status: 'completed',
-    progressPercent: 100,
-    files: fileResultsFromResponse(raw.response),
-    totalBilledSeconds,
-    errorMessage: null,
-  }
+  if (raw.done !== true) return runningSummary(progressPercent, operationError)
+  if (operationError) return failedSummary(progressPercent, operationError)
+  if (!raw.response) return failedSummary(progressPercent, 'operation finished without a response')
+  return completedSummary(raw.response, 100)
 }
 
 /** Poll an operation. Refuses anything that is not an operations/ resource name. */
