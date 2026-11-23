@@ -176,7 +176,9 @@ export type MediaTranscriptModel =
   | 'whisper-base'
   | 'whisper-small'
   | 'whisper-large'
+  /** Legacy id for Precision transcripts written before the model swap. */
   | 'chirp-3'
+  | 'gemini-3.5-transcribe'
 
 export type MediaTranscriptQuantization = 'hybrid' | 'fp32' | 'fp16' | 'q8' | 'q4'
 

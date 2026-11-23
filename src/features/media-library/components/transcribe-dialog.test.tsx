@@ -322,7 +322,7 @@ describe('TranscribeDialog', () => {
 
     expect(screen.getByText('Parakeet TDT 0.6B v3')).toBeInTheDocument()
     expect(screen.getByText('Whisper Large v3 Turbo')).toBeInTheDocument()
-    expect(screen.getByText('Precision (Google Chirp 3)')).toBeInTheDocument()
+    expect(screen.getByText('Precision (Gemini 3.5 Transcribe)')).toBeInTheDocument()
     expect(screen.getByText('Local run (free)')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Start' }))
@@ -353,7 +353,7 @@ describe('TranscribeDialog', () => {
       />,
     )
 
-    fireEvent.click(screen.getByText('Precision (Google Chirp 3)'))
+    fireEvent.click(screen.getByText('Precision (Gemini 3.5 Transcribe)'))
     expect(screen.getByLabelText('Names & glossary')).toBeInTheDocument()
     // 100 minutes at $0.0099/min.
     expect(screen.getByText('$0.99')).toBeInTheDocument()
@@ -380,7 +380,7 @@ describe('TranscribeDialog', () => {
       />,
     )
 
-    fireEvent.click(screen.getByText('Precision (Google Chirp 3)'))
+    fireEvent.click(screen.getByText('Precision (Gemini 3.5 Transcribe)'))
     expect(screen.getByText(/Free for the first 5 short runs/)).toBeInTheDocument()
   })
 })
