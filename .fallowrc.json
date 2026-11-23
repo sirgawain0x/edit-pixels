@@ -17,9 +17,6 @@
     // Static reachability cannot see URL-loaded assets such as /sw.js
     // and /moss-tts/moss_tts.worker.js.
     "public/**",
-    // Instantiated by the cloud submit path, which lands with the client wiring.
-    // Tracked in the transcription PR follow-ups; nothing imports it yet.
-    "src/features/media-library/transcription/workers/transcription-planner.worker.ts",
     // Firestore document contract for transcription_jobs. It has no importer until
     // the client calls POST /api/transcribe-precision; api/ keeps its own mirror
     // because Vercel cannot load src/ (see scripts/check-api-src-imports.mjs).
