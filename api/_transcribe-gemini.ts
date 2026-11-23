@@ -38,11 +38,19 @@ import { getVertexAccessToken, getVertexProject } from './_vertex-auth.js'
 
 const DEFAULT_LOCATION = 'global'
 const MODEL_ID = 'gemini-3.5-transcribe'
-/** A 30-minute chunk needs headroom well past a typical gateway timeout. */
+/** A 20-minute chunk finishes in ~42s at measured throughput; this is pure headroom. */
 const REQUEST_TIMEOUT_MS = 600_000
 
-/** Docs: unary audio is capped at 1 hour, 30 minutes once timestamps/diarization are on. */
-export const MAX_PRECISION_CHUNK_SECONDS = 30 * 60
+/**
+ * Docs cap unary audio at 1 hour, and at 30 minutes once timestamps or diarization
+ * are on (longer input is truncated silently and still reports `completed`).
+ *
+ * We cut at 20 minutes rather than the full 30: it keeps a 10-minute margin under
+ * the documented ceiling, matches the planner's existing 1199.5s wall, and costs
+ * nothing in COGS — audio tokens are linear, and a 20-minute request runs ~42s at
+ * the measured 28.6x realtime, well inside a serverless timeout.
+ */
+export const MAX_PRECISION_CHUNK_SECONDS = 20 * 60
 
 /** Model page: `source_text` accepts up to 64 KiB. */
 const MAX_SOURCE_TEXT_BYTES = 64 * 1024

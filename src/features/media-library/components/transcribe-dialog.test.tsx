@@ -355,7 +355,8 @@ describe('TranscribeDialog', () => {
 
     fireEvent.click(screen.getByText('Precision (Google Chirp 3)'))
     expect(screen.getByLabelText('Names & glossary')).toBeInTheDocument()
-    expect(screen.getByText('$0.75')).toBeInTheDocument()
+    // 100 minutes at $0.0099/min.
+    expect(screen.getByText('$0.99')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Get CRTVAI quote' })).toBeInTheDocument()
   })
 

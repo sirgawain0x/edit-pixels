@@ -248,7 +248,7 @@ describe('billing/transcription-accumulator', () => {
     }
     assert.strictEqual(acc.spentUsdc6, expected)
     assert.strictEqual(acc.overBudget, false)
-    // The $3.60 ceiling lets the whole run through unclamped.
+    // The run ceiling lets the whole run through unclamped.
     assert.deepStrictEqual(settleUsdc6(acc.spentUsdc6, 3_600_000), {
       usdc6: expected,
       clamped: false,
@@ -258,7 +258,8 @@ describe('billing/transcription-accumulator', () => {
   it('separates the abort line from the margin alert, so short jobs stay retryable', () => {
     const seconds = 480 * 60
     const expected = seconds * CHIRP3_BATCH_RATE_USDC6_PER_SEC
-    const quote = 3_600_000 // $3.60 at $0.0075/min over 8h
+    // Only the 80%/50% ratios below depend on the quote, not its absolute size.
+    const quote = 3_600_000
     const acc = createTranscriptionAccumulator({
       expectedUsdc6: expected,
       rateUsdc6PerSec: CHIRP3_BATCH_RATE_USDC6_PER_SEC,

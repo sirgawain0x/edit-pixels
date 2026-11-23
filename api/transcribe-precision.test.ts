@@ -23,7 +23,7 @@ function mockQuote() {
   return {
     quoteId: 'quote-1',
     signature: 'signed-quote',
-    estimatedUsdc6: 150_000,
+    estimatedUsdc6: 198_000,
     minCrtvaiWei: 950_000_000_000_000_000n,
     expiresAtMs: 1_800_000,
     slippageBps: 250,
@@ -35,7 +35,7 @@ vi.mock('./_metoken-curve-quote.js', () => ({
   quoteCrtvaiForUsdc6: vi.fn(async () => ({
     quoteId: 'quote-1',
     signature: 'signed-quote',
-    estimatedUsdc6: 150_000,
+    estimatedUsdc6: 198_000,
     minCrtvaiWei: 950_000_000_000_000_000n,
     expiresAtMs: 1_800_000,
     slippageBps: 250,
@@ -169,21 +169,21 @@ describe('POST /api/transcribe-precision — priced run', () => {
     expect(body.free).toBe(false)
     expect(body.quote).toEqual({
       quoteId: 'quote-1',
-      estimatedUsdc6: 150_000,
+      estimatedUsdc6: 198_000,
       minCrtvaiWei: '950000000000000000',
       expiresAtMs: 1_800_000,
     })
 
     const quotes = await quoteModule()
-    // 20 minutes at $0.0075/min.
-    expect(vi.mocked(quotes.quoteCrtvaiForUsdc6)).toHaveBeenCalledWith(150_000, {
+    // 20 minutes at $0.0099/min.
+    expect(vi.mocked(quotes.quoteCrtvaiForUsdc6)).toHaveBeenCalledWith(198_000, {
       tier: 'transcribe',
       quoteId: body.jobId,
     })
 
     const jobs = await store()
     const created = vi.mocked(jobs.createQuotedTranscriptionJob).mock.calls[0]?.[0]
-    expect(created).toMatchObject({ jobId: body.jobId, estimatedUsdc6: 150_000 })
+    expect(created).toMatchObject({ jobId: body.jobId, estimatedUsdc6: 198_000 })
     expect(vi.mocked(jobs.attachQuoteToTranscriptionJob).mock.calls[0]?.[0]).toEqual({
       jobId: body.jobId,
       quoteId: 'quote-1',
@@ -263,13 +263,13 @@ describe('POST /api/transcribe-precision — pricing basis', () => {
     })
     const body = (await response.json()) as { free: boolean }
 
-    // 20 minutes at $0.0075/min, from the source duration alone.
+    // 20 minutes at $0.0099/min, from the source duration alone.
     expect(body.free).toBe(false)
     const quotes = await quoteModule()
-    expect(vi.mocked(quotes.quoteCrtvaiForUsdc6)).toHaveBeenCalledWith(150_000, expect.anything())
+    expect(vi.mocked(quotes.quoteCrtvaiForUsdc6)).toHaveBeenCalledWith(198_000, expect.anything())
 
     const created = vi.mocked(jobs.createQuotedTranscriptionJob).mock.calls[0]?.[0]
-    expect(created?.estimatedUsdc6).toBe(150_000)
+    expect(created?.estimatedUsdc6).toBe(198_000)
     // The extra 10 seconds only show up on the cost side.
     expect(created?.submittedSecondsCeil).toBe(1210)
   })

@@ -40,6 +40,14 @@ export interface PlannerRequest {
   sourceDurationSec: number
 }
 
+/**
+ * Cut wall for a single part, in seconds.
+ *
+ * The model's documented ceiling is 30 minutes once timestamps or diarization are
+ * enabled (1 hour otherwise). We cut at 20 so a part never sits close to the
+ * ceiling — audio past it is truncated silently and still reports `completed` —
+ * and so one part's request stays far inside a serverless timeout.
+ */
 const MAX_SUB_SEC = 1199.5
 const SILENCE_OVERLAP_SEC = 0.3
 const FORCED_OVERLAP_SEC = 2.0
