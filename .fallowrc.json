@@ -21,7 +21,11 @@
     // Firestore document contract for transcription_jobs. It has no importer until
     // the client calls POST /api/transcribe-precision; api/ keeps its own mirror
     // because Vercel cannot load src/ (see scripts/check-api-src-imports.mjs).
-    "src/features/media-library/transcription/jobs/types.ts"
+    "src/features/media-library/transcription/jobs/types.ts",
+    // Wire layer for gemini-3.5-transcribe, proven live against Vertex. Nothing
+    // imports it until the submit route moves off Speech v2 batches, which is
+    // waiting on the chunk-size decision (a 30-minute chunk runs ~279s/request).
+    "api/_transcribe-gemini.ts"
   ],
   "duplicates": {
     // Hide pair-only clones; focus on widespread copy-paste

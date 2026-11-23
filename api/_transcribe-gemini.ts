@@ -1,0 +1,258 @@
+/// <reference types="node" />
+/**
+ * gemini-3.5-transcribe wire layer for the cloud ("precision") tier.
+ *
+ * The shape below is taken from the model's own SDK declarations
+ * (`@google/genai` -> `AudioTranscriptionConfig`), because the public docs page
+ * documents a DIFFERENT surface and following it wastes a lot of time:
+ *
+ *   - The docs show `transcription_config: { mode: { type: "verbatim",
+ *     timestamp_granularities: [...], diarization_mode: "speaker" } }`. That is the
+ *     *Interactions* API only. On `generateContent` the field is
+ *     `audioTranscriptionConfig`, `mode` is the enum string "VERBATIM"/"SMART", and
+ *     word timestamps are a single boolean named `wordTimestamp` (singular).
+ *     Passing the documented `mode: {...}` object returns
+ *     `Invalid value at 'generation_config.audio_transcription_config' (mode)`.
+ *   - `customVocabulary` is accepted *alongside* timestamps and diarization here,
+ *     even though the docs say the API rejects that combination. Verified live:
+ *     all three together return 200 with words and speakerLabel intact. Since the
+ *     docs describe the Interactions API, treat the local overlay in
+ *     `transcription-accumulator.mjs` as still the safer glossary path.
+ *   - SMART is genuinely incompatible with `wordTimestamp` — the server rejects it
+ *     with "Transcription mode SMART is incompatible with word timestamps".
+ *   - The model is not on the Interactions API at all for this project, and it is
+ *     only served from `locations/global`.
+ *
+ * Response shape: one part per *speaker turn*, each carrying
+ * `audioTranscription: { text, speakerLabel: "spk:0", words: [{ word,
+ * startOffset: "0.100s", endOffset: "0.600s" }] }`. Offsets are protobuf-ish
+ * duration strings, not numbers, and the first word of a stream may omit them.
+ */
+import { getVertexAccessToken, getVertexProject } from './_vertex-auth.js'
+
+const DEFAULT_LOCATION = 'global'
+const MODEL_ID = 'gemini-3.5-transcribe'
+/** A 30-minute chunk needs headroom well past a typical gateway timeout. */
+const REQUEST_TIMEOUT_MS = 600_000
+
+/** Docs: unary audio is capped at 1 hour, 30 minutes once timestamps/diarization are on. */
+export const MAX_PRECISION_CHUNK_SECONDS = 30 * 60
+
+export type TranscriptionMode = 'VERBATIM' | 'SMART'
+
+export interface TranscriptionOptions {
+  /** BCP-47 codes; omit for automatic detection. */
+  languageCodes?: string[]
+  /** Up to 1,000 phrases; best results under 100. */
+  customVocabulary?: string[]
+  /** Word-level offsets. Incompatible with mode SMART. */
+  wordTimestamp?: boolean
+  /** Speaker labels ("spk:0"), up to 8 speakers. Incompatible with mode SMART. */
+  diarization?: boolean
+  /** Defaults to VERBATIM, matching the model. */
+  mode?: TranscriptionMode
+}
+
+export interface TranscriptWord {
+  word: string
+  startSeconds: number | null
+  endSeconds: number | null
+}
+
+export interface TranscriptSegment {
+  /** null when diarization was not requested. */
+  speakerLabel: string | null
+  text: string
+  words: TranscriptWord[]
+}
+
+export interface TranscriptionUsage {
+  audioPromptTokens: number | null
+  textPromptTokens: number | null
+  outputTokens: number | null
+}
+
+export interface TranscriptionResult {
+  segments: TranscriptSegment[]
+  /** Convenience join of every segment, for the common "just the words" case. */
+  text: string
+  usage: TranscriptionUsage
+  modelVersion: string | null
+}
+
+export interface TranscribeFileInput {
+  /** gs:// URI or any URL Vertex can read. */
+  fileUri: string
+  mimeType: string
+  options?: TranscriptionOptions
+}
+
+/** Injectable for tests and local probes; production resolves ADC. */
+export interface TranscribeDeps {
+  accessToken?: string
+  fetchImpl?: typeof fetch
+}
+
+function modelUrl(location: string): string {
+  const project = getVertexProject()
+  return (
+    `https://aiplatform.googleapis.com/v1beta1/projects/${project}/locations/${location}` +
+    `/publishers/google/models/${MODEL_ID}:generateContent`
+  )
+}
+
+/**
+ * SMART does cleanup and reformatting, which rewrites the text and destroys the
+ * offset/speaker mapping — the server refuses the combination rather than
+ * silently dropping one, so refuse it here too instead of spending a round trip.
+ */
+export function buildTranscriptionConfig(
+  options: TranscriptionOptions = {},
+): Record<string, unknown> {
+  const mode = options.mode ?? 'VERBATIM'
+  const wantsTiming = options.wordTimestamp === true || options.diarization === true
+  if (mode === 'SMART' && wantsTiming) {
+    throw new Error('SMART mode cannot be combined with wordTimestamp or diarization')
+  }
+
+  const config: Record<string, unknown> = { mode }
+  if (options.languageCodes && options.languageCodes.length > 0) {
+    config.languageCodes = options.languageCodes
+  }
+  if (options.customVocabulary && options.customVocabulary.length > 0) {
+    config.customVocabulary = options.customVocabulary
+  }
+  if (options.wordTimestamp === true) config.wordTimestamp = true
+  if (options.diarization === true) config.diarization = true
+  return config
+}
+
+/** `"0.100s"` / `"1s"` / `0.5` -> seconds; null when the value is not a duration. */
+export function secondsFromOffset(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  if (typeof value !== 'string') return null
+  const match = /^(-?\d+(?:\.\d+)?)s$/.exec(value.trim())
+  if (!match) return null
+  const seconds = Number(match[1])
+  return Number.isFinite(seconds) ? seconds : null
+}
+
+function wordsOf(raw: unknown): TranscriptWord[] {
+  if (!Array.isArray(raw)) return []
+  const words: TranscriptWord[] = []
+  for (const entry of raw) {
+    const word = (entry ?? {}) as { word?: unknown; startOffset?: unknown; endOffset?: unknown }
+    if (typeof word.word !== 'string' || word.word.length === 0) continue
+    words.push({
+      word: word.word,
+      startSeconds: secondsFromOffset(word.startOffset),
+      endSeconds: secondsFromOffset(word.endOffset),
+    })
+  }
+  return words
+}
+
+function segmentOf(part: unknown): TranscriptSegment | null {
+  const typed = (part ?? {}) as {
+    text?: unknown
+    audioTranscription?: { text?: unknown; speakerLabel?: unknown; words?: unknown }
+  }
+  const transcription = typed.audioTranscription
+  const text = typeof transcription?.text === 'string' ? transcription.text : typed.text
+  if (typeof text !== 'string' || text.length === 0) return null
+  return {
+    speakerLabel:
+      typeof transcription?.speakerLabel === 'string' && transcription.speakerLabel.length > 0
+        ? transcription.speakerLabel
+        : null,
+    text,
+    words: wordsOf(transcription?.words),
+  }
+}
+
+function tokenCount(raw: unknown): number | null {
+  const value = (raw as { tokenCount?: unknown } | undefined)?.tokenCount
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null
+  return value
+}
+
+function tokensByModality(raw: unknown, modality: string): number | null {
+  if (!Array.isArray(raw)) return null
+  for (const entry of raw) {
+    const details = entry as { modality?: unknown; tokenCount?: unknown }
+    if (details.modality === modality) return tokenCount(details)
+  }
+  return null
+}
+
+/**
+ * Read a generateContent body into segments.
+ *
+ * A 200 with no usable part is a failure, not an empty transcript: the caller has
+ * already paid for the request, so returning "" would bill a user for silence.
+ */
+export function parseTranscriptionResponse(body: unknown): TranscriptionResult {
+  const typed = (body ?? {}) as {
+    candidates?: Array<{ content?: { parts?: unknown } }>
+    usageMetadata?: unknown
+    modelVersion?: unknown
+  }
+  const parts = typed.candidates?.[0]?.content?.parts
+  if (!Array.isArray(parts)) throw new Error('transcription response had no candidates')
+
+  const segments = parts
+    .map((part) => segmentOf(part))
+    .filter((segment): segment is TranscriptSegment => segment !== null)
+  if (segments.length === 0) throw new Error('transcription response had no text')
+
+  const usageMetadata = typed.usageMetadata as
+    | { promptTokensDetails?: unknown; candidatesTokenCount?: unknown }
+    | undefined
+
+  return {
+    segments,
+    text: segments.map((segment) => segment.text).join(' '),
+    usage: {
+      audioPromptTokens: tokensByModality(usageMetadata?.promptTokensDetails, 'AUDIO'),
+      textPromptTokens: tokensByModality(usageMetadata?.promptTokensDetails, 'TEXT'),
+      outputTokens: tokenCount({ tokenCount: usageMetadata?.candidatesTokenCount }),
+    },
+    modelVersion: typeof typed.modelVersion === 'string' ? typed.modelVersion : null,
+  }
+}
+
+/** Transcribe one file. Unary: the whole result comes back in this response. */
+export async function transcribeFile(
+  input: TranscribeFileInput,
+  deps: TranscribeDeps = {},
+): Promise<TranscriptionResult> {
+  const token = deps.accessToken ?? (await getVertexAccessToken())
+  const doFetch = deps.fetchImpl ?? fetch
+  const location = process.env.TRANSCRIBE_VERTEX_LOCATION?.trim() || DEFAULT_LOCATION
+
+  const response = await doFetch(modelUrl(location), {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      contents: [
+        {
+          role: 'user',
+          parts: [{ fileData: { fileUri: input.fileUri, mimeType: input.mimeType } }],
+        },
+      ],
+      generationConfig: {
+        audioTranscriptionConfig: buildTranscriptionConfig(input.options),
+      },
+    }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  })
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '')
+    throw new Error(`Transcribe error ${response.status}: ${text.slice(0, 500)}`)
+  }
+  return parseTranscriptionResponse(await response.json())
+}
