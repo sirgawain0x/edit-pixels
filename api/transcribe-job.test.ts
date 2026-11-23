@@ -32,6 +32,7 @@ const FINISHED_JOB = {
   estimatedUsdc6: 150_000,
   submittedSecondsCeil: 1200,
   operationName: OPERATION,
+  glossary: null,
   txHash: '0xfeed',
   freeRunMonth: null,
 }

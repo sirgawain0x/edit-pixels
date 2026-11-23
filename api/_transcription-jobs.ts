@@ -136,8 +136,10 @@ export interface TranscriptionJobSummary {
   minCrtvaiWei: string | null
   estimatedUsdc6: number | null
   submittedSecondsCeil: number | null
-  /** Google operation name, pinned at submit; null until the batch is submitted. */
+  /** Google operation name, pinned at submit; null for a per-part run, which has none. */
   operationName: string | null
+  /** Raw glossary text from the quote; each part transcribes with it so the bias matches what was quoted. */
+  glossary: string | null
   txHash: string | null
   /** Set only while this run holds a free-run credit; null once refunded or priced. */
   freeRunMonth: string | null
@@ -333,13 +335,15 @@ export async function markTranscriptionJobFailed(jobId: string): Promise<boolean
 }
 
 /**
- * Pin the batch submission onto the record: the operation name is the only handle
- * to that job's progress and billing from here on, and the tx hash is what a later
- * reconciliation uses to prove the user paid for it.
+ * Pin a submission for the per-part drive mode.
+ *
+ * `gemini-3.5-transcribe` is unary: there is no long-running operation to poll, so the
+ * record carries no `operationName` and the client drives one request per part. Everything
+ * that proves payment is identical to the batch path, which is why it is written here
+ * rather than in the route.
  */
-export async function recordBatchSubmission(input: {
+export async function recordPartsSubmission(input: {
   jobId: string
-  operationName: string
   /** Null for a free run, which is paid for by its monthly allowance, not a tx. */
   txHash: string | null
   logIndex: number | null
@@ -351,7 +355,7 @@ export async function recordBatchSubmission(input: {
     timeoutMs: FIRESTORE_REST_TIMEOUT_MS,
     fields: {
       status: encodeFirestoreString('running'),
-      operationName: encodeFirestoreString(input.operationName),
+      operationName: encodeFirestoreNull(),
       txHash: input.txHash ? encodeFirestoreString(input.txHash) : encodeFirestoreNull(),
       logIndex:
         input.logIndex === null ? encodeFirestoreNull() : encodeFirestoreInteger(input.logIndex),
@@ -417,6 +421,7 @@ export async function readTranscriptionJob(jobId: string): Promise<Transcription
     estimatedUsdc6: readFirestoreInteger(fields.estimatedUsdc6),
     submittedSecondsCeil: readFirestoreInteger(fields.submittedSecondsCeil),
     operationName: readFirestoreString(fields.operationName),
+    glossary: readFirestoreString(fields.glossary),
     txHash: readFirestoreString(fields.txHash),
     freeRunMonth: readFirestoreString(fields.freeRunMonth),
   }

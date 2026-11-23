@@ -204,6 +204,10 @@
       "exports": ["*"]
     },
     {
+      "file": "api/transcribe-part.ts",
+      "exports": ["*"]
+    },
+    {
       "file": "api/flow-frame.ts",
       "exports": ["*"]
     },
