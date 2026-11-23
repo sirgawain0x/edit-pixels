@@ -31,14 +31,22 @@ import {
   verifyQuoteSignature,
   MetokenQuoteError,
 } from './_metoken-curve-quote.js'
+import { METOKEN_QUOTE_SETTLEMENT_GRACE_SECONDS } from './_metoken-curve-config.js'
 import { verifyDirectorPayment } from './director-billing.js'
 import { claimPaymentTxLogForPurpose } from './_payment-ledger.js'
 import {
+  EXPORT_PERMIT_TTL_MS,
   EXPORT_UNLOCK_PRICE_USD,
   EXPORT_UNLOCK_USDC6,
   ExportPermitConfigError,
   signExportPermit,
 } from './_export-permit.js'
+
+/**
+ * A ledger claim must outlive the permit it protects: the permit is good for a year, so a claim
+ * that expires first would let the same transfer unlock a second project.
+ */
+const CLAIM_TTL_SECONDS = Math.ceil(EXPORT_PERMIT_TTL_MS / 1000) + 24 * 60 * 60
 
 /** Project ids are opaque to us; long enough for a UUID, short enough to refuse junk. */
 const MAX_PROJECT_ID_LENGTH = 128
@@ -129,9 +137,8 @@ const EXPORT_QUOTE_TIER = 'export-unlock'
  * The pinned minimum for this purchase, or a response explaining why it cannot be honoured.
  *
  * Deliberately not `resolveDirectorSettlementMinWei`: that helper takes the Director quote type,
- * whose tier is a premium/retail choice, while this quote is signed under its own tier. The
- * three checks are the same ones — signature, expiry with settlement grace, slippage band — and
- * verification is against the quoted amount rather than a fresh one.
+ * whose tier is a premium/retail choice, while this quote is signed under its own tier. What is
+ * checked here is the signature, and only that — see the closing comment.
  */
 async function settlementMinWei(proof: ExportQuoteProof | null): Promise<bigint | Response> {
   if (!proof) {
@@ -165,21 +172,42 @@ async function settlementMinWei(proof: ExportQuoteProof | null): Promise<bigint 
     )
   }
 
+  // Whether the payment arrived inside the quote's window is a question about the transfer, not
+  // the request: it is answered after the transfer is read (`settleWithinQuoteWindow`), so a
+  // retry hours later is not rejected by the clock alone.
+  return signed.minCrtvaiWei
+}
+
+/**
+ * Accept the payment only if it was *mined* inside the window its quote was sold in.
+ *
+ * The quote's deadline exists to stop a stale price being paid later. A transfer that already
+ * landed inside the window has passed that test, so a redemption retried days afterwards must
+ * still succeed — refusing it would take the money and issue nothing, for a permit that is good
+ * for a year. Freshness is re-checked only for a payment that arrived late or whose block time
+ * we could not read.
+ */
+async function settleWithinQuoteWindow(input: {
+  signed: { minCrtvaiWei: bigint; expiresAtMs: number; slippageBps: number }
+  minedAtMs: number | undefined
+}): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const deadlineMs = input.signed.expiresAtMs + METOKEN_QUOTE_SETTLEMENT_GRACE_SECONDS * 1000
+  if (input.minedAtMs !== undefined) {
+    return input.minedAtMs <= deadlineMs
+      ? { ok: true }
+      : { ok: false, reason: 'Quote expired — request a new price.' }
+  }
+
   try {
-    const { minAmountWei } = await validateSettlementAgainstQuote({
+    await validateSettlementAgainstQuote({
       estimatedUsdc6: EXPORT_UNLOCK_USDC6,
-      minCrtvaiWei: signed.minCrtvaiWei,
-      expiresAtMs: signed.expiresAtMs,
-      slippageBps: signed.slippageBps,
+      minCrtvaiWei: input.signed.minCrtvaiWei,
+      expiresAtMs: input.signed.expiresAtMs,
+      slippageBps: input.signed.slippageBps,
     })
-    return minAmountWei
+    return { ok: true }
   } catch (error) {
-    if (error instanceof MetokenQuoteError) {
-      return Response.json(
-        { error: 'payment_not_verified', reason: error.message },
-        { status: 402 },
-      )
-    }
+    if (error instanceof MetokenQuoteError) return { ok: false, reason: error.message }
     throw error
   }
 }
@@ -195,6 +223,8 @@ async function redeemPermit(input: {
 }): Promise<Response> {
   const minAmountWei = await settlementMinWei(input.quote)
   if (minAmountWei instanceof Response) return minAmountWei
+  // Narrowed: `settlementMinWei` returning a number means the proof parsed and verified.
+  const proof = input.quote as ExportQuoteProof
 
   const payerBinding = assertPaymentPayerMatchesSigner(input.payer, input.signer)
   if (!payerBinding.ok) {
@@ -211,9 +241,25 @@ async function redeemPermit(input: {
     from: input.payer,
     minAmountWei,
     verifiedSignerAddress: input.signer,
+    includeMinedAt: true,
   })
   if (!payment.ok) {
     return Response.json({ error: 'payment_not_verified', reason: payment.reason }, { status: 402 })
+  }
+
+  const settlement = await settleWithinQuoteWindow({
+    signed: {
+      minCrtvaiWei: BigInt(proof.minCrtvaiWei),
+      expiresAtMs: proof.expiresAtMs,
+      slippageBps: proof.slippageBps,
+    },
+    minedAtMs: payment.blockTimestampMs,
+  })
+  if (!settlement.ok) {
+    return Response.json(
+      { error: 'payment_not_verified', reason: settlement.reason },
+      { status: 402 },
+    )
   }
 
   // Signed before the claim on purpose: an unconfigured signer must not burn the payment.
@@ -241,6 +287,7 @@ async function redeemPermit(input: {
     claim = await claimPaymentTxLogForPurpose(input.paymentTxHash, payment.logIndex, {
       wallet: input.accountId,
       purpose,
+      ttlSeconds: CLAIM_TTL_SECONDS,
     })
   } catch (error) {
     console.error('export permit ledger failed', error)

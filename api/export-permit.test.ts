@@ -117,6 +117,8 @@ beforeEach(() => {
     ok: true,
     amountWei: BigInt(QUOTE.minCrtvaiWei),
     logIndex: 7,
+    // Mined while the quote was still live — the case a retry must not punish.
+    blockTimestampMs: QUOTE.expiresAtMs - 1_000,
   })
 
   vi.mocked(claimPaymentTxLogForPurpose).mockReset()
@@ -174,10 +176,6 @@ describe('POST /api/export-permit', () => {
       minCrtvaiWei: BigInt(QUOTE.minCrtvaiWei),
       tier: 'export-unlock',
     })
-    expect(vi.mocked(validateSettlementAgainstQuote).mock.calls[0]?.[0]).toMatchObject({
-      estimatedUsdc6: EXPORT_UNLOCK_USDC6,
-      minCrtvaiWei: BigInt(QUOTE.minCrtvaiWei),
-    })
     expect(vi.mocked(verifyDirectorPayment).mock.calls[0]?.[0]).toMatchObject({
       txHash: '0xfeed',
       minAmountWei: BigInt(QUOTE.minCrtvaiWei),
@@ -207,7 +205,12 @@ describe('POST /api/export-permit', () => {
     expect(vi.mocked(verifyDirectorPayment)).not.toHaveBeenCalled()
   })
 
-  it('surfaces an expired or slipped quote as a payment rejection', async () => {
+  it('surfaces an expired or slipped quote when the block time is unknown', async () => {
+    vi.mocked(verifyDirectorPayment).mockResolvedValue({
+      ok: true,
+      amountWei: BigInt(QUOTE.minCrtvaiWei),
+      logIndex: 7,
+    })
     vi.mocked(validateSettlementAgainstQuote).mockRejectedValue(
       new MetokenQuoteError('quote_expired', 'Quote expired — request a new price.'),
     )
@@ -220,6 +223,62 @@ describe('POST /api/export-permit', () => {
       reason: 'Quote expired — request a new price.',
     })
     expect(vi.mocked(claimPaymentTxLogForPurpose)).not.toHaveBeenCalled()
+  })
+
+  it('accepts a retry of a payment that was mined inside the quote window', async () => {
+    // The quote expired hours ago; the transfer landed while it was live. Refusing this took
+    // the money and issued nothing, for a permit that is valid for a year.
+    const expiredQuote = { ...QUOTE, expiresAtMs: Date.now() - 6 * 60 * 60 * 1000 }
+    vi.mocked(verifyDirectorPayment).mockResolvedValue({
+      ok: true,
+      amountWei: BigInt(QUOTE.minCrtvaiWei),
+      logIndex: 7,
+      blockTimestampMs: expiredQuote.expiresAtMs + 5_000,
+    })
+
+    const response = await POST(redeem({ quote: expiredQuote }))
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toHaveProperty('permit')
+    // The freshness re-check is for late payments only; this one was on time.
+    expect(vi.mocked(validateSettlementAgainstQuote)).not.toHaveBeenCalled()
+  })
+
+  it('refuses a payment that was mined after the quote window closed', async () => {
+    const expiredQuote = { ...QUOTE, expiresAtMs: Date.now() - 60 * 60 * 1000 }
+    vi.mocked(verifyDirectorPayment).mockResolvedValue({
+      ok: true,
+      amountWei: BigInt(QUOTE.minCrtvaiWei),
+      logIndex: 7,
+      blockTimestampMs: expiredQuote.expiresAtMs + 60 * 60 * 1000,
+    })
+
+    const response = await POST(redeem({ quote: expiredQuote }))
+
+    expect(response.status).toBe(402)
+    expect(await response.json()).toMatchObject({ error: 'payment_not_verified' })
+    expect(vi.mocked(claimPaymentTxLogForPurpose)).not.toHaveBeenCalled()
+  })
+
+  it('falls back to the quote checks when the block time is unavailable', async () => {
+    vi.mocked(verifyDirectorPayment).mockResolvedValue({
+      ok: true,
+      amountWei: BigInt(QUOTE.minCrtvaiWei),
+      logIndex: 7,
+    })
+
+    await POST(redeem())
+
+    expect(vi.mocked(validateSettlementAgainstQuote)).toHaveBeenCalledTimes(1)
+  })
+
+  it('claims the transfer for longer than the permit it protects', async () => {
+    await POST(redeem())
+
+    const [, , meta] = vi.mocked(claimPaymentTxLogForPurpose).mock.calls[0] ?? []
+    // The permit lasts a year; a 14-day claim would let the same transfer unlock a second
+    // project a fortnight later.
+    expect(meta?.ttlSeconds).toBeGreaterThan(365 * 24 * 60 * 60)
   })
 
   it('rejects a payment whose payer is not linked to the authenticated wallet', async () => {
@@ -270,7 +329,7 @@ describe('POST /api/export-permit', () => {
     expect(vi.mocked(claimPaymentTxLogForPurpose).mock.calls[0]).toEqual([
       '0xfeed',
       7,
-      { wallet: ACCOUNT, purpose: `export_unlock:${PROJECT}` },
+      expect.objectContaining({ wallet: ACCOUNT, purpose: `export_unlock:${PROJECT}` }),
     ])
 
     // The ledger refuses the second claim: same dollars, different project.

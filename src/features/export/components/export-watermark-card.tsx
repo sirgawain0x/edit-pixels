@@ -242,11 +242,15 @@ export function ExportWatermarkCard(props: ExportWatermarkCardProps) {
             size="sm"
             variant="outline"
             className="shrink-0"
-            onClick={() => setConfirmOpen(true)}
+            // A payment already sent only needs its claim retried; opening the pay dialog again
+            // would offer to charge a second time.
+            onClick={hasPendingPayment ? props.onPay : () => setConfirmOpen(true)}
           >
-            {priceUsd !== null
-              ? t('export.watermark.buy', { price: priceUsd.toFixed(2) })
-              : t('export.watermark.buyNoPrice')}
+            {hasPendingPayment
+              ? t('export.watermark.finish')
+              : priceUsd !== null
+                ? t('export.watermark.buy', { price: priceUsd.toFixed(2) })
+                : t('export.watermark.buyNoPrice')}
           </Button>
         )}
       </div>

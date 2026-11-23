@@ -224,6 +224,88 @@ describe('InlineCompositionPreview', () => {
     expect(resolveMediaUrlsMock).toHaveBeenCalledTimes(2)
   })
 
+  it('does not cache a partial result whose effect was cancelled mid-flight', async () => {
+    const partialTracks = [
+      {
+        id: 'track-1',
+        type: 'video',
+        items: [
+          {
+            id: 'item-1',
+            type: 'video',
+            mediaId: 'media-3',
+            src: '',
+            startFrame: 0,
+            durationInFrames: 30,
+          },
+        ],
+      },
+    ]
+    const completeTracks = [
+      {
+        id: 'track-1',
+        type: 'video',
+        items: [
+          {
+            id: 'item-1',
+            type: 'video',
+            mediaId: 'media-3',
+            src: 'blob:recovered',
+            startFrame: 0,
+            durationInFrames: 30,
+          },
+        ],
+      },
+    ]
+
+    let releaseFirst: () => void = () => {}
+    const firstRun = new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    })
+
+    resolveMediaUrlsMock
+      .mockImplementationOnce(
+        async (_tracks: unknown, options: { onItemFailure?: (id: string) => void }) => {
+          await firstRun
+          options.onItemFailure?.('media-3')
+          return partialTracks
+        },
+      )
+      .mockResolvedValue(completeTracks)
+
+    const first = render(
+      <InlineCompositionPreview
+        compositionId="composition-1"
+        seekFrame={12}
+        containerSize={{ width: 800, height: 600 }}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(resolveMediaUrlsMock).toHaveBeenCalledTimes(1)
+    })
+
+    // The sheet closes before the assets land, so the effect is cancelled mid-flight. The
+    // partial result must still be evicted, or every later attempt is served the same blanks.
+    first.unmount()
+    await act(async () => {
+      releaseFirst()
+      await firstRun
+    })
+
+    render(
+      <InlineCompositionPreview
+        compositionId="composition-1"
+        seekFrame={12}
+        containerSize={{ width: 800, height: 600 }}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(resolveMediaUrlsMock).toHaveBeenCalledTimes(2)
+    })
+  })
+
   it('stops retrying once a missing asset is clearly missing', async () => {
     resolveMediaUrlsMock.mockImplementation(
       async (_tracks: unknown, options: { onItemFailure?: (id: string) => void }) => {

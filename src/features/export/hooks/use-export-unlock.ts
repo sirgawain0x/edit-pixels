@@ -228,8 +228,15 @@ export function useExportUnlock(options: {
   const crtvaiCost = minCrtvaiWei !== null ? formatCrtvai(minCrtvaiWei) : null
 
   const insufficient = minCrtvaiWei !== null && balance !== null && balance < minCrtvaiWei
-  const blockedReason: 'no-wallet' | 'insufficient' | null =
-    !identity || !walletReady ? 'no-wallet' : insufficient ? 'insufficient' : null
+  // A purchase already sent has nothing left to afford: blocking it on the *remaining* balance
+  // stranded buyers who paid and then spent the rest, unable to claim what they had bought.
+  const blockedReason: 'no-wallet' | 'insufficient' | null = hasPendingPayment
+    ? null
+    : !identity || !walletReady
+      ? 'no-wallet'
+      : insufficient
+        ? 'insufficient'
+        : null
 
   // Publish a permit that is already stored: the UI only needs to hear about it.
   const finishUnlock = useCallback(

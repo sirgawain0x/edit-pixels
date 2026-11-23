@@ -219,10 +219,11 @@ const InlineCompositionPreviewContent = memo(function InlineCompositionPreviewCo
           onItemFailure: (mediaId) => failedMediaIds.push(mediaId),
         })
       })
-      if (controller.signal.aborted) return
-      // A partial result must not be cached: the assets that failed may simply have lost a race
-      // with the workspace mirror or a permission grant, and the retry below will find them.
       if (failedMediaIds.length > 0) dropResolvedTrackPromise(resolutionKey)
+      // The abort check follows the drop on purpose: a cancelled effect used to return first,
+      // leaving the incomplete promise cached so every later retry re-read the same partial
+      // tracks and never touched the asset that had failed.
+      if (controller.signal.aborted) return
       if (!cancelled) {
         setResolvedTrackResult({ key: resolutionKey, tracks: nextResolvedTracks })
       }

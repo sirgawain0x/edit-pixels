@@ -33,7 +33,7 @@ function legacyHashConsumptionKey(normalizedTxHash: string): string {
 export async function consumePaymentTxLog(
   txHash: string,
   logIndex: number,
-  meta: { wallet: string; purpose: string },
+  meta: { wallet: string; purpose: string; ttlSeconds?: number },
 ): Promise<ConsumePaymentResult> {
   const normalized = normalizeTxHash(txHash)
   if (!normalized) {
@@ -72,7 +72,7 @@ export async function consumePaymentTxLog(
       logIndex,
       at: Date.now(),
     }),
-    { nx: true, ex: PAYMENT_TTL_SECONDS },
+    { nx: true, ex: meta.ttlSeconds ?? PAYMENT_TTL_SECONDS },
   )
 
   if (set === null) {
@@ -136,7 +136,7 @@ export async function readPaymentTxLog(
 export async function claimPaymentTxLogForPurpose(
   txHash: string,
   logIndex: number,
-  meta: { wallet: string; purpose: string },
+  meta: { wallet: string; purpose: string; ttlSeconds?: number },
 ): Promise<ConsumePaymentResult> {
   const consumed = await consumePaymentTxLog(txHash, logIndex, meta)
   if (consumed.ok) return consumed

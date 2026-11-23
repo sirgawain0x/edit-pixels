@@ -6,14 +6,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const store = new Map<string, unknown>()
+const expiryByKey = new Map<string, number>()
 
 vi.mock('./_redis-client.js', () => ({
   isRedisConfigured: () => true,
   getRedis: async () => ({
     get: async (key: string) => store.get(key) ?? null,
-    set: async (key: string, value: string, options?: { nx?: boolean }) => {
+    set: async (key: string, value: string, options?: { nx?: boolean; ex?: number }) => {
       if (options?.nx && store.has(key)) return null
       store.set(key, value)
+      if (typeof options?.ex === 'number') expiryByKey.set(key, options.ex)
       return 'OK'
     },
     del: async (key: string) => {
@@ -78,7 +80,25 @@ describe('claimPaymentTxLogForPurpose', () => {
       await claimPaymentTxLogForPurpose(TX, 8, { wallet: WALLET, purpose: 'export_unlock:p2' }),
     ).toEqual({ ok: true })
   })
+
+  it('keeps a claim for as long as the caller asks, not the default fortnight', async () => {
+    // An export permit is valid for a year; if its claim expired in 14 days the same transfer
+    // could be spent on a second project while the first permit still worked.
+    const yearInSeconds = 366 * 24 * 60 * 60
+    await claimPaymentTxLogForPurpose(TX, 7, {
+      wallet: WALLET,
+      purpose: 'export_unlock:p1',
+      ttlSeconds: yearInSeconds,
+    })
+
+    expect(ttlOf(`pixels:payment:tx:${TX}:7`)).toBe(yearInSeconds)
+  })
 })
+
+/** The expiry the fake Redis recorded for a key, in seconds. */
+function ttlOf(key: string): number | undefined {
+  return expiryByKey.get(key)
+}
 
 describe('readPaymentTxLog', () => {
   it('reports what a log was spent on', async () => {
