@@ -18,6 +18,8 @@ export interface RunMediaTranscriptionJobOptions {
   model?: MediaTranscriptModel
   quantization?: MediaTranscriptQuantization
   language?: string
+  /** Raw glossary text for the cloud tier; ignored by on-device models, which have no biasing. */
+  glossary?: string
   /**
    * Defaults to true. Keep this centralized so all UI launch paths either get
    * the same throttled background progress or intentionally opt out.
@@ -99,6 +101,7 @@ export async function runMediaTranscriptionJob(
         model,
         quantization: options.quantization,
         language: options.language || undefined,
+        glossary: options.glossary,
         onQueueStatusChange: createQueueStatusHandler(mediaId, options.onQueueStatusChange),
         onProgress: createProgressHandler(mediaId, updateProgress, options.onProgress),
       })

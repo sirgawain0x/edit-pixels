@@ -18,7 +18,7 @@
 import { checkPixelsRateLimits } from './_rate-limit.js'
 import { authenticateGenerativePost } from './_pixels-generate-route-auth.js'
 import { isOwnedInputUri } from './_transcribe-uris.js'
-import { readTranscriptionJob } from './_transcription-jobs.js'
+import { readTranscriptionJob, type TranscriptionJobSummary } from './_transcription-jobs.js'
 import { transcribeFile, type TranscriptionResult } from './_transcribe-gemini.js'
 
 /** 480 source minutes at the 20-minute wall is 24 parts; past that is a lie. */
@@ -83,42 +83,62 @@ function glossaryTerms(raw: string | null): string[] | undefined {
   return [...new Set(terms)].slice(0, MAX_GLOSSARY_TERMS)
 }
 
-export async function POST(request: Request): Promise<Response> {
-  const authenticated = await authenticateGenerativePost(request)
-  if (!authenticated.ok) return authenticated.response
-  const { body, signer } = authenticated
+type PartOutcome = { ok: true; prepared: PreparedPart } | { ok: false; response: Response }
 
+interface PreparedPart {
+  req: PartRequest
+  mimeType: string
+  vocabulary?: string[]
+}
+
+function badRequest(error: string, status = 400): PartOutcome {
+  return { ok: false, response: Response.json({ error }, { status }) }
+}
+
+/**
+ * The job must exist, belong to the caller, and be paid.
+ *
+ * A foreign job reads as missing rather than forbidden: distinguishing the two would let an
+ * id be probed for existence. A batch job (`running` with an operation) is refused because
+ * Google drives it, not this route.
+ */
+async function loadPaidJob(
+  jobId: string,
+  accountId: string,
+): Promise<{ ok: true; job: TranscriptionJobSummary } | { ok: false; response: Response }> {
+  const job = await readTranscriptionJob(jobId)
+  if (!job || job.accountId !== accountId) {
+    return { ok: false, response: Response.json({ error: 'job not found' }, { status: 404 }) }
+  }
+  if (job.status !== 'running' || job.operationName !== null) {
+    return {
+      ok: false,
+      response: Response.json({ error: 'job_not_payable', status: job.status }, { status: 409 }),
+    }
+  }
+  return { ok: true, job }
+}
+
+async function preparePart(body: Record<string, unknown>, accountId: string): Promise<PartOutcome> {
   const req = parseRequest(body)
-  if (!req) return Response.json({ error: 'invalid request' }, { status: 400 })
+  if (!req) return badRequest('invalid request')
 
   const mimeType = mimeTypeFor(req.uri)
-  if (!mimeType) return Response.json({ error: 'unsupported_audio_type' }, { status: 400 })
+  if (!mimeType) return badRequest('unsupported_audio_type')
 
-  const limited = await checkPixelsRateLimits(request, 'transcribe', {
-    ip: false,
-    identity: signer,
-  })
-  if (limited) return limited
-
-  const accountId = signer.toLowerCase()
-  const job = await readTranscriptionJob(req.jobId)
-  // Another account's job reads as missing, so ids cannot be probed for existence.
-  if (!job || job.accountId !== accountId) {
-    return Response.json({ error: 'job not found' }, { status: 404 })
-  }
-
-  // `quoted` means the quote exists but nobody has paid for it yet: transcribing then would
-  // spend our money on an unpaid job. Batch jobs (`running` with an operation) are driven by
-  // Google instead, so they are refused here too.
-  if (job.status !== 'running' || job.operationName !== null) {
-    return Response.json({ error: 'job_not_payable', status: job.status }, { status: 409 })
-  }
+  const loaded = await loadPaidJob(req.jobId, accountId)
+  if (!loaded.ok) return { ok: false, response: loaded.response }
 
   if (!isOwnedInputUri(req.uri, { accountId, jobId: req.jobId })) {
-    return Response.json({ error: 'file_not_owned_by_job' }, { status: 400 })
+    return badRequest('file_not_owned_by_job')
   }
 
-  const vocabulary = glossaryTerms(job.glossary)
+  const vocabulary = glossaryTerms(loaded.job.glossary)
+  return { ok: true, prepared: { req, mimeType, ...(vocabulary ? { vocabulary } : {}) } }
+}
+
+async function transcribePreparedPart(prepared: PreparedPart): Promise<Response> {
+  const { req, mimeType, vocabulary } = prepared
   try {
     const result = await transcribeFile({
       fileUri: req.uri,
@@ -141,8 +161,8 @@ export async function POST(request: Request): Promise<Response> {
     }
     return Response.json(response)
   } catch (error) {
-    // The model rejects an over-long or unsupported file, and a truncated answer throws from
-    // the parser. Both are per-part failures the client retries by splitting, not job deaths.
+    // A rejection here is one part, not the job: an over-long or unsupported file is retried by
+    // splitting it, and a transient 5xx by asking again.
     console.error('transcription part failed', {
       jobId: req.jobId,
       partIndex: req.partIndex,
@@ -150,4 +170,22 @@ export async function POST(request: Request): Promise<Response> {
     })
     return Response.json({ error: 'part_failed' }, { status: 502 })
   }
+}
+
+export async function POST(request: Request): Promise<Response> {
+  const authenticated = await authenticateGenerativePost(request)
+  if (!authenticated.ok) return authenticated.response
+  const { body, signer } = authenticated
+  const accountId = signer.toLowerCase()
+
+  const limited = await checkPixelsRateLimits(request, 'transcribe', {
+    ip: false,
+    identity: signer,
+  })
+  if (limited) return limited
+
+  const outcome = await preparePart(body, accountId)
+  if (!outcome.ok) return outcome.response
+
+  return transcribePreparedPart(outcome.prepared)
 }
