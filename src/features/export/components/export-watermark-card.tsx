@@ -34,6 +34,8 @@ export interface ExportWatermarkCardProps {
   blockedReason: 'no-wallet' | 'insufficient' | null
   error: string | null
   expiresAtMs: number | null
+  /** A transfer has left the wallet; retrying must resume the claim, not pay again. */
+  hasPendingPayment: boolean
   onPay: () => void
   onRetry: () => void
   onStampChange: (stamped: boolean) => void
@@ -199,7 +201,7 @@ export function ExportWatermarkCard(props: ExportWatermarkCardProps) {
     )
   }
 
-  const { status, priceUsd, crtvaiCost, error } = props
+  const { status, priceUsd, crtvaiCost, error, hasPendingPayment } = props
   const quoting = status === 'quoting'
   const failed = status === 'error'
 
@@ -224,8 +226,14 @@ export function ExportWatermarkCard(props: ExportWatermarkCardProps) {
         )}
 
         {failed && (
-          <Button variant="outline" size="sm" className="shrink-0" onClick={props.onRetry}>
-            {t('export.watermark.retry')}
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            // With a transfer already sent, the only useful retry is the claim itself.
+            onClick={hasPendingPayment ? props.onPay : props.onRetry}
+          >
+            {hasPendingPayment ? t('export.watermark.finish') : t('export.watermark.retry')}
           </Button>
         )}
 

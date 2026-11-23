@@ -1195,6 +1195,7 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
                     blockedReason={unlock.blockedReason}
                     error={unlock.error}
                     expiresAtMs={unlock.expiresAtMs}
+                    hasPendingPayment={unlock.hasPendingPayment}
                     onPay={() => void unlock.unlock()}
                     onRetry={unlock.refreshQuote}
                     onStampChange={setStampPreference}

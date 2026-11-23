@@ -12,7 +12,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { formatUnits } from 'viem'
-import { useSmartWalletOps } from '@/hooks/use-smart-wallet-ops'
+import {
+  useSmartWalletOps,
+  type SendOpsResult,
+  type SmartWalletOp,
+} from '@/hooks/use-smart-wallet-ops'
 import { buildCrtvaiTransferOp } from '@/shared/web3/build-metoken-payment-op'
 import { invalidateWalletTokenBalances } from '@/hooks/invalidate-wallet-balances'
 import { useCrtvaiBalance } from '@/hooks/use-crtvai-balance'
@@ -20,12 +24,17 @@ import { CRTVAI_DECIMALS } from '@/config/metoken'
 import { createLogger } from '@/shared/logging/logger'
 import { useWalletContext } from '../deps/wallet'
 import {
+  clearPendingPayment,
   fetchExportUnlockQuote,
+  readPendingPayment,
   readStoredPermit,
   redeemExportUnlockPermit,
+  rememberPendingPayment,
   storeExportPermit,
   type ExportUnlockIdentity,
   type ExportUnlockQuote,
+  type PendingExportPayment,
+  type StoredExportPermit,
 } from '../utils/export-unlock'
 
 const log = createLogger('ExportUnlock')
@@ -53,6 +62,11 @@ export interface UseExportUnlockResult {
   error: string | null
   /** When the current permit stops being valid, if this project is unlocked. */
   expiresAtMs: number | null
+  /**
+   * True when a transfer has been sent but its permit is not stored yet — "try again" then
+   * resumes the claim instead of paying again.
+   */
+  hasPendingPayment: boolean
   unlock: () => Promise<void>
   refreshQuote: () => void
 }
@@ -62,6 +76,9 @@ function formatCrtvai(wei: bigint): string {
   const n = Number(formatUnits(wei, CRTVAI_DECIMALS))
   return n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 }
+
+/** The wallet's call sender, narrowed to what this hook needs. */
+type SendOps = (ops: SmartWalletOp[]) => Promise<SendOpsResult>
 
 /**
  * Re-price when the held quote is missing or has aged out; the server pins the amount anyway,
@@ -74,6 +91,52 @@ async function quoteOrRefresh(
 ): Promise<ExportUnlockQuote> {
   if (current && current.expiresAtMs > Date.now()) return current
   return fetchExportUnlockQuote(identity, projectId)
+}
+
+/** Redeem an already-sent payment and keep the permit. Never sends money. */
+async function redeemPendingPayment(
+  identity: ExportUnlockIdentity,
+  projectId: string,
+  payment: PendingExportPayment,
+): Promise<StoredExportPermit> {
+  const permit = await redeemExportUnlockPermit(identity, {
+    projectId,
+    paymentTxHash: payment.txHash,
+    quote: payment.quote,
+  })
+  storeExportPermit(identity.payerAddress, permit)
+  clearPendingPayment(identity.payerAddress, projectId)
+  return permit
+}
+
+/**
+ * Pay for this project's unlock, then redeem it.
+ *
+ * `onSent` runs between the transfer and the redemption, which is the only window where the
+ * money is gone and no permit exists yet — that is why the payment is handed back there for
+ * the caller to record.
+ */
+async function payForUnlock(input: {
+  identity: ExportUnlockIdentity
+  projectId: string
+  quote: ExportUnlockQuote
+  sendOps: SendOps
+  onSent: (payment: PendingExportPayment) => void
+}): Promise<StoredExportPermit> {
+  // Send exactly the pinned minimum: a smaller transfer is one the server will refuse.
+  const { txHash } = await input.sendOps([buildCrtvaiTransferOp(BigInt(input.quote.minCrtvaiWei))])
+  const payment: PendingExportPayment = { txHash, quote: input.quote }
+  input.onSent(payment)
+  return redeemPendingPayment(input.identity, input.projectId, payment)
+}
+
+/** The transfer awaiting redemption: this session's, else whatever storage remembers. */
+function currentPending(
+  remembered: PendingExportPayment | null,
+  identity: ExportUnlockIdentity,
+  projectId: string,
+): PendingExportPayment | null {
+  return remembered ?? readPendingPayment(identity.payerAddress, projectId)
 }
 
 export function useExportUnlock(options: {
@@ -95,6 +158,10 @@ export function useExportUnlock(options: {
   // UI without a reload, and in storage so it survives one.
   const [expiresAtMs, setExpiresAtMs] = useState<number | null>(null)
 
+  // The transfer that has left the wallet but whose permit is not stored yet, if any.
+  const [hasPendingPayment, setHasPendingPayment] = useState(false)
+  const pendingRef = useRef<PendingExportPayment | null>(null)
+
   const mountedRef = useRef(true)
   useEffect(() => {
     mountedRef.current = true
@@ -106,6 +173,9 @@ export function useExportUnlock(options: {
   // Re-read on every project/account change: the permit is bound to both.
   useEffect(() => {
     const stored = readStoredPermit(account, projectId)
+    const pending = stored ? null : readPendingPayment(account, projectId)
+    pendingRef.current = pending
+    setHasPendingPayment(pending !== null)
     setExpiresAtMs(stored?.expiresAtMs ?? null)
     setQuote(null)
     setError(null)
@@ -161,6 +231,18 @@ export function useExportUnlock(options: {
   const blockedReason: 'no-wallet' | 'insufficient' | null =
     !identity || !walletReady ? 'no-wallet' : insufficient ? 'insufficient' : null
 
+  // Publish a permit that is already stored: the UI only needs to hear about it.
+  const finishUnlock = useCallback(
+    (permit: StoredExportPermit) => {
+      if (!mountedRef.current) return
+      setExpiresAtMs(permit.expiresAtMs)
+      setHasPendingPayment(false)
+      setStatus('unlocked')
+      invalidateWalletTokenBalances(queryClient, undefined, account)
+    },
+    [account, queryClient],
+  )
+
   const unlock = useCallback(async () => {
     if (!identity || !projectId) {
       setError('Connect a wallet to remove the watermark')
@@ -170,28 +252,41 @@ export function useExportUnlock(options: {
 
     setError(null)
     try {
-      const activeQuote = await quoteOrRefresh(identity, projectId, quote)
-      if (mountedRef.current) setQuote(activeQuote)
+      // Resume first: if a transfer already left the wallet, the only thing left to do is
+      // redeem it. Sending another one would charge twice for the same unlock.
+      const pending = currentPending(pendingRef.current, identity, projectId)
+      let permit: StoredExportPermit
+      if (pending) {
+        setStatus('verifying')
+        permit = await redeemPendingPayment(identity, projectId, pending)
+      } else {
+        const activeQuote = await quoteOrRefresh(identity, projectId, quote)
+        if (mountedRef.current) setQuote(activeQuote)
+        setStatus('paying')
+        permit = await payForUnlock({
+          identity,
+          projectId,
+          quote: activeQuote,
+          sendOps,
+          onSent: (payment) => {
+            // Recorded before the redemption so a failure is resumable rather than a second
+            // payment; the quote proof travels with it so the server can verify the amount.
+            pendingRef.current = payment
+            rememberPendingPayment(identity.payerAddress, projectId, payment)
+            if (mountedRef.current) setHasPendingPayment(true)
+          },
+        })
+      }
 
-      setStatus('paying')
-      // Send exactly the pinned minimum: a smaller transfer is one the server will refuse.
-      const { txHash } = await sendOps([buildCrtvaiTransferOp(BigInt(activeQuote.minCrtvaiWei))])
-
-      setStatus('verifying')
-      const permit = await redeemExportUnlockPermit(identity, { projectId, paymentTxHash: txHash })
-      storeExportPermit(identity.payerAddress, permit)
-
-      if (!mountedRef.current) return
-      setExpiresAtMs(permit.expiresAtMs)
-      setStatus('unlocked')
-      invalidateWalletTokenBalances(queryClient, undefined, account)
+      pendingRef.current = null
+      finishUnlock(permit)
     } catch (err) {
       if (!mountedRef.current) return
-      log.warn('export unlock failed', { error: String(err) })
+      log.warn('export unlock failed', { error: String(err), pending: pendingRef.current !== null })
       setError(err instanceof Error ? err.message : 'Payment failed')
       setStatus('error')
     }
-  }, [account, identity, projectId, queryClient, quote, sendOps])
+  }, [finishUnlock, identity, projectId, quote, sendOps])
 
   return {
     status,
@@ -203,6 +298,7 @@ export function useExportUnlock(options: {
     blockedReason,
     error,
     expiresAtMs,
+    hasPendingPayment,
     unlock,
     refreshQuote,
   }

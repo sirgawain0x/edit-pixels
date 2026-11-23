@@ -23,6 +23,7 @@ export const EXPORT_PERMIT_PATH = '/api/export-permit'
 const AUTHORIZATION_SCHEME = 'Bearer '
 
 const PERMIT_STORAGE_PREFIX = 'crtv:export-permit:v1'
+const PENDING_STORAGE_PREFIX = 'crtv:export-pending:v1'
 
 export interface ExportUnlockIdentity {
   getAccessToken: () => Promise<string | null>
@@ -32,13 +33,31 @@ export interface ExportUnlockIdentity {
   payerAddress: string
 }
 
-/** The server's quote: a fixed dollar price converted at the live curve rate. */
+/**
+ * The server's quote: a fixed dollar price converted at the live curve rate.
+ *
+ * `quoteId`/`signature`/`slippageBps` are the proof of that price. They come back on redemption
+ * so the server verifies against the amount this client was shown, instead of re-pricing and
+ * rejecting a wallet that sent exactly what it was asked for.
+ */
 export interface ExportUnlockQuote {
   projectId: string
   priceUsd: number
   estimatedUsdc6: number
   minCrtvaiWei: string
   expiresAtMs: number
+  quoteId: string
+  signature: string
+  slippageBps: number
+}
+
+/** The subset the redemption call has to hand back. */
+export interface ExportQuoteProof {
+  quoteId: string
+  signature: string
+  minCrtvaiWei: string
+  expiresAtMs: number
+  slippageBps: number
 }
 
 export interface StoredExportPermit {
@@ -102,6 +121,9 @@ export async function fetchExportUnlockQuote(
     estimatedUsdc6: number
     minCrtvaiWei: string
     expiresAtMs: number
+    quoteId?: string
+    signature?: string
+    slippageBps?: number
   }>(identity, { projectId }, fetchImpl)
 
   return {
@@ -110,23 +132,37 @@ export async function fetchExportUnlockQuote(
     estimatedUsdc6: data.estimatedUsdc6,
     minCrtvaiWei: data.minCrtvaiWei,
     expiresAtMs: data.expiresAtMs,
+    quoteId: data.quoteId ?? '',
+    signature: data.signature ?? '',
+    slippageBps: data.slippageBps ?? 0,
   }
 }
 
 /**
  * Hand the payment hash back and receive the permit.
  *
- * The server re-quotes at redemption time so the minimum checked is the one the same curve
- * state would ask for now; a stale client price is not treated as a reason to refuse.
+ * The quote travels with it: the server verifies against the amount this client was quoted,
+ * so a wallet that sent exactly what it was asked for is never rejected because the curve
+ * moved between quote and redemption.
  */
 export async function redeemExportUnlockPermit(
   identity: ExportUnlockIdentity,
-  input: { projectId: string; paymentTxHash: string },
+  input: { projectId: string; paymentTxHash: string; quote: ExportQuoteProof },
   fetchImpl: typeof fetch = fetch,
 ): Promise<StoredExportPermit> {
   const data = await postPermit<{ permit: string; projectId: string; expiresAtMs: number }>(
     identity,
-    { projectId: input.projectId, paymentTxHash: input.paymentTxHash },
+    {
+      projectId: input.projectId,
+      paymentTxHash: input.paymentTxHash,
+      quote: {
+        quoteId: input.quote.quoteId,
+        signature: input.quote.signature,
+        minCrtvaiWei: input.quote.minCrtvaiWei,
+        expiresAtMs: input.quote.expiresAtMs,
+        slippageBps: input.quote.slippageBps,
+      },
+    },
     fetchImpl,
   )
 
@@ -218,4 +254,67 @@ export function isExportUnlocked(
   now: number = Date.now(),
 ): boolean {
   return readStoredPermit(account, projectId, now) !== null
+}
+
+/* ───────────────────────── pending payment (paid, not yet redeemed) ───────────────────── */
+
+/**
+ * A transfer that has already left the wallet but whose permit has not been stored.
+ *
+ * Kept on purpose: if the redemption call fails — network, deploy, expired quote — the money is
+ * already spent, and "try again" must resume the claim rather than send a second transfer.
+ * Stored (not just held in memory) so a reload or a closed dialog does not lose it.
+ */
+export interface PendingExportPayment {
+  txHash: string
+  quote: ExportQuoteProof
+}
+
+function pendingKey(account: string, projectId: string): string {
+  return `${PENDING_STORAGE_PREFIX}:${account.toLowerCase()}:${projectId}`
+}
+
+export function rememberPendingPayment(
+  account: string,
+  projectId: string,
+  payment: PendingExportPayment,
+): void {
+  const storage = readStorage()
+  if (!storage) return
+  try {
+    storage.setItem(pendingKey(account, projectId), JSON.stringify(payment))
+  } catch {
+    // Blocked storage costs the retry-after-reload, not the money: the dialog still holds it.
+  }
+}
+
+export function readPendingPayment(
+  account: string | undefined,
+  projectId: string | undefined,
+): PendingExportPayment | null {
+  if (!account || !projectId) return null
+  const storage = readStorage()
+  if (!storage) return null
+
+  try {
+    const raw = storage.getItem(pendingKey(account, projectId))
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<PendingExportPayment>
+    if (typeof parsed.txHash !== 'string' || !parsed.txHash) return null
+    const quote = parsed.quote
+    if (!quote || typeof quote !== 'object') return null
+    return { txHash: parsed.txHash, quote }
+  } catch {
+    return null
+  }
+}
+
+export function clearPendingPayment(account: string, projectId: string): void {
+  const storage = readStorage()
+  if (!storage) return
+  try {
+    storage.removeItem(pendingKey(account, projectId))
+  } catch {
+    // Nothing to do: a stale entry only means the next unlock resumes instead of re-paying.
+  }
 }

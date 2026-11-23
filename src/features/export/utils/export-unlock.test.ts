@@ -1,11 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 import {
   EXPORT_PERMIT_PATH,
+  clearPendingPayment,
   clearStoredPermit,
   fetchExportUnlockQuote,
   isExportUnlocked,
+  readPendingPayment,
   readStoredPermit,
   redeemExportUnlockPermit,
+  rememberPendingPayment,
   storeExportPermit,
   type ExportUnlockIdentity,
 } from './export-unlock'
@@ -43,6 +46,9 @@ describe('fetchExportUnlockQuote', () => {
         estimatedUsdc6: 5_000_000,
         minCrtvaiWei: '400000000000000000000',
         expiresAtMs: 1_800_000_000_000,
+        quoteId: 'quote-1',
+        signature: 'sig',
+        slippageBps: 150,
       }),
     )
 
@@ -50,6 +56,8 @@ describe('fetchExportUnlockQuote', () => {
 
     expect(quote.minCrtvaiWei).toBe('400000000000000000000')
     expect(quote.priceUsd).toBe(5)
+    // The proof of the price has to survive to redemption, or the server re-prices and rejects.
+    expect(quote).toMatchObject({ quoteId: 'quote-1', signature: 'sig', slippageBps: 150 })
 
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit]
     expect(url).toBe(EXPORT_PERMIT_PATH)
@@ -88,6 +96,14 @@ describe('fetchExportUnlockQuote', () => {
 })
 
 describe('redeemExportUnlockPermit', () => {
+  const quote = {
+    quoteId: 'quote-1',
+    signature: 'sig',
+    minCrtvaiWei: '400000000000000000000',
+    expiresAtMs: 1_800_000_000_000,
+    slippageBps: 150,
+  }
+
   it('returns a permit already bound to the transfer that paid for it', async () => {
     const fetchImpl = vi.fn(async () =>
       jsonResponse({
@@ -99,7 +115,7 @@ describe('redeemExportUnlockPermit', () => {
 
     const permit = await redeemExportUnlockPermit(
       identity,
-      { projectId: PROJECT, paymentTxHash: '0xdead' },
+      { projectId: PROJECT, paymentTxHash: '0xdead', quote },
       fetchImpl as unknown as typeof fetch,
     )
 
@@ -109,6 +125,23 @@ describe('redeemExportUnlockPermit', () => {
       txHash: '0xdead',
       expiresAtMs: 1_900_000_000_000,
     })
+  })
+
+  it('sends the quote that priced the payment, not just the hash', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ permit: 'body.signature', projectId: PROJECT, expiresAtMs: 1 }),
+    )
+
+    await redeemExportUnlockPermit(
+      identity,
+      { projectId: PROJECT, paymentTxHash: '0xdead', quote },
+      fetchImpl as unknown as typeof fetch,
+    )
+
+    const [, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit]
+    // Without the proof the server has to re-price, which is what rejected buyers who sent
+    // exactly the amount they were quoted.
+    expect(JSON.parse(String(init.body)).quote).toEqual(quote)
   })
 })
 
@@ -156,5 +189,42 @@ describe('permit cache', () => {
     clearStoredPermit(ACCOUNT, PROJECT)
 
     expect(isExportUnlocked(ACCOUNT, PROJECT)).toBe(false)
+  })
+})
+
+describe('pending payment', () => {
+  const payment = {
+    txHash: '0xfeed',
+    quote: {
+      quoteId: 'quote-1',
+      signature: 'sig',
+      minCrtvaiWei: '400000000000000000000',
+      expiresAtMs: 1_800_000_000_000,
+      slippageBps: 150,
+    },
+  }
+
+  it('survives a reload so a failed redemption resumes instead of re-paying', () => {
+    rememberPendingPayment(ACCOUNT, PROJECT, payment)
+
+    expect(readPendingPayment(ACCOUNT, PROJECT)).toEqual(payment)
+    // Scoped like the permit: another project is a different purchase.
+    expect(readPendingPayment(ACCOUNT, 'project-2')).toBeNull()
+  })
+
+  it('is dropped once the permit is stored', () => {
+    rememberPendingPayment(ACCOUNT, PROJECT, payment)
+    clearPendingPayment(ACCOUNT, PROJECT)
+
+    expect(readPendingPayment(ACCOUNT, PROJECT)).toBeNull()
+  })
+
+  it('ignores an entry without a transaction hash', () => {
+    localStorage.setItem(
+      `crtv:export-pending:v1:${ACCOUNT.toLowerCase()}:${PROJECT}`,
+      JSON.stringify({ quote: payment.quote }),
+    )
+
+    expect(readPendingPayment(ACCOUNT, PROJECT)).toBeNull()
   })
 })
