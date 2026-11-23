@@ -13,11 +13,17 @@
  *     word timestamps are a single boolean named `wordTimestamp` (singular).
  *     Passing the documented `mode: {...}` object returns
  *     `Invalid value at 'generation_config.audio_transcription_config' (mode)`.
- *   - `customVocabulary` is accepted *alongside* timestamps and diarization here,
- *     even though the docs say the API rejects that combination. Verified live:
- *     all three together return 200 with words and speakerLabel intact. Since the
- *     docs describe the Interactions API, treat the local overlay in
- *     `transcription-accumulator.mjs` as still the safer glossary path.
+ *   - `customVocabulary` is accepted *alongside* timestamps and diarization here, and
+ *     the bias is genuinely applied. Verified with a nonsense-word control:
+ *     "Kwyjibo" comes back as "Quijibo" unbiased, and correctly spelled with the
+ *     vocabulary present — with and without timestamps. The model page's
+ *     "incompatible with diarization and timestamps" row describes the Interactions
+ *     API, not this one. A local glossary overlay is still worth keeping for a
+ *     different reason: changing glossary terms then never re-bills a transcription.
+ *   - `sourceText` (voice editing: rewrite a supplied draft from spoken
+ *     instructions) is SMART-only. On VERBATIM the server rejects it with
+ *     "source_text is only supported when transcription mode is explicitly set to
+ *     SMART", so the builder refuses it locally.
  *   - SMART is genuinely incompatible with `wordTimestamp` — the server rejects it
  *     with "Transcription mode SMART is incompatible with word timestamps".
  *   - The model is not on the Interactions API at all for this project, and it is
@@ -38,6 +44,9 @@ const REQUEST_TIMEOUT_MS = 600_000
 /** Docs: unary audio is capped at 1 hour, 30 minutes once timestamps/diarization are on. */
 export const MAX_PRECISION_CHUNK_SECONDS = 30 * 60
 
+/** Model page: `source_text` accepts up to 64 KiB. */
+const MAX_SOURCE_TEXT_BYTES = 64 * 1024
+
 export type TranscriptionMode = 'VERBATIM' | 'SMART'
 
 export interface TranscriptionOptions {
@@ -51,6 +60,11 @@ export interface TranscriptionOptions {
   diarization?: boolean
   /** Defaults to VERBATIM, matching the model. */
   mode?: TranscriptionMode
+  /**
+   * Voice editing: the draft being edited. Spoken instructions in the audio are
+   * applied to this text and the *rewritten* result comes back. SMART mode only.
+   */
+  sourceText?: string
 }
 
 export interface TranscriptWord {
@@ -110,21 +124,58 @@ export function buildTranscriptionConfig(
   options: TranscriptionOptions = {},
 ): Record<string, unknown> {
   const mode = options.mode ?? 'VERBATIM'
+  assertFlagsAllowed(mode, options)
+
+  const config: Record<string, unknown> = { mode }
+  applyList(config, 'languageCodes', options.languageCodes)
+  applyList(config, 'customVocabulary', options.customVocabulary)
+  applyFlag(config, 'wordTimestamp', options.wordTimestamp)
+  applyFlag(config, 'diarization', options.diarization)
+  applySourceText(config, options, mode)
+  return config
+}
+
+/** Both flags rewrite or re-time the text, so SMART and either one cannot coexist. */
+function assertFlagsAllowed(mode: TranscriptionMode, options: TranscriptionOptions): void {
   const wantsTiming = options.wordTimestamp === true || options.diarization === true
   if (mode === 'SMART' && wantsTiming) {
     throw new Error('SMART mode cannot be combined with wordTimestamp or diarization')
   }
+}
 
-  const config: Record<string, unknown> = { mode }
-  if (options.languageCodes && options.languageCodes.length > 0) {
-    config.languageCodes = options.languageCodes
+function applyFlag(config: Record<string, unknown>, key: string, value: boolean | undefined): void {
+  if (value === true) config[key] = true
+}
+
+/** Empty vocabulary or language lists mean "no opinion", so they are not sent. */
+function applyList(
+  config: Record<string, unknown>,
+  key: string,
+  value: string[] | undefined,
+): void {
+  if (value !== undefined && value.length > 0) config[key] = value
+}
+
+function applySourceText(
+  config: Record<string, unknown>,
+  options: TranscriptionOptions,
+  mode: TranscriptionMode,
+): void {
+  const sourceText = sourceTextOf(options, mode)
+  if (sourceText !== null) config.sourceText = sourceText
+}
+
+/**
+ * Voice editing needs SMART; the server answers VERBATIM with
+ * "source_text is only supported when transcription mode is explicitly set to SMART".
+ */
+function sourceTextOf(options: TranscriptionOptions, mode: TranscriptionMode): string | null {
+  if (options.sourceText === undefined) return null
+  if (mode !== 'SMART') throw new Error('sourceText requires SMART mode')
+  if (new TextEncoder().encode(options.sourceText).length > MAX_SOURCE_TEXT_BYTES) {
+    throw new Error(`sourceText exceeds ${MAX_SOURCE_TEXT_BYTES} bytes`)
   }
-  if (options.customVocabulary && options.customVocabulary.length > 0) {
-    config.customVocabulary = options.customVocabulary
-  }
-  if (options.wordTimestamp === true) config.wordTimestamp = true
-  if (options.diarization === true) config.diarization = true
-  return config
+  return options.sourceText
 }
 
 /** `"0.100s"` / `"1s"` / `0.5` -> seconds; null when the value is not a duration. */
@@ -152,19 +203,22 @@ function wordsOf(raw: unknown): TranscriptWord[] {
   return words
 }
 
+/** A non-empty string, or null — the model omits fields rather than sending "". */
+function nonEmptyString(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null
+}
+
 function segmentOf(part: unknown): TranscriptSegment | null {
   const typed = (part ?? {}) as {
     text?: unknown
     audioTranscription?: { text?: unknown; speakerLabel?: unknown; words?: unknown }
   }
   const transcription = typed.audioTranscription
-  const text = typeof transcription?.text === 'string' ? transcription.text : typed.text
-  if (typeof text !== 'string' || text.length === 0) return null
+  // `audioTranscription.text` is the canonical field; `text` is the plain mirror.
+  const text = nonEmptyString(transcription?.text) ?? nonEmptyString(typed.text)
+  if (text === null) return null
   return {
-    speakerLabel:
-      typeof transcription?.speakerLabel === 'string' && transcription.speakerLabel.length > 0
-        ? transcription.speakerLabel
-        : null,
+    speakerLabel: nonEmptyString(transcription?.speakerLabel),
     text,
     words: wordsOf(transcription?.words),
   }

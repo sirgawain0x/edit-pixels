@@ -186,6 +186,36 @@ describe('buildTranscriptionConfig', () => {
   it('allows SMART on its own', () => {
     expect(buildTranscriptionConfig({ mode: 'SMART' })).toEqual({ mode: 'SMART' })
   })
+
+  it('sends sourceText for voice editing when the mode is SMART', () => {
+    expect(
+      buildTranscriptionConfig({ mode: 'SMART', sourceText: 'The budget review is on Friday.' }),
+    ).toEqual({ mode: 'SMART', sourceText: 'The budget review is on Friday.' })
+  })
+
+  it('refuses sourceText outside SMART, which the server also refuses', () => {
+    // Live: "source_text is only supported when transcription mode is explicitly set to SMART."
+    expect(() => buildTranscriptionConfig({ sourceText: 'draft' })).toThrow(/requires SMART/)
+    expect(() => buildTranscriptionConfig({ mode: 'VERBATIM', sourceText: 'draft' })).toThrow(
+      /requires SMART/,
+    )
+  })
+
+  it('refuses voice editing combined with timestamps, which SMART forbids', () => {
+    expect(() =>
+      buildTranscriptionConfig({ mode: 'SMART', sourceText: 'draft', wordTimestamp: true }),
+    ).toThrow(/SMART mode cannot/)
+  })
+
+  it('refuses sourceText past the 64 KiB documented ceiling', () => {
+    expect(() =>
+      buildTranscriptionConfig({ mode: 'SMART', sourceText: 'x'.repeat(64 * 1024 + 1) }),
+    ).toThrow(/exceeds/)
+    // Exactly at the ceiling is allowed.
+    expect(() =>
+      buildTranscriptionConfig({ mode: 'SMART', sourceText: 'x'.repeat(64 * 1024) }),
+    ).not.toThrow()
+  })
 })
 
 describe('transcribeFile', () => {
