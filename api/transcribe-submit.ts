@@ -15,11 +15,8 @@ import {
   authenticateGenerativePost,
   verifyGenerativeCrtvaiPayment,
 } from './_pixels-generate-route-auth.js'
-import {
-  isOwnedInputUri,
-  submitTranscriptionBatch,
-  type BatchInputFile,
-} from './_transcribe-batch.js'
+import { submitTranscriptionBatch, type BatchInputFile } from './_transcribe-batch.js'
+import { isOwnedInputUri } from './_transcribe-uris.js'
 import { readTranscriptionJob, recordBatchSubmission } from './_transcription-jobs.js'
 
 /** 480 source minutes at the 20-minute sub-file wall is 24 files; anything past that is a lie. */

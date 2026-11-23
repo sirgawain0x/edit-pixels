@@ -203,34 +203,3 @@ describe('submitTranscriptionBatch', () => {
     )
   })
 })
-
-describe('isOwnedInputUri', () => {
-  it('accepts only this job prefix in our bucket', async () => {
-    const { isOwnedInputUri } = await batch()
-
-    expect(isOwnedInputUri(OWN_URI, { accountId: ACCOUNT, jobId: JOB })).toBe(true)
-    // Uppercase account ids are normalised, since signers arrive in both cases.
-    expect(isOwnedInputUri(OWN_URI, { accountId: ACCOUNT.toUpperCase(), jobId: JOB })).toBe(true)
-  })
-
-  it.each([
-    ['another bucket', 'gs://someone-else/input/'],
-    ['another account', 'gs://creative-pixels-transcribe-batch/input/0xdeadbeef/job-1/part-0.flac'],
-    ['another job', `gs://creative-pixels-transcribe-batch/input/${ACCOUNT}/job-2/part-0.flac`],
-    [
-      'a prefix lookalike',
-      `gs://creative-pixels-transcribe-batch/input/${ACCOUNT}/job-10/part-0.flac`,
-    ],
-    [
-      'a traversal',
-      `gs://creative-pixels-transcribe-batch/input/${ACCOUNT}/job-1/../../secret.flac`,
-    ],
-    ['a bucket root escape', 'gs://creative-pixels-transcribe-batch/input/../output/x.json'],
-    ['http', 'https://storage.googleapis.com/creative-pixels-transcribe-batch/input/x.flac'],
-    ['bare bucket', 'gs://creative-pixels-transcribe-batch'],
-    ['empty', ''],
-  ])('rejects %s', async (_label, uri) => {
-    const { isOwnedInputUri } = await batch()
-    expect(isOwnedInputUri(uri, { accountId: ACCOUNT, jobId: JOB })).toBe(false)
-  })
-})

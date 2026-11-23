@@ -1,41 +1,26 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const ACCOUNT = '0x04f5c5691e2f3e79246b08b98e912b3d2a786696'
 const OPERATION = 'projects/1037240986506/locations/us/operations/v2-abc'
 
+// Synchronous mock factories: an async one raced under CI load and the first test
+// ended up talking to the real module.
 vi.mock('./_pixels-generate-route-auth.js', () => ({
-  authenticateGenerativeGet: vi.fn(async () => ({ ok: true, signer: ACCOUNT })),
+  authenticateGenerativeGet: vi.fn(),
 }))
 
 vi.mock('./_transcription-jobs.js', () => ({
-  readTranscriptionJob: vi.fn(async () => null),
+  readTranscriptionJob: vi.fn(),
 }))
 
 vi.mock('./_transcribe-batch.js', () => ({
-  pollTranscriptionOperation: vi.fn(async () => ({
-    status: 'running',
-    progressPercent: 0,
-    files: [],
-    totalBilledSeconds: null,
-    errorMessage: null,
-  })),
+  pollTranscriptionOperation: vi.fn(),
 }))
 
-async function route() {
-  return import('./transcribe-job.js')
-}
-
-async function auth() {
-  return import('./_pixels-generate-route-auth.js')
-}
-
-async function store() {
-  return import('./_transcription-jobs.js')
-}
-
-async function batch() {
-  return import('./_transcribe-batch.js')
-}
+import { pollTranscriptionOperation } from './_transcribe-batch.js'
+import { authenticateGenerativeGet } from './_pixels-generate-route-auth.js'
+import { readTranscriptionJob } from './_transcription-jobs.js'
+import { GET } from './transcribe-job.js'
 
 /** A finished stored job: nothing left to poll. */
 const FINISHED_JOB = {
@@ -59,48 +44,45 @@ function poll(jobId?: string): Request {
   return new Request(url)
 }
 
-describe('GET /api/transcribe-job', () => {
-  beforeEach(async () => {
-    vi.mocked((await auth()).authenticateGenerativeGet).mockResolvedValue({
-      ok: true,
-      signer: ACCOUNT,
-    })
-    vi.mocked((await store()).readTranscriptionJob).mockReset()
-    vi.mocked((await store()).readTranscriptionJob).mockResolvedValue(null)
-    vi.mocked((await batch()).pollTranscriptionOperation).mockReset()
-    vi.mocked((await batch()).pollTranscriptionOperation).mockResolvedValue({
-      status: 'running',
-      progressPercent: 0,
-      files: [],
-      totalBilledSeconds: null,
-      errorMessage: null,
-    })
-  })
+beforeEach(() => {
+  vi.mocked(authenticateGenerativeGet).mockReset()
+  vi.mocked(authenticateGenerativeGet).mockResolvedValue({ ok: true, signer: ACCOUNT })
 
+  vi.mocked(readTranscriptionJob).mockReset()
+  vi.mocked(readTranscriptionJob).mockResolvedValue(null)
+
+  vi.mocked(pollTranscriptionOperation).mockReset()
+  vi.mocked(pollTranscriptionOperation).mockResolvedValue({
+    status: 'running',
+    progressPercent: 0,
+    files: [],
+    totalBilledSeconds: null,
+    errorMessage: null,
+  })
+})
+
+describe('GET /api/transcribe-job', () => {
   it('rejects a poll with no jobId', async () => {
-    const { GET } = await route()
     const response = await GET(poll())
     expect(response.status).toBe(400)
     // No ledger read happens for a malformed poll.
-    expect(vi.mocked((await store()).readTranscriptionJob)).not.toHaveBeenCalled()
+    expect(vi.mocked(readTranscriptionJob)).not.toHaveBeenCalled()
   })
 
   it('passes an auth failure straight through', async () => {
-    vi.mocked((await auth()).authenticateGenerativeGet).mockResolvedValue({
+    vi.mocked(authenticateGenerativeGet).mockResolvedValue({
       ok: false,
       response: Response.json({ error: 'unauthorized' }, { status: 401 }),
     })
 
-    const { GET } = await route()
     const response = await GET(poll('job-1'))
     expect(response.status).toBe(401)
-    expect(vi.mocked((await store()).readTranscriptionJob)).not.toHaveBeenCalled()
+    expect(vi.mocked(readTranscriptionJob)).not.toHaveBeenCalled()
   })
 
   it('returns the stored status and verdict for the owning account', async () => {
-    vi.mocked((await store()).readTranscriptionJob).mockResolvedValue(FINISHED_JOB)
+    vi.mocked(readTranscriptionJob).mockResolvedValue(FINISHED_JOB)
 
-    const { GET } = await route()
     const response = await GET(poll('job-1'))
 
     expect(response.status).toBe(200)
@@ -109,33 +91,30 @@ describe('GET /api/transcribe-job', () => {
       status: 'completed',
       reconcileVerdict: 'exact',
     })
-    expect(vi.mocked((await store()).readTranscriptionJob)).toHaveBeenCalledWith('job-1')
+    expect(vi.mocked(readTranscriptionJob)).toHaveBeenCalledWith('job-1')
     // A finished job is never polled upstream again.
-    expect(vi.mocked((await batch()).pollTranscriptionOperation)).not.toHaveBeenCalled()
+    expect(vi.mocked(pollTranscriptionOperation)).not.toHaveBeenCalled()
   })
 
   it("reads another account's job as missing, so ids cannot be probed", async () => {
-    vi.mocked((await store()).readTranscriptionJob).mockResolvedValue({
+    vi.mocked(readTranscriptionJob).mockResolvedValue({
       ...FINISHED_JOB,
       accountId: '0x0000000000000000000000000000000000000001',
     })
 
-    const { GET } = await route()
     const response = await GET(poll('job-1'))
-
     expect(response.status).toBe(404)
     expect(await response.json()).toEqual({ error: 'job not found' })
   })
 
   it('returns 404 for an unknown job', async () => {
-    const { GET } = await route()
     const response = await GET(poll('job-missing'))
     expect(response.status).toBe(404)
   })
 
   it('projects progress from the Google operation while the job is running', async () => {
-    vi.mocked((await store()).readTranscriptionJob).mockResolvedValue(RUNNING_JOB)
-    vi.mocked((await batch()).pollTranscriptionOperation).mockResolvedValue({
+    vi.mocked(readTranscriptionJob).mockResolvedValue(RUNNING_JOB)
+    vi.mocked(pollTranscriptionOperation).mockResolvedValue({
       status: 'running',
       progressPercent: 42,
       files: [],
@@ -143,7 +122,6 @@ describe('GET /api/transcribe-job', () => {
       errorMessage: null,
     })
 
-    const { GET } = await route()
     const response = await GET(poll('job-1'))
 
     expect(await response.json()).toEqual({
@@ -152,12 +130,12 @@ describe('GET /api/transcribe-job', () => {
       reconcileVerdict: null,
       progressPercent: 42,
     })
-    expect(vi.mocked((await batch()).pollTranscriptionOperation)).toHaveBeenCalledWith(OPERATION)
+    expect(vi.mocked(pollTranscriptionOperation)).toHaveBeenCalledWith(OPERATION)
   })
 
   it('reports a finished operation as completed with its per-file results', async () => {
-    vi.mocked((await store()).readTranscriptionJob).mockResolvedValue(RUNNING_JOB)
-    vi.mocked((await batch()).pollTranscriptionOperation).mockResolvedValue({
+    vi.mocked(readTranscriptionJob).mockResolvedValue(RUNNING_JOB)
+    vi.mocked(pollTranscriptionOperation).mockResolvedValue({
       status: 'completed',
       progressPercent: 100,
       files: [
@@ -172,7 +150,6 @@ describe('GET /api/transcribe-job', () => {
       errorMessage: null,
     })
 
-    const { GET } = await route()
     const response = await GET(poll('job-1'))
     const body = (await response.json()) as Record<string, unknown>
 
@@ -186,8 +163,8 @@ describe('GET /api/transcribe-job', () => {
   })
 
   it('surfaces an operation failure without claiming the job finished cleanly', async () => {
-    vi.mocked((await store()).readTranscriptionJob).mockResolvedValue(RUNNING_JOB)
-    vi.mocked((await batch()).pollTranscriptionOperation).mockResolvedValue({
+    vi.mocked(readTranscriptionJob).mockResolvedValue(RUNNING_JOB)
+    vi.mocked(pollTranscriptionOperation).mockResolvedValue({
       status: 'failed',
       progressPercent: 100,
       files: [],
@@ -195,7 +172,6 @@ describe('GET /api/transcribe-job', () => {
       errorMessage: 'PERMISSION_DENIED on bucket',
     })
 
-    const { GET } = await route()
     const response = await GET(poll('job-1'))
     const body = (await response.json()) as Record<string, unknown>
 
@@ -203,13 +179,20 @@ describe('GET /api/transcribe-job', () => {
   })
 
   it('does not turn a poll failure into a job failure', async () => {
-    vi.mocked((await store()).readTranscriptionJob).mockResolvedValue(RUNNING_JOB)
-    vi.mocked((await batch()).pollTranscriptionOperation).mockRejectedValue(new Error('timeout'))
+    vi.mocked(readTranscriptionJob).mockResolvedValue(RUNNING_JOB)
+    vi.mocked(pollTranscriptionOperation).mockRejectedValue(new Error('timeout'))
 
-    const { GET } = await route()
     const response = await GET(poll('job-1'))
     const body = (await response.json()) as Record<string, unknown>
 
     expect(body).toMatchObject({ status: 'running', errorMessage: 'operation poll failed' })
+  })
+
+  it('skips the upstream poll when a running job has no operation pinned', async () => {
+    vi.mocked(readTranscriptionJob).mockResolvedValue({ ...RUNNING_JOB, operationName: null })
+
+    const response = await GET(poll('job-1'))
+    expect(await response.json()).toMatchObject({ status: 'running' })
+    expect(vi.mocked(pollTranscriptionOperation)).not.toHaveBeenCalled()
   })
 })

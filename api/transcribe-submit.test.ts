@@ -5,47 +5,37 @@ const JOB = 'job-1'
 const OWN_URI = `gs://creative-pixels-transcribe-batch/input/${ACCOUNT}/${JOB}/part-0.flac`
 const MIN_WEI = '950000000000000000'
 
+/**
+ * Synchronous mock factories on purpose: an async factory with `importOriginal`
+ * raced under CI's parallel load, so the first test saw the real module. The URI
+ * guard therefore lives in its own module (`_transcribe-uris.ts`) and runs real.
+ */
 vi.mock('./_pixels-generate-route-auth.js', () => ({
   authenticateGenerativePost: vi.fn(),
   verifyGenerativeCrtvaiPayment: vi.fn(),
 }))
 
-// Keep the real URI guard: it is the security boundary this route exists to enforce.
-vi.mock(import('./_transcribe-batch.js'), async (importOriginal) => ({
-  ...(await importOriginal<typeof import('./_transcribe-batch.js')>()),
+vi.mock('./_transcribe-batch.js', () => ({
   submitTranscriptionBatch: vi.fn(),
 }))
 
 vi.mock('./_transcription-jobs.js', () => ({
   readTranscriptionJob: vi.fn(),
-  recordBatchSubmission: vi.fn(async () => true),
+  recordBatchSubmission: vi.fn(),
 }))
 
 vi.mock('./flow-billing.js', () => ({
-  releaseFlowPayment: vi.fn(async () => undefined),
+  releaseFlowPayment: vi.fn(),
 }))
 
-async function route() {
-  return import('./transcribe-submit.js')
-}
-
-async function mocks() {
-  const [auth, batchModule, jobs, billing] = await Promise.all([
-    import('./_pixels-generate-route-auth.js'),
-    import('./_transcribe-batch.js'),
-    import('./_transcription-jobs.js'),
-    import('./flow-billing.js'),
-  ])
-  return { auth, batchModule, jobs, billing }
-}
-
-function post(body: Record<string, unknown>): Request {
-  return new Request('https://pixels.test/api/transcribe-submit', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-}
+import { releaseFlowPayment } from './flow-billing.js'
+import {
+  authenticateGenerativePost,
+  verifyGenerativeCrtvaiPayment,
+} from './_pixels-generate-route-auth.js'
+import { submitTranscriptionBatch } from './_transcribe-batch.js'
+import { readTranscriptionJob, recordBatchSubmission } from './_transcription-jobs.js'
+import { POST } from './transcribe-submit.js'
 
 const quotedJob = {
   accountId: ACCOUNT,
@@ -59,48 +49,42 @@ const quotedJob = {
   txHash: null,
 }
 
-beforeEach(async () => {
-  const { auth, batchModule, jobs, billing } = await mocks()
-
-  vi.mocked(auth.authenticateGenerativePost).mockResolvedValue({
-    ok: true,
-    signer: ACCOUNT,
-    payer: ACCOUNT,
-    body: {},
+function post(body: Record<string, unknown>): Request {
+  return new Request('https://pixels.test/api/transcribe-submit', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
   })
-  vi.mocked(auth.verifyGenerativeCrtvaiPayment).mockReset()
-  vi.mocked(auth.verifyGenerativeCrtvaiPayment).mockResolvedValue({ ok: true, logIndex: 7 })
+}
 
-  vi.mocked(batchModule.submitTranscriptionBatch).mockReset()
-  vi.mocked(batchModule.submitTranscriptionBatch).mockResolvedValue({
-    operationName: 'projects/1037240986506/locations/us/operations/v2-abc',
-  })
-
-  vi.mocked(jobs.readTranscriptionJob).mockReset()
-  vi.mocked(jobs.readTranscriptionJob).mockResolvedValue(quotedJob)
-  vi.mocked(jobs.recordBatchSubmission).mockReset()
-  vi.mocked(jobs.recordBatchSubmission).mockResolvedValue(true)
-
-  vi.mocked(billing.releaseFlowPayment).mockReset()
-  vi.mocked(billing.releaseFlowPayment).mockResolvedValue(undefined)
-})
-
-async function send(body: Record<string, unknown>) {
-  const { POST } = await route()
-  // The real helper parses the JSON body and hands it back, so feed it through here.
-  const { auth } = await mocks()
-  vi.mocked(auth.authenticateGenerativePost).mockImplementationOnce(async (request: Request) => ({
+beforeEach(() => {
+  vi.mocked(authenticateGenerativePost).mockReset()
+  vi.mocked(authenticateGenerativePost).mockImplementation(async (request: Request) => ({
     ok: true,
     signer: ACCOUNT,
     payer: ACCOUNT,
     body: (await request.clone().json()) as Record<string, unknown>,
   }))
-  return POST(post(body))
-}
+
+  vi.mocked(verifyGenerativeCrtvaiPayment).mockReset()
+  vi.mocked(verifyGenerativeCrtvaiPayment).mockResolvedValue({ ok: true, logIndex: 7 })
+
+  vi.mocked(submitTranscriptionBatch).mockReset()
+  vi.mocked(submitTranscriptionBatch).mockResolvedValue({
+    operationName: 'projects/1037240986506/locations/us/operations/v2-abc',
+  })
+
+  vi.mocked(readTranscriptionJob).mockReset()
+  vi.mocked(readTranscriptionJob).mockResolvedValue(quotedJob)
+  vi.mocked(recordBatchSubmission).mockReset()
+  vi.mocked(recordBatchSubmission).mockResolvedValue(true)
+
+  vi.mocked(releaseFlowPayment).mockReset()
+  vi.mocked(releaseFlowPayment).mockResolvedValue(undefined)
+})
 
 describe('POST /api/transcribe-submit', () => {
   it('rejects a body without a job, a payment, or files', async () => {
-    const { POST } = await route()
     for (const body of [
       { files: [{ uri: OWN_URI }], paymentTxHash: '0xabc' },
       { jobId: JOB, files: [{ uri: OWN_URI }] },
@@ -112,56 +96,70 @@ describe('POST /api/transcribe-submit', () => {
     }
   })
 
+  it('ignores a non-string language override instead of failing the submit', async () => {
+    const response = await POST(
+      post({ jobId: JOB, paymentTxHash: '0xabc', files: [{ uri: OWN_URI, languageCode: 5 }] }),
+    )
+
+    expect(response.status).toBe(200)
+    expect(vi.mocked(submitTranscriptionBatch)).toHaveBeenCalledWith({
+      files: [{ uri: OWN_URI }],
+      languageCode: undefined,
+    })
+  })
+
   it('reads another account’s job as missing', async () => {
-    const { jobs } = await mocks()
-    vi.mocked(jobs.readTranscriptionJob).mockResolvedValue({
+    vi.mocked(readTranscriptionJob).mockResolvedValue({
       ...quotedJob,
       accountId: '0x0000000000000000000000000000000000000001',
     })
 
-    const response = await send({ jobId: JOB, paymentTxHash: '0xabc', files: [{ uri: OWN_URI }] })
+    const response = await POST(
+      post({ jobId: JOB, paymentTxHash: '0xabc', files: [{ uri: OWN_URI }] }),
+    )
     expect(response.status).toBe(404)
   })
 
   it('refuses files outside this job’s own prefix before any payment check', async () => {
-    const { auth, batchModule } = await mocks()
-    const response = await send({
-      jobId: JOB,
-      paymentTxHash: '0xabc',
-      files: [
-        { uri: OWN_URI },
-        { uri: `gs://creative-pixels-transcribe-batch/input/${ACCOUNT}/job-2/part-0.flac` },
-      ],
-    })
+    const response = await POST(
+      post({
+        jobId: JOB,
+        paymentTxHash: '0xabc',
+        files: [
+          { uri: OWN_URI },
+          { uri: `gs://creative-pixels-transcribe-batch/input/${ACCOUNT}/job-2/part-0.flac` },
+        ],
+      }),
+    )
 
     expect(response.status).toBe(400)
     expect(await response.json()).toMatchObject({ error: 'file_not_owned_by_job' })
-    expect(vi.mocked(auth.verifyGenerativeCrtvaiPayment)).not.toHaveBeenCalled()
-    expect(vi.mocked(batchModule.submitTranscriptionBatch)).not.toHaveBeenCalled()
+    expect(vi.mocked(verifyGenerativeCrtvaiPayment)).not.toHaveBeenCalled()
+    expect(vi.mocked(submitTranscriptionBatch)).not.toHaveBeenCalled()
   })
 
   it('stops when the payment does not verify', async () => {
-    const { auth, batchModule } = await mocks()
-    vi.mocked(auth.verifyGenerativeCrtvaiPayment).mockResolvedValue({
+    vi.mocked(verifyGenerativeCrtvaiPayment).mockResolvedValue({
       ok: false,
       reason: 'tx not found',
     })
 
-    const response = await send({ jobId: JOB, paymentTxHash: '0xabc', files: [{ uri: OWN_URI }] })
+    const response = await POST(
+      post({ jobId: JOB, paymentTxHash: '0xabc', files: [{ uri: OWN_URI }] }),
+    )
 
     expect(response.status).toBe(402)
     expect(await response.json()).toMatchObject({
       error: 'payment_not_verified',
       reason: 'tx not found',
     })
-    expect(vi.mocked(batchModule.submitTranscriptionBatch)).not.toHaveBeenCalled()
+    expect(vi.mocked(submitTranscriptionBatch)).not.toHaveBeenCalled()
   })
 
   it('verifies against the minimum pinned on the quote', async () => {
-    const { auth } = await mocks()
-    await send({ jobId: JOB, paymentTxHash: '0xabc', files: [{ uri: OWN_URI }] })
+    await POST(post({ jobId: JOB, paymentTxHash: '0xabc', files: [{ uri: OWN_URI }] }))
 
-    expect(vi.mocked(auth.verifyGenerativeCrtvaiPayment).mock.calls[0]?.[0]).toMatchObject({
+    expect(vi.mocked(verifyGenerativeCrtvaiPayment).mock.calls[0]?.[0]).toMatchObject({
       paymentTxHash: '0xabc',
       signer: ACCOUNT,
       payer: ACCOUNT,
@@ -172,19 +170,20 @@ describe('POST /api/transcribe-submit', () => {
   })
 
   it('submits, then pins the operation and the payment on the record', async () => {
-    const { jobs, batchModule } = await mocks()
-    const response = await send({ jobId: JOB, paymentTxHash: '0xabc', files: [{ uri: OWN_URI }] })
+    const response = await POST(
+      post({ jobId: JOB, paymentTxHash: '0xabc', files: [{ uri: OWN_URI }] }),
+    )
 
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({
       jobId: JOB,
       operationName: 'projects/1037240986506/locations/us/operations/v2-abc',
     })
-    expect(vi.mocked(batchModule.submitTranscriptionBatch)).toHaveBeenCalledWith({
+    expect(vi.mocked(submitTranscriptionBatch)).toHaveBeenCalledWith({
       files: [{ uri: OWN_URI }],
       languageCode: undefined,
     })
-    expect(vi.mocked(jobs.recordBatchSubmission).mock.calls[0]?.[0]).toMatchObject({
+    expect(vi.mocked(recordBatchSubmission).mock.calls[0]?.[0]).toMatchObject({
       jobId: JOB,
       operationName: 'projects/1037240986506/locations/us/operations/v2-abc',
       txHash: '0xabc',
@@ -193,50 +192,71 @@ describe('POST /api/transcribe-submit', () => {
   })
 
   it('is idempotent: a running job returns its operation instead of billing Google twice', async () => {
-    const { jobs, auth, batchModule } = await mocks()
-    vi.mocked(jobs.readTranscriptionJob).mockResolvedValue({
+    vi.mocked(readTranscriptionJob).mockResolvedValue({
       ...quotedJob,
       status: 'running',
       operationName: 'projects/1/locations/us/operations/existing',
       txHash: '0xabc',
     })
 
-    const response = await send({ jobId: JOB, paymentTxHash: '0xabc', files: [{ uri: OWN_URI }] })
+    const response = await POST(
+      post({ jobId: JOB, paymentTxHash: '0xabc', files: [{ uri: OWN_URI }] }),
+    )
 
     expect(response.status).toBe(200)
     expect(await response.json()).toMatchObject({ alreadySubmitted: true })
-    expect(vi.mocked(auth.verifyGenerativeCrtvaiPayment)).not.toHaveBeenCalled()
-    expect(vi.mocked(batchModule.submitTranscriptionBatch)).not.toHaveBeenCalled()
+    expect(vi.mocked(verifyGenerativeCrtvaiPayment)).not.toHaveBeenCalled()
+    expect(vi.mocked(submitTranscriptionBatch)).not.toHaveBeenCalled()
   })
 
   it('refuses a job that is already finished', async () => {
-    const { jobs } = await mocks()
-    vi.mocked(jobs.readTranscriptionJob).mockResolvedValue({ ...quotedJob, status: 'completed' })
+    vi.mocked(readTranscriptionJob).mockResolvedValue({ ...quotedJob, status: 'completed' })
 
-    const response = await send({ jobId: JOB, paymentTxHash: '0xabc', files: [{ uri: OWN_URI }] })
+    const response = await POST(
+      post({ jobId: JOB, paymentTxHash: '0xabc', files: [{ uri: OWN_URI }] }),
+    )
     expect(response.status).toBe(409)
     expect(await response.json()).toMatchObject({ error: 'job_not_submittable' })
   })
 
-  it('refuses a job whose quote never pinned a minimum', async () => {
-    const { jobs } = await mocks()
-    vi.mocked(jobs.readTranscriptionJob).mockResolvedValue({ ...quotedJob, minCrtvaiWei: null })
+  it('refuses a job whose quote never pinned a usable minimum', async () => {
+    for (const minCrtvaiWei of [null, 'not-a-number']) {
+      vi.mocked(readTranscriptionJob).mockResolvedValue({ ...quotedJob, minCrtvaiWei })
 
-    const response = await send({ jobId: JOB, paymentTxHash: '0xabc', files: [{ uri: OWN_URI }] })
-    expect(response.status).toBe(409)
-    expect(await response.json()).toMatchObject({ error: 'quote_missing' })
+      const response = await POST(
+        post({ jobId: JOB, paymentTxHash: '0xabc', files: [{ uri: OWN_URI }] }),
+      )
+      expect(response.status).toBe(409)
+      expect(await response.json()).toMatchObject({ error: 'quote_missing' })
+    }
+    expect(vi.mocked(submitTranscriptionBatch)).not.toHaveBeenCalled()
   })
 
   it('hands the payment back when Google rejects the batch', async () => {
-    const { batchModule, billing, jobs } = await mocks()
-    vi.mocked(batchModule.submitTranscriptionBatch).mockRejectedValue(new Error('Speech error 400'))
+    vi.mocked(submitTranscriptionBatch).mockRejectedValue(new Error('Speech error 400'))
 
-    const response = await send({ jobId: JOB, paymentTxHash: '0xabc', files: [{ uri: OWN_URI }] })
+    const response = await POST(
+      post({ jobId: JOB, paymentTxHash: '0xabc', files: [{ uri: OWN_URI }] }),
+    )
 
     expect(response.status).toBe(502)
     expect(await response.json()).toEqual({ error: 'submit_failed' })
     // The tx was consumed before the call, so a failed submit must release it.
-    expect(vi.mocked(billing.releaseFlowPayment)).toHaveBeenCalledWith('0xabc', 7)
-    expect(vi.mocked(jobs.recordBatchSubmission)).not.toHaveBeenCalled()
+    expect(vi.mocked(releaseFlowPayment)).toHaveBeenCalledWith('0xabc', 7)
+    expect(vi.mocked(recordBatchSubmission)).not.toHaveBeenCalled()
+  })
+
+  it('still reports the batch as running when the record write fails', async () => {
+    vi.mocked(recordBatchSubmission).mockResolvedValue(false)
+
+    const response = await POST(
+      post({ jobId: JOB, paymentTxHash: '0xabc', files: [{ uri: OWN_URI }] }),
+    )
+
+    // The operation name is the handle; losing the record must not hide the submission.
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      operationName: 'projects/1037240986506/locations/us/operations/v2-abc',
+    })
   })
 })

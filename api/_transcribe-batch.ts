@@ -18,9 +18,9 @@
  * Diarization is deliberately NOT requested: on chirp_3 it silently truncates
  * words, which is worse than not knowing who spoke.
  */
+import { transcribeBucket } from './_transcribe-uris.js'
 import { getVertexAccessToken, getVertexProject } from './_vertex-auth.js'
 
-const DEFAULT_BUCKET = 'creative-pixels-transcribe-batch'
 /**
  * Speech v2 is only served from multi-region `us` in this project; the captured
  * resources are `projects/<n>/locations/us/recognizers/_`.
@@ -29,6 +29,10 @@ const DEFAULT_SPEECH_LOCATION = 'us'
 const DEFAULT_MODEL = 'chirp_3'
 const DEFAULT_LANGUAGE = 'en-US'
 const REQUEST_TIMEOUT_MS = 30_000
+
+function speechLocation(): string {
+  return process.env.TRANSCRIBE_SPEECH_LOCATION?.trim() || DEFAULT_SPEECH_LOCATION
+}
 
 export interface BatchInputFile {
   uri: string
@@ -52,48 +56,6 @@ export interface BatchOperationSummary {
   /** Sum across files as reported by the operation; null when it never reported one. */
   totalBilledSeconds: number | null
   errorMessage: string | null
-}
-
-function transcribeBucket(): string {
-  return process.env.TRANSCRIBE_GCS_BUCKET?.trim() || DEFAULT_BUCKET
-}
-
-function speechLocation(): string {
-  return process.env.TRANSCRIBE_SPEECH_LOCATION?.trim() || DEFAULT_SPEECH_LOCATION
-}
-
-/**
- * Where a job's audio must live. Scoping uploads by account and job is what makes
- * a client-supplied `gs://` URI safe to hand to Google: it can only ever point at
- * a prefix this job owns.
- */
-function inputPrefixFor(accountId: string, jobId: string): string {
-  return `input/${accountId.toLowerCase()}/${jobId}/`
-}
-
-/** `gs://bucket/key` split, or null when the URI is not shaped like one. */
-function splitGcsUri(uri: string): { bucket: string; key: string } | null {
-  if (!uri.startsWith('gs://')) return null
-  const rest = uri.slice('gs://'.length)
-  const slash = rest.indexOf('/')
-  if (slash <= 0 || slash === rest.length - 1) return null
-  const bucket = rest.slice(0, slash)
-  const key = rest.slice(slash + 1)
-  if (key.split('/').some((segment) => segment === '..' || segment === '.')) return null
-  return { bucket, key }
-}
-
-/**
- * True only for a URI inside this job's own input prefix in our own bucket.
- *
- * Any other answer means a client is trying to make us transcribe (and bill for)
- * someone else's object, so this has to be an allowlist, never a blocklist.
- */
-export function isOwnedInputUri(uri: string, owner: { accountId: string; jobId: string }): boolean {
-  const parsed = splitGcsUri(uri)
-  if (!parsed) return false
-  if (parsed.bucket !== transcribeBucket()) return false
-  return parsed.key.startsWith(inputPrefixFor(owner.accountId, owner.jobId))
 }
 
 function secondsFromProtoDuration(value: unknown): number | null {
