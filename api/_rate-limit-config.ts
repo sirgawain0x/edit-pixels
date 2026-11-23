@@ -4,7 +4,7 @@
  * Spec baseline: docs in pixels-agent-access.md §5; P1a applies to existing quote/render/director routes.
  */
 
-export type RateLimitRouteClass = 'quote' | 'render' | 'director' | 'tts'
+export type RateLimitRouteClass = 'quote' | 'render' | 'director' | 'tts' | 'transcribe'
 
 export type RateLimitMode = 'off' | 'observe' | 'enforce'
 
@@ -22,7 +22,9 @@ export interface RouteRateLimitRules {
 
 /** Fail-open when Redis is unavailable (quotes are cheap; blocking on KV outage hurts UX). */
 export function rateLimitFailsOpen(routeClass: RateLimitRouteClass): boolean {
-  return routeClass === 'quote'
+  // `transcribe` is a pre-payment quote too: nothing is spent server-side and the
+  // run is guarded by the free-run record, so a KV outage must not block it.
+  return routeClass === 'quote' || routeClass === 'transcribe'
 }
 
 export const PIXELS_RATE_LIMIT_RULES: Record<RateLimitRouteClass, RouteRateLimitRules> = {
@@ -42,6 +44,11 @@ export const PIXELS_RATE_LIMIT_RULES: Record<RateLimitRouteClass, RouteRateLimit
   tts: {
     ip: { limit: 40, window: '1 m' },
     identity: { limit: 30, window: '1 m' },
+  },
+  /** Cloud ("precision") transcription quote. One request per run; each writes a job record. */
+  transcribe: {
+    ip: { limit: 30, window: '1 m' },
+    identity: { limit: 10, window: '1 m' },
   },
 }
 

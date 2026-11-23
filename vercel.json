@@ -62,6 +62,15 @@
     },
     "api/live-style-sweep.ts": {
       "maxDuration": 30
+    },
+    "api/transcribe-precision.ts": {
+      "maxDuration": 30
+    },
+    "api/transcribe-job.ts": {
+      "maxDuration": 30
+    },
+    "api/transcribe-submit.ts": {
+      "maxDuration": 30
     }
   },
   "rewrites": [

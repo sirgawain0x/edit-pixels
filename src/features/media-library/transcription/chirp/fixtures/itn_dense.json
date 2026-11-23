@@ -1,0 +1,64 @@
+{
+  "metadata": {
+    "totalBilledDuration": "7s",
+    "requestId": "7480eab2-0000-2d86-863f-d43a2cecabaf",
+    "prompt": "Transcribe the following speech segment in English. Follow these specific instructions for formatting the answer:\n* Only output the transcript, with no newlines.\n* When transcribing numbers, write the digits, i.e. write 1.7 and not one point seven, and write 100 instead of one hundred etc.\n* Only output the transcript, exactly as said in the speech segment.\n* Do not continue the speech segment.\n* Include everything said in the speech segment.\n* Use mathematical notation where needed, eg. x ^ 6Y.\n* If there is background speech that is not part of the main conversation, discard the background speech and only output the main conversation.\n* If there is no clear speech, just output [BACKGROUND].\nRespond in the original language of the speech, English. Include the end timestamp for each word in ctrl token format using numerals from <ctrl1> to <ctrl64>."
+  },
+  "results": [
+    {
+      "alternatives": [
+        {
+          "transcript": "Numbers appear here, $26 million and 3.5% in 2026.",
+          "words": [
+            {
+              "startOffset": "0s",
+              "endOffset": "0.560s",
+              "word": "Numbers"
+            },
+            {
+              "startOffset": "0.560s",
+              "endOffset": "0.880s",
+              "word": "appear"
+            },
+            {
+              "startOffset": "0.880s",
+              "endOffset": "1.280s",
+              "word": "here,"
+            },
+            {
+              "startOffset": "1.480s",
+              "endOffset": "2.360s",
+              "word": "$26"
+            },
+            {
+              "startOffset": "2.360s",
+              "endOffset": "3.080s",
+              "word": "million"
+            },
+            {
+              "startOffset": "3.080s",
+              "endOffset": "3.280s",
+              "word": "and"
+            },
+            {
+              "startOffset": "3.280s",
+              "endOffset": "4.680s",
+              "word": "3.5%"
+            },
+            {
+              "startOffset": "4.680s",
+              "endOffset": "4.880s",
+              "word": "in"
+            },
+            {
+              "startOffset": "4.880s",
+              "endOffset": "6.200s",
+              "word": "2026."
+            }
+          ]
+        }
+      ],
+      "languageCode": "en-US"
+    }
+  ]
+}

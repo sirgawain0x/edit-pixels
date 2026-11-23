@@ -176,6 +176,7 @@ export type MediaTranscriptModel =
   | 'whisper-base'
   | 'whisper-small'
   | 'whisper-large'
+  | 'chirp-3'
 
 export type MediaTranscriptQuantization = 'hybrid' | 'fp32' | 'fp16' | 'q8' | 'q4'
 
@@ -204,6 +205,15 @@ export interface TranscriptWordOverride {
   words: MediaTranscriptWord[]
   timing: 'preserved' | 'estimated'
   sourceVersionAt: number
+  /**
+   * Why this override exists. Defaults to `'manual'` for legacy overrides that
+   * predate this field. Used to decide whether the override survives a model change:
+   * - `glossary` → recompute from the live glossary (local, exact)
+   * - `manual`  → skip; likely exists to compensate for the old recognizer
+   */
+  source?: 'manual' | 'glossary'
+  /** Recognizer model that produced the transcript this override was applied to. */
+  model?: MediaTranscriptModel
 }
 
 export interface MediaTranscript {

@@ -57,6 +57,31 @@ vi.mock('@/shared/utils/whisper-settings', () => ({
   WHISPER_QUANTIZATION_OPTIONS: [{ value: 'hybrid', label: 'Hybrid' }],
 }))
 
+vi.mock('@/components/ui/textarea', () => ({
+  Textarea: ({
+    id,
+    value,
+    onChange,
+    disabled,
+    placeholder,
+  }: {
+    id?: string
+    value: string
+    onChange?: (event: React.ChangeEvent<HTMLTextAreaElement>) => void
+    disabled?: boolean
+    placeholder?: string
+  }) => (
+    <textarea
+      id={id}
+      aria-label="Glossary"
+      disabled={disabled}
+      value={value}
+      placeholder={placeholder}
+      onChange={(event) => onChange?.(event as React.ChangeEvent<HTMLTextAreaElement>)}
+    />
+  ),
+}))
+
 vi.mock('@/components/ui/button', () => ({
   Button: ({
     children,
@@ -275,9 +300,7 @@ describe('TranscribeDialog', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 
-  it('shows Parakeet language coverage instead of a language selector', () => {
-    settingsStoreState.defaultWhisperModel = 'parakeet-tdt-v3'
-    settingsStoreState.defaultWhisperLanguage = 'zh'
+  it('shows Parakeet, Whisper, and Precision rows with Parakeet selected by default', () => {
     const onStart = vi.fn()
 
     render(
@@ -289,30 +312,29 @@ describe('TranscribeDialog', () => {
         isRunning={false}
         progressPercent={null}
         progressLabel="Idle"
+        sourceDurationSec={90 * 60}
+        crtvaiBalance={10_000}
+        freePrecisionRunsUsed={0}
         onStart={onStart}
         onCancel={vi.fn()}
       />,
     )
 
-    expect(screen.getByText('Automatically detects 25 European languages.')).toBeInTheDocument()
-    expect(
-      screen.getByText(
-        'For Chinese, Japanese, Korean, and other languages, choose a Whisper model.',
-      ),
-    ).toBeInTheDocument()
-    expect(screen.queryByLabelText('Language')).not.toBeInTheDocument()
-    expect(screen.queryByText('Quantization')).not.toBeInTheDocument()
+    expect(screen.getByText('Parakeet TDT 0.6B v3')).toBeInTheDocument()
+    expect(screen.getByText('Whisper Large v3 Turbo')).toBeInTheDocument()
+    expect(screen.getByText('Precision (Google Chirp 3)')).toBeInTheDocument()
+    expect(screen.getByText('Local run (free)')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Start' }))
-    expect(onStart).toHaveBeenCalledWith({
-      model: 'parakeet-tdt-v3',
-      quantization: 'hybrid',
-      language: '',
-    })
+    expect(onStart).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: 'parakeet-tdt-v3',
+      }),
+    )
   })
 
-  it('clears a Whisper-only language when switching to Parakeet', () => {
-    settingsStoreState.defaultWhisperLanguage = 'zh'
+  it('shows Precision estimate and glossary when Chirp is selected', () => {
+    const onStart = vi.fn()
 
     render(
       <TranscribeDialog
@@ -323,20 +345,41 @@ describe('TranscribeDialog', () => {
         isRunning={false}
         progressPercent={null}
         progressLabel="Idle"
-        onStart={vi.fn()}
+        sourceDurationSec={100 * 60}
+        crtvaiBalance={10_000}
+        freePrecisionRunsUsed={0}
+        onStart={onStart}
         onCancel={vi.fn()}
       />,
     )
 
-    expect(screen.getByLabelText('Language')).toHaveValue('zh')
-    const modelAndQuantizationSelects = screen.getAllByRole('combobox')
-    expect(modelAndQuantizationSelects).toHaveLength(2)
-    fireEvent.change(modelAndQuantizationSelects[0]!, {
-      target: { value: 'parakeet-tdt-v3' },
-    })
+    fireEvent.click(screen.getByText('Precision (Google Chirp 3)'))
+    expect(screen.getByLabelText('Names & glossary')).toBeInTheDocument()
+    expect(screen.getByText('$0.75')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Get CRTVAI quote' })).toBeInTheDocument()
+  })
 
-    expect(screen.queryByLabelText('Language')).not.toBeInTheDocument()
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'whisper-large' } })
-    expect(screen.getByLabelText('Language')).toHaveValue('auto')
+  it('short Precision runs are free for the first five uses', () => {
+    const onStart = vi.fn()
+
+    render(
+      <TranscribeDialog
+        open
+        onOpenChange={vi.fn()}
+        fileName="clip.mp4"
+        hasTranscript={false}
+        isRunning={false}
+        progressPercent={null}
+        progressLabel="Idle"
+        sourceDurationSec={8 * 60}
+        crtvaiBalance={0}
+        freePrecisionRunsUsed={0}
+        onStart={onStart}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByText('Precision (Google Chirp 3)'))
+    expect(screen.getByText(/Free for the first 5 short runs/)).toBeInTheDocument()
   })
 })
