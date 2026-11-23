@@ -4,17 +4,41 @@ const ACCOUNT = '0x04f5c5691e2f3e79246b08b98e912b3d2a786696'
 const PROJECT = 'project-1'
 const SECRET = 'a-test-signing-secret-long-enough'
 
+const QUOTE = {
+  quoteId: 'quote-1',
+  signature: 'signed-quote',
+  minCrtvaiWei: '5000000000000000000',
+  expiresAtMs: Date.now() + 60_000,
+  slippageBps: 150,
+}
+
 vi.mock('./_rate-limit.js', () => ({
   checkPixelsRateLimits: vi.fn(async () => null),
 }))
 
 vi.mock('./_pixels-generate-route-auth.js', () => ({
   authenticateGenerativePost: vi.fn(),
-  verifyGenerativeCrtvaiPayment: vi.fn(),
 }))
 
-vi.mock('./_metoken-curve-quote.js', () => ({
-  quoteCrtvaiForUsdc6: vi.fn(),
+vi.mock('./_pixels-payment-payer.js', () => ({
+  assertPaymentPayerMatchesSigner: vi.fn(() => ({ ok: true })),
+}))
+
+vi.mock('./_metoken-curve-quote.js', async () => {
+  const actual = await vi.importActual<typeof import('./_metoken-curve-quote.js')>(
+    './_metoken-curve-quote.js',
+  )
+  return {
+    ...actual,
+    quoteCrtvaiForUsdc6: vi.fn(),
+    verifyQuoteSignature: vi.fn(() => true),
+    validateSettlementAgainstQuote: vi.fn(),
+    isQuoteSigningConfigured: vi.fn(() => true),
+  }
+})
+
+vi.mock('./director-billing.js', () => ({
+  verifyDirectorPayment: vi.fn(),
 }))
 
 vi.mock('./_payment-ledger.js', () => ({
@@ -22,11 +46,16 @@ vi.mock('./_payment-ledger.js', () => ({
 }))
 
 import { checkPixelsRateLimits } from './_rate-limit.js'
+import { authenticateGenerativePost } from './_pixels-generate-route-auth.js'
+import { assertPaymentPayerMatchesSigner } from './_pixels-payment-payer.js'
 import {
-  authenticateGenerativePost,
-  verifyGenerativeCrtvaiPayment,
-} from './_pixels-generate-route-auth.js'
-import { quoteCrtvaiForUsdc6 } from './_metoken-curve-quote.js'
+  quoteCrtvaiForUsdc6,
+  isQuoteSigningConfigured,
+  validateSettlementAgainstQuote,
+  verifyQuoteSignature,
+  MetokenQuoteError,
+} from './_metoken-curve-quote.js'
+import { verifyDirectorPayment } from './director-billing.js'
 import { claimPaymentTxLogForPurpose } from './_payment-ledger.js'
 import { EXPORT_UNLOCK_USDC6, verifyExportPermit } from './_export-permit.js'
 import { POST } from './export-permit.js'
@@ -37,6 +66,11 @@ function post(body: Record<string, unknown>): Request {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   })
+}
+
+/** A redemption request, with the quote proof redemption requires. */
+function redeem(overrides: Record<string, unknown> = {}): Request {
+  return post({ projectId: PROJECT, paymentTxHash: '0xfeed', quote: QUOTE, ...overrides })
 }
 
 beforeEach(() => {
@@ -57,11 +91,33 @@ beforeEach(() => {
   vi.mocked(quoteCrtvaiForUsdc6).mockResolvedValue({
     minCrtvaiWei: 5_000_000_000_000_000_000n,
     estimatedUsdc6: EXPORT_UNLOCK_USDC6,
-    expiresAtMs: Date.now() + 60_000,
+    quoteId: QUOTE.quoteId,
+    signature: QUOTE.signature,
+    expiresAtMs: QUOTE.expiresAtMs,
+    slippageBps: QUOTE.slippageBps,
+    curve: { supplyWei: 1n, balancePooledUsdc6: 0n },
   } as Awaited<ReturnType<typeof quoteCrtvaiForUsdc6>>)
 
-  vi.mocked(verifyGenerativeCrtvaiPayment).mockReset()
-  vi.mocked(verifyGenerativeCrtvaiPayment).mockResolvedValue({ ok: true, logIndex: 7 })
+  vi.mocked(assertPaymentPayerMatchesSigner).mockReset()
+  vi.mocked(assertPaymentPayerMatchesSigner).mockReturnValue({ ok: true })
+
+  vi.mocked(isQuoteSigningConfigured).mockReset()
+  vi.mocked(isQuoteSigningConfigured).mockReturnValue(true)
+
+  vi.mocked(verifyQuoteSignature).mockReset()
+  vi.mocked(verifyQuoteSignature).mockReturnValue(true)
+
+  vi.mocked(validateSettlementAgainstQuote).mockReset()
+  vi.mocked(validateSettlementAgainstQuote).mockResolvedValue({
+    minAmountWei: BigInt(QUOTE.minCrtvaiWei),
+  })
+
+  vi.mocked(verifyDirectorPayment).mockReset()
+  vi.mocked(verifyDirectorPayment).mockResolvedValue({
+    ok: true,
+    amountWei: BigInt(QUOTE.minCrtvaiWei),
+    logIndex: 7,
+  })
 
   vi.mocked(claimPaymentTxLogForPurpose).mockReset()
   vi.mocked(claimPaymentTxLogForPurpose).mockResolvedValue({ ok: true })
@@ -89,31 +145,103 @@ describe('POST /api/export-permit', () => {
       projectId: PROJECT,
       priceUsd: 5,
       estimatedUsdc6: EXPORT_UNLOCK_USDC6,
-      minCrtvaiWei: '5000000000000000000',
+      minCrtvaiWei: QUOTE.minCrtvaiWei,
     })
     // A quote must never mint a permit — only a verified payment does.
     expect(body).not.toHaveProperty('permit')
-    expect(vi.mocked(verifyGenerativeCrtvaiPayment)).not.toHaveBeenCalled()
+    expect(vi.mocked(verifyDirectorPayment)).not.toHaveBeenCalled()
   })
 
-  it('verifies the transfer against the pinned minimum and the project it is for', async () => {
-    await POST(post({ projectId: PROJECT, paymentTxHash: '0xfeed' }))
+  it('hands the signed quote back so redemption can prove the price', async () => {
+    const response = await POST(post({ projectId: PROJECT }))
+    const body = (await response.json()) as Record<string, unknown>
 
-    expect(vi.mocked(verifyGenerativeCrtvaiPayment).mock.calls[0]?.[0]).toMatchObject({
-      paymentTxHash: '0xfeed',
-      signer: ACCOUNT,
-      payer: ACCOUNT,
-      purpose: `export_unlock:${PROJECT}`,
+    expect(body).toMatchObject({
+      quoteId: QUOTE.quoteId,
+      signature: QUOTE.signature,
+      slippageBps: QUOTE.slippageBps,
+      expiresAtMs: QUOTE.expiresAtMs,
     })
   })
 
+  it('verifies against the quoted minimum rather than a freshly derived one', async () => {
+    // The curve has moved up since the quote; the buyer sent what it was quoted.
+    await POST(redeem())
+
+    expect(vi.mocked(verifyQuoteSignature).mock.calls[0]?.[0]).toMatchObject({
+      quoteId: QUOTE.quoteId,
+      signature: QUOTE.signature,
+      minCrtvaiWei: BigInt(QUOTE.minCrtvaiWei),
+      tier: 'export-unlock',
+    })
+    expect(vi.mocked(validateSettlementAgainstQuote).mock.calls[0]?.[0]).toMatchObject({
+      estimatedUsdc6: EXPORT_UNLOCK_USDC6,
+      minCrtvaiWei: BigInt(QUOTE.minCrtvaiWei),
+    })
+    expect(vi.mocked(verifyDirectorPayment).mock.calls[0]?.[0]).toMatchObject({
+      txHash: '0xfeed',
+      minAmountWei: BigInt(QUOTE.minCrtvaiWei),
+    })
+  })
+
+  it('refuses a forged or unsigned quote proof', async () => {
+    vi.mocked(verifyQuoteSignature).mockReturnValue(false)
+
+    const response = await POST(redeem())
+
+    expect(response.status).toBe(400)
+    expect(await response.json()).toMatchObject({ error: 'payment_not_verified' })
+    expect(vi.mocked(verifyDirectorPayment)).not.toHaveBeenCalled()
+
+    // Without the signing secret the quote is `unsigned:<payload>`, which anyone can mint.
+    vi.mocked(isQuoteSigningConfigured).mockReturnValue(false)
+    const unsigned = await POST(redeem({ quote: { ...QUOTE, signature: 'unsigned:forged' } }))
+    expect(unsigned.status).toBe(400)
+  })
+
+  it('refuses a redemption with no quote proof instead of re-pricing', async () => {
+    const response = await POST(post({ projectId: PROJECT, paymentTxHash: '0xfeed' }))
+
+    expect(response.status).toBe(409)
+    expect(await response.json()).toEqual({ error: 'quote_missing' })
+    expect(vi.mocked(verifyDirectorPayment)).not.toHaveBeenCalled()
+  })
+
+  it('surfaces an expired or slipped quote as a payment rejection', async () => {
+    vi.mocked(validateSettlementAgainstQuote).mockRejectedValue(
+      new MetokenQuoteError('quote_expired', 'Quote expired — request a new price.'),
+    )
+
+    const response = await POST(redeem())
+
+    expect(response.status).toBe(402)
+    expect(await response.json()).toMatchObject({
+      error: 'payment_not_verified',
+      reason: 'Quote expired — request a new price.',
+    })
+    expect(vi.mocked(claimPaymentTxLogForPurpose)).not.toHaveBeenCalled()
+  })
+
+  it('rejects a payment whose payer is not linked to the authenticated wallet', async () => {
+    vi.mocked(assertPaymentPayerMatchesSigner).mockReturnValue({
+      ok: false,
+      reason: 'Payment payer is not linked to the authenticated wallet',
+    })
+
+    const response = await POST(redeem())
+
+    expect(response.status).toBe(403)
+    expect(await response.json()).toMatchObject({ error: 'payment_not_verified' })
+    expect(vi.mocked(claimPaymentTxLogForPurpose)).not.toHaveBeenCalled()
+  })
+
   it('refuses to mint a permit when the payment does not verify', async () => {
-    vi.mocked(verifyGenerativeCrtvaiPayment).mockResolvedValue({
+    vi.mocked(verifyDirectorPayment).mockResolvedValue({
       ok: false,
       reason: 'insufficient_amount',
     })
 
-    const response = await POST(post({ projectId: PROJECT, paymentTxHash: '0xfeed' }))
+    const response = await POST(redeem())
     const body = (await response.json()) as Record<string, unknown>
 
     expect(response.status).toBe(402)
@@ -122,7 +250,7 @@ describe('POST /api/export-permit', () => {
   })
 
   it('mints a permit the client can present, scoped to this account and project', async () => {
-    const response = await POST(post({ projectId: PROJECT, paymentTxHash: '0xfeed' }))
+    const response = await POST(redeem())
     const body = (await response.json()) as { permit: string; expiresAtMs: number }
 
     expect(response.status).toBe(200)
@@ -137,7 +265,7 @@ describe('POST /api/export-permit', () => {
   })
 
   it('spends the transfer once, so one payment cannot unlock a second project', async () => {
-    await POST(post({ projectId: PROJECT, paymentTxHash: '0xfeed' }))
+    await POST(redeem())
 
     expect(vi.mocked(claimPaymentTxLogForPurpose).mock.calls[0]).toEqual([
       '0xfeed',
@@ -151,7 +279,7 @@ describe('POST /api/export-permit', () => {
       reason: 'Payment transaction already used',
     })
 
-    const response = await POST(post({ projectId: 'project-2', paymentTxHash: '0xfeed' }))
+    const response = await POST(redeem({ projectId: 'project-2' }))
     expect(response.status).toBe(402)
     expect(await response.json()).toMatchObject({
       error: 'payment_not_verified',
@@ -159,13 +287,24 @@ describe('POST /api/export-permit', () => {
     })
   })
 
-  it('returns 503 rather than an unsigned permit when signing is not configured', async () => {
+  it('verifies without consuming, so the claim is the only thing that spends the payment', async () => {
+    await POST(redeem())
+
+    // `verifyDirectorPayment` is the non-consuming verifier; the consuming one already burned
+    // the transfer and made a lost permit unrecoverable.
+    expect(vi.mocked(verifyDirectorPayment)).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(claimPaymentTxLogForPurpose)).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves the payment unspent when signing is not configured', async () => {
     delete process.env.PIXELS_QUOTE_SIGNING_SECRET
 
-    const response = await POST(post({ projectId: PROJECT, paymentTxHash: '0xfeed' }))
+    const response = await POST(redeem())
 
     expect(response.status).toBe(503)
     expect(await response.json()).toEqual({ error: 'permit_unavailable' })
+    // Signing happens first on purpose: an unconfigured deploy must not burn the transfer.
+    expect(vi.mocked(claimPaymentTxLogForPurpose)).not.toHaveBeenCalled()
   })
 
   it('surfaces a curve failure as an unavailable quote, not a crash', async () => {

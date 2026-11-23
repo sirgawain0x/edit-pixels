@@ -92,6 +92,7 @@ function lockedUnlock() {
     blockedReason: 'no-wallet' as const,
     error: null,
     expiresAtMs: null,
+    hasPendingPayment: false,
     unlock: vi.fn(),
     refreshQuote: vi.fn(),
   }

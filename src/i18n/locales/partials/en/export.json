@@ -222,6 +222,7 @@
       "buyNoPrice": "Remove",
       "quoting": "Pricing…",
       "retry": "Retry",
+      "finish": "Finish unlocking",
       "costHint": "≈ {{crtvai}} CRTVAI · one payment, this project only.",
       "unlockedTitle": "Removed for this project",
       "unlockedBody": "This project exports clean until {{date}}.",

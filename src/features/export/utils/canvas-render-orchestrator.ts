@@ -781,11 +781,14 @@ export async function renderComposition(options: RenderEngineOptions): Promise<C
     message: 'Rendering frames...',
   })
 
-  const watermarkImage = options.watermark === false ? null : await loadWatermarkImage()
-
   let frameRenderer: Awaited<ReturnType<typeof createCompositionRenderer>> | null = null
 
   try {
+    // Loaded inside the try on purpose: a missing or undecodable mark must fail the export
+    // *through* the cleanup below, which cancels the output and waits for the audio task. A
+    // throw before this point leaked the started output and the audio job.
+    const watermarkImage = options.watermark === false ? null : await loadWatermarkImage()
+
     frameRenderer = await createCompositionRenderer(renderCompositionInput, renderCanvas, ctx)
     // Preload media
     await frameRenderer.preload()

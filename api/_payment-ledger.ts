@@ -83,6 +83,18 @@ export async function consumePaymentTxLog(
 }
 
 /**
+ * Parse a JSON value that may arrive as text. Returns null rather than throwing: a corrupt
+ * ledger entry must read as "not recorded", never as a crash mid-redemption.
+ */
+function safeJson(raw: string): unknown {
+  try {
+    return JSON.parse(raw) as unknown
+  } catch {
+    return null
+  }
+}
+
+/**
  * Read what a consumed payment log was spent on, if anything. Used by flows that may re-issue
  * the same receipt for the same purchase rather than re-charging.
  */
@@ -98,18 +110,17 @@ export async function readPaymentTxLog(
   if (!redis) return null
 
   const raw = await redis.get(logConsumptionKey(normalized, logIndex))
-  if (typeof raw !== 'string') return null
+  // Upstash's client deserialises JSON values, so a record written with `JSON.stringify` comes
+  // back as an object here — a string-only guard silently reads every spent log as unspent.
+  const parsed = typeof raw === 'string' ? safeJson(raw) : raw
+  if (!parsed || typeof parsed !== 'object') return null
 
-  try {
-    const parsed = JSON.parse(raw) as { wallet?: unknown; purpose?: unknown; logIndex?: unknown }
-    if (typeof parsed.wallet !== 'string' || typeof parsed.purpose !== 'string') return null
-    return {
-      wallet: parsed.wallet,
-      purpose: parsed.purpose,
-      logIndex: typeof parsed.logIndex === 'number' ? parsed.logIndex : logIndex,
-    }
-  } catch {
-    return null
+  const record = parsed as { wallet?: unknown; purpose?: unknown; logIndex?: unknown }
+  if (typeof record.wallet !== 'string' || typeof record.purpose !== 'string') return null
+  return {
+    wallet: record.wallet,
+    purpose: record.purpose,
+    logIndex: typeof record.logIndex === 'number' ? record.logIndex : logIndex,
   }
 }
 

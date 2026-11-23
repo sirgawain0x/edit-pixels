@@ -5,7 +5,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const store = new Map<string, string>()
+const store = new Map<string, unknown>()
 
 vi.mock('./_redis-client.js', () => ({
   isRedisConfigured: () => true,
@@ -89,6 +89,38 @@ describe('readPaymentTxLog', () => {
       purpose: 'export_unlock:p1',
       logIndex: 7,
     })
+  })
+
+  it('reads a record the Upstash client has already deserialised', async () => {
+    // `Redis.get` returns parsed JSON for values written with `JSON.stringify`; a string-only
+    // guard read every spent log as unspent, which rejected legitimate re-issues.
+    store.set(`pixels:payment:tx:${TX}:7`, {
+      wallet: WALLET,
+      purpose: 'export_unlock:p1',
+      logIndex: 7,
+      at: Date.now(),
+    })
+
+    expect(await readPaymentTxLog(TX, 7)).toMatchObject({
+      wallet: WALLET,
+      purpose: 'export_unlock:p1',
+    })
+  })
+
+  it('re-issues to the same payer when the stored record came back as an object', async () => {
+    store.set(`pixels:payment:tx:${TX}:7`, {
+      wallet: WALLET,
+      purpose: 'export_unlock:p1',
+      logIndex: 7,
+    })
+
+    await expect(
+      claimPaymentTxLogForPurpose(TX, 7, { wallet: WALLET, purpose: 'export_unlock:p1' }),
+    ).resolves.toEqual({ ok: true })
+    // Still refuses to widen it to another project.
+    await expect(
+      claimPaymentTxLogForPurpose(TX, 7, { wallet: WALLET, purpose: 'export_unlock:p2' }),
+    ).resolves.toEqual({ ok: false, reason: 'Payment transaction already used' })
   })
 
   it('returns null for an unspent log or a malformed hash', async () => {
