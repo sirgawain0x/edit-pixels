@@ -592,10 +592,17 @@ export default defineConfig(({ mode }) => ({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
-    include: ['src/**/*.test.{ts,tsx}'],
+    // `api/` route tests are Vitest contract tests with every dependency mocked;
+    // they just live outside src/ because Vercel routes must. Without this they
+    // never ran in CI at all.
+    include: ['src/**/*.test.{ts,tsx}', 'api/**/*.test.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
+      // The floor below is calibrated on src/ only. Route handlers are exercised
+      // by their own contract tests, but letting them into the denominator would
+      // silently re-scale a ratchet that was measured over the app.
+      exclude: ['api/**'],
       // Ratchet floor, not a target: set just below measured coverage
       // (2026-06-10: 50.2% stmts / 43.7% branch / 54.9% funcs / 51.5% lines)
       // so CI fails on regressions. Raise these as coverage grows.
