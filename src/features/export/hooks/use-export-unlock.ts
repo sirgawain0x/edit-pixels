@@ -130,6 +130,15 @@ async function payForUnlock(input: {
   return redeemPendingPayment(input.identity, input.projectId, payment)
 }
 
+/** The transfer awaiting redemption: this session's, else whatever storage remembers. */
+function currentPending(
+  remembered: PendingExportPayment | null,
+  identity: ExportUnlockIdentity,
+  projectId: string,
+): PendingExportPayment | null {
+  return remembered ?? readPendingPayment(identity.payerAddress, projectId)
+}
+
 export function useExportUnlock(options: {
   projectId: string | undefined
   /** Fetch a quote only while the surface that sells it is actually open. */
@@ -222,6 +231,18 @@ export function useExportUnlock(options: {
   const blockedReason: 'no-wallet' | 'insufficient' | null =
     !identity || !walletReady ? 'no-wallet' : insufficient ? 'insufficient' : null
 
+  // Publish a permit that is already stored: the UI only needs to hear about it.
+  const finishUnlock = useCallback(
+    (permit: StoredExportPermit) => {
+      if (!mountedRef.current) return
+      setExpiresAtMs(permit.expiresAtMs)
+      setHasPendingPayment(false)
+      setStatus('unlocked')
+      invalidateWalletTokenBalances(queryClient, undefined, account)
+    },
+    [account, queryClient],
+  )
+
   const unlock = useCallback(async () => {
     if (!identity || !projectId) {
       setError('Connect a wallet to remove the watermark')
@@ -233,7 +254,7 @@ export function useExportUnlock(options: {
     try {
       // Resume first: if a transfer already left the wallet, the only thing left to do is
       // redeem it. Sending another one would charge twice for the same unlock.
-      const pending = pendingRef.current ?? readPendingPayment(identity.payerAddress, projectId)
+      const pending = currentPending(pendingRef.current, identity, projectId)
       let permit: StoredExportPermit
       if (pending) {
         setStatus('verifying')
@@ -258,18 +279,14 @@ export function useExportUnlock(options: {
       }
 
       pendingRef.current = null
-      if (!mountedRef.current) return
-      setExpiresAtMs(permit.expiresAtMs)
-      setHasPendingPayment(false)
-      setStatus('unlocked')
-      invalidateWalletTokenBalances(queryClient, undefined, account)
+      finishUnlock(permit)
     } catch (err) {
       if (!mountedRef.current) return
       log.warn('export unlock failed', { error: String(err), pending: pendingRef.current !== null })
       setError(err instanceof Error ? err.message : 'Payment failed')
       setStatus('error')
     }
-  }, [account, identity, projectId, queryClient, quote, sendOps])
+  }, [finishUnlock, identity, projectId, quote, sendOps])
 
   return {
     status,
