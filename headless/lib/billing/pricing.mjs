@@ -106,6 +106,80 @@ export function estimateEditCostUsdc6({
 export const DIRECTOR_USDC6_PER_AUDIO_MINUTE = INTERVAL_COST_RETAIL_USDC6 / 5
 
 /**
+ * Transcript pricing: $0.0099 USDC per minute of submitted audio, capped per run.
+ *
+ * gemini-3.5-transcribe bills tokens, not seconds: measured COGS is
+ * $0.0056/min at chunk scale and $0.0062/min on short clips (the per-request
+ * prompt overhead amortises), against $0.003/min for the Chirp 3 batch it
+ * replaces. $0.0075 left an 18-38% margin — inside the range where one retry of
+ * a long part eats the run — so the rate moved to $0.0099, which holds 38-43%.
+ *
+ * Price off the post-credit COGS, never off a $0 COGS: startup credits are gross
+ * margin, not a price input, and a ladder built on credits goes negative the day
+ * the pool empties.
+ */
+export const TRANSCRIPTION_USDC6_PER_AUDIO_MINUTE = 9_900
+
+/**
+ * $4.752 USDC ceiling for a single transcription run.
+ *
+ * Deliberately EQUAL to the price at the 480-minute ceiling
+ * (480 × 9,900 usdc6), so the cap never binds on a correctly-planned job and
+ * only fires when the planner miscounts. A cap below the ceiling price sells the
+ * longest jobs at zero retry headroom, which is a loss the first time a part is
+ * rebuilt.
+ *
+ * Raised from $3.60 with the rate: keeping the old number would silently cut the
+ * maximum run from 480 minutes to 363.
+ */
+export const TRANSCRIPTION_RUN_CAP_USDC6 = 4_752_000
+
+/** Hard ceiling on submitted audio for one run; longer jobs must be split. */
+export const TRANSCRIPTION_MAX_AUDIO_MINUTES = 480
+
+/**
+ * Quote a transcription run.
+ *
+ * Duration is measured *after* the planner produces a chunk plan, not from what
+ * the user dropped: a firm price for audio we have not decoded is a price we
+ * cannot honour.
+ *
+ * @param {object} options
+ * @param {number} options.audioDurationSeconds
+ * @param {number} [options.perMinuteUsdc6]
+ * @param {number} [options.capUsdc6]
+ */
+export function estimateTranscriptionCostUsdc6({
+  audioDurationSeconds,
+  perMinuteUsdc6 = TRANSCRIPTION_USDC6_PER_AUDIO_MINUTE,
+  capUsdc6 = TRANSCRIPTION_RUN_CAP_USDC6,
+}) {
+  const seconds = Number(audioDurationSeconds) || 0
+  if (seconds <= 0) return 0
+  const raw = Math.round((seconds / 60) * perMinuteUsdc6)
+  return Math.max(0, Math.min(raw, capUsdc6))
+}
+
+/**
+ * Reject over-length runs in one place. A 480-minute ceiling is a product rule,
+ * not a pricing rule: past it the run is a support conversation either way.
+ *
+ * @param {number} audioDurationSeconds
+ */
+export function assertTranscriptionDurationAllowed(
+  audioDurationSeconds,
+  maxMinutes = TRANSCRIPTION_MAX_AUDIO_MINUTES,
+) {
+  const seconds = Number(audioDurationSeconds) || 0
+  if (seconds > maxMinutes * 60) {
+    throw new RangeError(
+      `Audio is ${(seconds / 60).toFixed(1)} minutes; split it under ${maxMinutes} minutes per run.`,
+    )
+  }
+  return true
+}
+
+/**
  * Estimate Creative Director cost from timeline audio duration.
  * Prorates by exact seconds: round(seconds × (intervalCost/5) / 60).
  *

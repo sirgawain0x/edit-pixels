@@ -176,6 +176,9 @@ export type MediaTranscriptModel =
   | 'whisper-base'
   | 'whisper-small'
   | 'whisper-large'
+  /** Legacy id for Precision transcripts written before the model swap. */
+  | 'chirp-3'
+  | 'gemini-3.5-transcribe'
 
 export type MediaTranscriptQuantization = 'hybrid' | 'fp32' | 'fp16' | 'q8' | 'q4'
 
@@ -184,6 +187,11 @@ export interface MediaTranscriptSegment {
   start: number
   end: number
   words?: MediaTranscriptWord[]
+  /**
+   * `spk:0`, `spk:1`… when the recognizer did diarization, absent otherwise. Optional
+   * because on-device models do not produce it and older transcripts predate the field.
+   */
+  speaker?: string
 }
 
 export interface MediaTranscriptWord {
@@ -204,6 +212,15 @@ export interface TranscriptWordOverride {
   words: MediaTranscriptWord[]
   timing: 'preserved' | 'estimated'
   sourceVersionAt: number
+  /**
+   * Why this override exists. Defaults to `'manual'` for legacy overrides that
+   * predate this field. Used to decide whether the override survives a model change:
+   * - `glossary` → recompute from the live glossary (local, exact)
+   * - `manual`  → skip; likely exists to compensate for the old recognizer
+   */
+  source?: 'manual' | 'glossary'
+  /** Recognizer model that produced the transcript this override was applied to. */
+  model?: MediaTranscriptModel
 }
 
 export interface MediaTranscript {

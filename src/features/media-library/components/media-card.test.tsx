@@ -144,7 +144,12 @@ vi.mock('./transcribe-dialog', () => ({
     onCancel,
   }: {
     open: boolean
-    onStart: (values: { model: string; quantization: string; language: string }) => void
+    onStart: (values: {
+      model: string
+      quantization: string
+      language: string
+      glossary?: string
+    }) => void
     onCancel: () => void
   }) =>
     open ? (
@@ -156,6 +161,7 @@ vi.mock('./transcribe-dialog', () => ({
               model: 'whisper-base',
               quantization: 'hybrid',
               language: '',
+              glossary: 'Gawain, CRTVAI',
             })
           }
         >
@@ -463,6 +469,9 @@ describe('MediaCard', () => {
         model: 'whisper-base',
         quantization: 'hybrid',
         language: undefined,
+        // The dialog collects this and it must not die at this boundary: it was dropped here
+        // once, so every cloud run silently transcribed without its vocabulary.
+        glossary: 'Gawain, CRTVAI',
       }),
     )
   })

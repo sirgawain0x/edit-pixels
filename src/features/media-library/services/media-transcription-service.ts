@@ -23,7 +23,20 @@ import type {
   TimelineTrack,
   VideoItem,
 } from '@/types/timeline'
-import type { TranscriptSegment, TranscribeOptions } from '../transcription/types'
+import type {
+  TranscribeProgress,
+  TranscriptSegment,
+  TranscribeOptions,
+} from '../transcription/types'
+import { isCloudTranscriptionModel } from '../transcription/transcription-engine'
+import { planCloudParts } from '../transcription/lib/plan-cloud-parts'
+import { runPrecisionJob, type PrecisionStage } from '../transcription/lib/run-precision-job'
+import {
+  requestPrecisionQuote,
+  requestTranscriptionPart,
+  submitPrecisionJob,
+  uploadPrecisionParts,
+} from '../transcription/services/precision-transcription-client'
 import {
   getDefaultMediaTranscriptionAdapter,
   getMediaTranscriptionModelLabel,
@@ -110,6 +123,8 @@ interface TranscriptionRequestOptions {
   language?: string
   model?: MediaTranscriptModel
   quantization?: TranscribeOptions['quantization']
+  /** Raw glossary text for the cloud tier; on-device models ignore it. */
+  glossary?: string
   onProgress?: TranscribeOptions['onProgress']
   onQueueStatusChange?: (state: QueueState) => void
 }
@@ -125,6 +140,7 @@ interface QueuedTranscriptionJob {
   model: MediaTranscriptModel
   quantization: NonNullable<TranscribeOptions['quantization']>
   language?: string
+  glossary?: string
   listeners: QueuedTranscriptionListener[]
   promise: Promise<MediaTranscript>
   resolve: (value: MediaTranscript) => void
@@ -454,6 +470,7 @@ class MediaTranscriptionService {
       model,
       quantization,
       language,
+      glossary: options.glossary,
       listener,
     })
 
@@ -502,11 +519,13 @@ class MediaTranscriptionService {
     model,
     quantization,
     language,
+    glossary,
     listener,
   }: {
     mediaId: string
     requestKey: string
     model: MediaTranscriptModel
+    glossary?: string
     quantization: NonNullable<TranscribeOptions['quantization']>
     language?: string
     listener: QueuedTranscriptionListener
@@ -524,6 +543,7 @@ class MediaTranscriptionService {
       model,
       quantization,
       language,
+      glossary,
       listeners: [listener],
       promise,
       resolve,
@@ -595,6 +615,65 @@ class MediaTranscriptionService {
     }
   }
 
+  /** Cloud stages are not decoder stages, but the panel draws one bar: map to the closest. */
+  private cloudStage(stage: PrecisionStage): TranscribeProgress['stage'] {
+    return stage === 'planning' ? 'decoding' : 'transcribing'
+  }
+
+  /**
+   * Drive the cloud tier: plan, quote, pay, upload, one request per part, merge, save.
+   *
+   * Payment is not a parameter. Two of the callers that reach a transcription are plain
+   * utilities with no wallet in scope, so the wallet registers itself once
+   * (`use-precision-payment-bridge`) and this path reads it back through the registry.
+   */
+  private async runCloudTranscription(
+    job: QueuedTranscriptionJob,
+    file: File,
+  ): Promise<MediaTranscript> {
+    const notify = (progress: TranscribeProgress) => {
+      for (const listener of job.listeners) {
+        listener.onProgress?.(progress)
+      }
+    }
+
+    const planned = await planCloudParts(file, {
+      // `analyzing` is the energy pass and `encoding` the cut; both happen before anything is paid.
+      onProgress: ({ stage, progress }) =>
+        notify({ stage: stage === 'analyzing' ? 'decoding' : 'preparing', progress }),
+    })
+    this.throwIfCancelled(job)
+
+    return runPrecisionJob(
+      {
+        plan: async () => ({
+          sourceDurationSec: planned.sourceDurationSec,
+          parts: planned.parts.map((part) => ({
+            startSec: part.startSec,
+            endSec: part.endSec,
+            overlapSec: part.overlapSec,
+          })),
+        }),
+        quote: (quote) =>
+          requestPrecisionQuote({
+            mediaId: job.mediaId,
+            model: job.model,
+            ...(job.glossary ? { glossary: job.glossary } : {}),
+            sourceDurationSec: quote.sourceDurationSec,
+            parts: planned.parts,
+          }),
+        upload: (jobId) => uploadPrecisionParts({ jobId, parts: planned.parts }),
+        submit: ({ jobId, txHash, files }) => submitPrecisionJob({ jobId, txHash, files }),
+        transcribePart: ({ jobId, partIndex, uri }) =>
+          requestTranscriptionPart({ jobId, partIndex, uri }),
+        shouldStop: () => job.cancelled,
+        onProgress: (stage, fraction) =>
+          notify({ stage: this.cloudStage(stage), progress: fraction }),
+      },
+      { mediaId: job.mediaId, model: job.model },
+    )
+  }
+
   private async executeTranscriptionJob(job: QueuedTranscriptionJob): Promise<MediaTranscript> {
     const mediaId = job.mediaId
     const { mediaLibraryService } = await importMediaLibraryService()
@@ -624,6 +703,13 @@ class MediaTranscriptionService {
             type: transcriptionBlob.type || media.mimeType,
             lastModified: media.fileLastModified ?? Date.now(),
           })
+
+    // Cloud models never run in this tab: they plan, pay, upload, and come back as requests.
+    if (isCloudTranscriptionModel(job.model)) {
+      const cloud = await this.runCloudTranscription(job, file)
+      this.throwIfCancelled(job)
+      return cloud
+    }
 
     const stream = this.transcriber.transcribe(file, {
       model: job.model,
@@ -759,6 +845,9 @@ class MediaTranscriptionService {
     return await response.blob()
   }
 
+  // Caption insertion predates this branch and is untouched here; it is charged to the
+  // PR only because this file gained the cloud tier.
+  // fallow-ignore-next-line complexity
   async insertTranscriptAsCaptions(
     mediaId: string,
     options: InsertTranscriptAsCaptionsOptions = {},
@@ -878,6 +967,8 @@ class MediaTranscriptionService {
     }
   }
 
+  // Caption enabling predates this branch and is untouched here; same attribution artefact.
+  // fallow-ignore-next-line complexity
   async enableTranscriptCaptions(
     mediaId: string,
     options: InsertTranscriptAsCaptionsOptions = {},

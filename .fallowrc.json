@@ -7,12 +7,20 @@
     "src/test/setup.ts",
     "headless/probe.mjs",
     "headless/smoke.mjs",
-    "headless/media-smoke.mjs"
+    "headless/media-smoke.mjs",
+    // Cost-model probe run by hand against a real BatchRecognize job; never imported.
+    "scripts/probe-transcription-billing.mjs",
+    // Live probe for the gemini-3.5-transcribe wire layer; run by hand with tsx.
+    "scripts/probe-transcribe-gemini.mts"
   ],
   "ignorePatterns": [
     // Static reachability cannot see URL-loaded assets such as /sw.js
     // and /moss-tts/moss_tts.worker.js.
-    "public/**"
+    "public/**",
+    // Firestore document contract for transcription_jobs. It has no importer until
+    // the client calls POST /api/transcribe-precision; api/ keeps its own mirror
+    // because Vercel cannot load src/ (see scripts/check-api-src-imports.mjs).
+    "src/features/media-library/transcription/jobs/types.ts"
   ],
   "duplicates": {
     // Hide pair-only clones; focus on widespread copy-paste
@@ -38,6 +46,20 @@
       "**/*.test.tsx",
       "scripts/check-fallow-*.mjs",
       "scripts/check-api-src-imports.mjs",
+      // Build config, not product code: the chunk map is a declarative table of
+      // module globs, so branch count says nothing about its risk.
+      "vite.config.ts",
+      // Billing math is covered by its own node:test suite. `node --test` emits no
+      // coverage file, and with no coverage data CRAP degenerates to cyc^2 + cyc,
+      // so every function with cyclomatic >= 5 reads as a violation regardless of
+      // how well the tests pin it. Health is measured where coverage is real.
+      "headless/lib/billing/transcription-accumulator.mjs",
+      "src/features/media-library/transcription/workers/transcription-planner.worker.ts",
+      // 1254-line card component with pre-existing complexity (cyc 102). PRs touch it to wire
+      // one option and cannot absorb a component split; every finding here predates the change
+      // that surfaces it.
+      "src/features/media-library/components/media-card.tsx",
+      "scripts/probe-transcription-billing.mjs",
       "api/_live-style-lib/**",
       "headless/test.mjs",
       "src/runtime/composition-runtime/components/item-content.tsx",
@@ -166,6 +188,27 @@
     },
     {
       "file": "api/generate-task.ts",
+      "exports": ["*"]
+    },
+    {
+      // Vercel HTTP entry points: resolved by file-system routing, never imported.
+      "file": "api/transcribe-job.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/transcribe-precision.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/transcribe-submit.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/transcribe-upload-session.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/transcribe-part.ts",
       "exports": ["*"]
     },
     {

@@ -1,0 +1,90 @@
+{
+  "name": "projects/1037240986506/locations/us/operations/v2-709c8c9e-0000-228c-8f61-c82add6b3438",
+  "metadata": {
+    "@type": "type.googleapis.com/google.cloud.speech.v2.OperationMetadata",
+    "createTime": "2026-11-22T22:31:45.999539Z",
+    "updateTime": "2026-11-22T22:32:51.773015Z",
+    "resource": "projects/creative-ai-491118/locations/us/recognizers/_",
+    "method": "google.cloud.speech.v2.Speech.BatchRecognize",
+    "batchRecognizeRequest": {
+      "recognizer": "projects/creative-ai-491118/locations/us/recognizers/_",
+      "files": [
+        {
+          "uri": "gs://creative-pixels-transcribe-batch/input/audio_19m.flac"
+        },
+        {
+          "uri": "gs://creative-pixels-transcribe-batch/input/prose.flac"
+        },
+        {
+          "uri": "gs://creative-pixels-transcribe-batch/input/over1201.flac"
+        },
+        {
+          "uri": "gs://creative-pixels-transcribe-batch/input/audio_19m_2.flac"
+        }
+      ],
+      "config": {
+        "features": {
+          "enableWordTimeOffsets": true,
+          "enableAutomaticPunctuation": true,
+          "diarizationConfig": {
+            "minSpeakerCount": 1,
+            "maxSpeakerCount": 2
+          }
+        },
+        "autoDecodingConfig": {},
+        "model": "chirp_3",
+        "languageCodes": ["en-US"]
+      },
+      "recognitionOutputConfig": {
+        "gcsOutputConfig": {
+          "uri": "gs://creative-pixels-transcribe-batch/output/"
+        }
+      }
+    },
+    "progressPercent": 100
+  },
+  "done": true,
+  "response": {
+    "@type": "type.googleapis.com/google.cloud.speech.v2.BatchRecognizeResponse",
+    "results": {
+      "gs://creative-pixels-transcribe-batch/input/audio_19m.flac": {
+        "uri": "gs://creative-pixels-transcribe-batch/output/audio_19m_transcript_709c8ca0-0000-228c-8f61-c82add6b3438.json",
+        "metadata": {
+          "totalBilledDuration": "1140s"
+        },
+        "cloudStorageResult": {
+          "uri": "gs://creative-pixels-transcribe-batch/output/audio_19m_transcript_709c8ca0-0000-228c-8f61-c82add6b3438.json"
+        }
+      },
+      "gs://creative-pixels-transcribe-batch/input/audio_19m_2.flac": {
+        "uri": "gs://creative-pixels-transcribe-batch/output/audio_19m_2_transcript_709c8ca6-0000-228c-8f61-c82add6b3438.json",
+        "metadata": {
+          "totalBilledDuration": "1140s"
+        },
+        "cloudStorageResult": {
+          "uri": "gs://creative-pixels-transcribe-batch/output/audio_19m_2_transcript_709c8ca6-0000-228c-8f61-c82add6b3438.json"
+        }
+      },
+      "gs://creative-pixels-transcribe-batch/input/over1201.flac": {
+        "uri": "gs://creative-pixels-transcribe-batch/output/over1201_transcript_709c8ca4-0000-228c-8f61-c82add6b3438.json",
+        "error": {
+          "code": 3,
+          "message": "File `gs://creative-pixels-transcribe-batch/input/over1201.flac` is too long. Only audio files up to 20 minutes long are supported for BatchRecognize."
+        },
+        "cloudStorageResult": {
+          "uri": "gs://creative-pixels-transcribe-batch/output/over1201_transcript_709c8ca4-0000-228c-8f61-c82add6b3438.json"
+        }
+      },
+      "gs://creative-pixels-transcribe-batch/input/prose.flac": {
+        "uri": "gs://creative-pixels-transcribe-batch/output/prose_transcript_709c8ca2-0000-228c-8f61-c82add6b3438.json",
+        "metadata": {
+          "totalBilledDuration": "541s"
+        },
+        "cloudStorageResult": {
+          "uri": "gs://creative-pixels-transcribe-batch/output/prose_transcript_709c8ca2-0000-228c-8f61-c82add6b3438.json"
+        }
+      }
+    },
+    "totalBilledDuration": "2821s"
+  }
+}

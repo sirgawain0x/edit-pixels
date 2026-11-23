@@ -96,6 +96,8 @@ export const MODEL_IDS: Record<WhisperModel, string> = {
   // Parakeet resolves its own ONNX assets inside the worker; this entry is the source repo
   // for reference and to satisfy the exhaustive model map.
   'parakeet-tdt-v3': 'Olicorne/parakeet-tdt-0.6b-v3-smoothquant-onnx',
+  'chirp-3': 'google/chirp_3', // legacy cloud id; kept so stored transcripts still resolve
+  'gemini-3.5-transcribe': 'google/gemini-3.5-transcribe', // cloud; unary request per part, not a worker
   'whisper-tiny': 'onnx-community/whisper-tiny_timestamped',
   'whisper-base': 'onnx-community/whisper-base_timestamped',
   'whisper-small': 'onnx-community/whisper-small_timestamped',

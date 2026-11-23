@@ -1,0 +1,54 @@
+{
+  "name": "projects/1037240986506/locations/us/operations/v2-70903567-0000-228c-8f61-c82add6b3438",
+  "metadata": {
+    "@type": "type.googleapis.com/google.cloud.speech.v2.OperationMetadata",
+    "createTime": "2026-11-22T21:16:13.518749Z",
+    "updateTime": "2026-11-22T21:20:44.770801Z",
+    "resource": "projects/creative-ai-491118/locations/us/recognizers/_",
+    "method": "google.cloud.speech.v2.Speech.BatchRecognize",
+    "batchRecognizeRequest": {
+      "recognizer": "projects/creative-ai-491118/locations/us/recognizers/_",
+      "files": [
+        {
+          "uri": "gs://creative-pixels-transcribe-batch/input/audio_59m.flac"
+        }
+      ],
+      "config": {
+        "features": {
+          "enableWordTimeOffsets": true,
+          "enableAutomaticPunctuation": true,
+          "diarizationConfig": {
+            "minSpeakerCount": 1,
+            "maxSpeakerCount": 2
+          }
+        },
+        "autoDecodingConfig": {},
+        "model": "chirp_3",
+        "languageCodes": ["en-US"]
+      },
+      "recognitionOutputConfig": {
+        "gcsOutputConfig": {
+          "uri": "gs://creative-pixels-transcribe-batch/output/"
+        }
+      }
+    },
+    "progressPercent": 100
+  },
+  "done": true,
+  "response": {
+    "@type": "type.googleapis.com/google.cloud.speech.v2.BatchRecognizeResponse",
+    "results": {
+      "gs://creative-pixels-transcribe-batch/input/audio_59m.flac": {
+        "uri": "gs://creative-pixels-transcribe-batch/output/audio_59m_transcript_70903569-0000-228c-8f61-c82add6b3438.json",
+        "error": {
+          "code": 3,
+          "message": "File `gs://creative-pixels-transcribe-batch/input/audio_59m.flac` is too long. Only audio files up to 20 minutes long are supported for BatchRecognize."
+        },
+        "cloudStorageResult": {
+          "uri": "gs://creative-pixels-transcribe-batch/output/audio_59m_transcript_70903569-0000-228c-8f61-c82add6b3438.json"
+        }
+      }
+    },
+    "totalBilledDuration": "0s"
+  }
+}

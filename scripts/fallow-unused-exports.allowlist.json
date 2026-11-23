@@ -296,21 +296,6 @@
       "reason": "Lazy-loaded through the editor media-library import helper."
     },
     {
-      "path": "src/features/media-library/transcription/transcription-engine.ts",
-      "exportName": "PARAKEET_FALLBACK_WHISPER_MODEL",
-      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
-    },
-    {
-      "path": "src/features/media-library/transcription/transcription-engine.ts",
-      "exportName": "PARAKEET_MODEL",
-      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
-    },
-    {
-      "path": "src/features/media-library/transcription/transcription-engine.ts",
-      "exportName": "PARAKEET_SUPPORTED_LANGUAGES",
-      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
-    },
-    {
       "path": "src/features/preview/components/color-scopes-monitor.tsx",
       "exportName": "ColorScopesMonitor",
       "reason": "Lazy-loaded from the preview area."

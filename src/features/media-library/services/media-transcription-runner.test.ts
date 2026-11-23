@@ -78,6 +78,23 @@ describe('runMediaTranscriptionJob', () => {
     expect(storeState.clearTranscriptProgress).toHaveBeenCalledWith('media-1')
   })
 
+  it('forwards the glossary to the service, which is the only way it reaches the model', async () => {
+    mediaTranscriptionServiceMocks.transcribeMedia.mockResolvedValue(makeTranscript())
+
+    await runMediaTranscriptionJob('media-1', {
+      model: 'gemini-3.5-transcribe',
+      quantization: 'hybrid',
+      glossary: 'Gawain, CRTVAI',
+    })
+
+    // This hop was missing once already: the dialog collected a glossary, the runner accepted
+    // it, and nothing between them passed it on, so `customVocabulary` never reached the model.
+    expect(mediaTranscriptionServiceMocks.transcribeMedia).toHaveBeenCalledWith(
+      'media-1',
+      expect.objectContaining({ glossary: 'Gawain, CRTVAI' }),
+    )
+  })
+
   it('restores the previous status when cancelled', async () => {
     storeState.transcriptStatus = new Map([['media-1', 'ready']])
     mediaTranscriptionServiceMocks.transcribeMedia.mockRejectedValue(
@@ -117,9 +134,9 @@ describe('runMediaTranscriptionJob', () => {
   it('does not hide unrelated Large Turbo failures behind the fallback', async () => {
     mediaTranscriptionServiceMocks.transcribeMedia.mockRejectedValue(new Error('Network failed'))
 
-    await expect(
-      runMediaTranscriptionJob('media-1', { model: 'whisper-large' }),
-    ).rejects.toThrow('Network failed')
+    await expect(runMediaTranscriptionJob('media-1', { model: 'whisper-large' })).rejects.toThrow(
+      'Network failed',
+    )
     expect(mediaTranscriptionServiceMocks.transcribeMedia).toHaveBeenCalledTimes(1)
   })
 

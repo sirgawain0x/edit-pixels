@@ -9,6 +9,8 @@ export const DEFAULT_BROWSER_WHISPER_MODEL: MediaTranscriptModel = 'parakeet-tdt
 
 export const BROWSER_WHISPER_MODEL_LABELS: Record<MediaTranscriptModel, string> = {
   'parakeet-tdt-v3': 'Parakeet (fast)',
+  'chirp-3': 'Precision (Google Chirp 3)',
+  'gemini-3.5-transcribe': 'Precision (Gemini 3.5 Transcribe)',
   'whisper-tiny': 'Whisper Tiny',
   'whisper-base': 'Whisper Base',
   'whisper-small': 'Whisper Small',
