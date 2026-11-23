@@ -139,10 +139,23 @@ export function resolveProxyUrl(mediaId: string): string | null {
  */
 export async function resolveMediaUrls(
   tracks: TimelineTrack[],
-  options?: { useProxy?: boolean; signal?: AbortSignal },
+  options?: {
+    useProxy?: boolean
+    signal?: AbortSignal
+    /**
+     * Called for every item whose bytes could not be resolved, with its media id.
+     *
+     * The return value keeps `src: ''` for those items, because a partially resolved
+     * timeline is still worth showing. Without this callback, though, a caller cannot tell
+     * "resolved to nothing" from "resolved", and a transient failure at boot becomes a clip
+     * that never appears until the page is reloaded.
+     */
+    onItemFailure?: (mediaId: string) => void
+  },
 ): Promise<TimelineTrack[]> {
   const useProxy = options?.useProxy ?? true
   const signal = options?.signal
+  const onItemFailure = options?.onItemFailure
 
   // Deep clone tracks to avoid mutating original
   const resolvedTracks: TimelineTrack[] = structuredClone(tracks)
@@ -161,6 +174,11 @@ export async function resolveMediaUrls(
           item.type === 'lottie')
       ) {
         const promise = resolveMediaUrl(item.mediaId).then((blobUrl) => {
+          if (!blobUrl) {
+            onItemFailure?.(item.mediaId!)
+            return
+          }
+
           // For video items in preview mode, prefer proxy URL if available
           if (useProxy && item.type === 'video') {
             const proxyUrl = resolveProxyUrl(item.mediaId!)

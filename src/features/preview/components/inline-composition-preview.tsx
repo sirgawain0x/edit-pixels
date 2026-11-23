@@ -16,8 +16,11 @@ import { createLogger } from '@/shared/logging/logger'
 import { getPreviewNeedsOverflow, getPreviewPlayerSize } from '../utils/preview-pixel-snap'
 import { useBlobUrlVersion } from '@/infrastructure/browser/blob-url-manager'
 import { useComparisonCompositionFrame } from './use-comparison-composition-frame'
+import { hasUnresolvedMedia } from '../utils/resolution-health'
 
 const RESOLVED_TRACK_CACHE_LIMIT = 12
+/** Retries before a missing asset is accepted as genuinely missing. */
+const MAX_RESOLUTION_RETRIES = 3
 const COMPARISON_LOADING_DELAY_MS = 80
 const resolvedTrackPromiseCache = new Map<string, Promise<CompositionInputProps['tracks']>>()
 
@@ -45,6 +48,17 @@ function getOrCreateResolvedTrackPromise(
     resolvedTrackPromiseCache.delete(oldestKey)
   }
   return promise
+}
+
+/**
+ * Forget a resolution that came back incomplete.
+ *
+ * The cache exists to avoid re-resolving on every render. A result with missing media is not
+ * worth keeping: it would pin the hole for the lifetime of the key, which is precisely how a
+ * boot-time hiccup turns into a clip that never appears.
+ */
+function dropResolvedTrackPromise(key: string): void {
+  resolvedTrackPromiseCache.delete(key)
 }
 
 function getLogger() {
@@ -164,6 +178,9 @@ const InlineCompositionPreviewContent = memo(function InlineCompositionPreviewCo
     key: string
     tracks: CompositionInputProps['tracks']
   } | null>(null)
+  // Re-runs the resolution effect without inventing a new cache key.
+  const [resolutionRetry, setResolutionRetry] = useState(0)
+  const resolutionAttemptsRef = useRef(0)
 
   const compositionInput = useMemo(() => {
     if (!composition || !compositionGraphSignature) return null
@@ -195,10 +212,17 @@ const InlineCompositionPreviewContent = memo(function InlineCompositionPreviewCo
     setResolvedTrackResult(null)
 
     const loadResolvedTracks = async () => {
+      const failedMediaIds: string[] = []
       const nextResolvedTracks = await getOrCreateResolvedTrackPromise(resolutionKey, async () => {
-        return resolveMediaUrls(compositionInput.tracks, { useProxy })
+        return resolveMediaUrls(compositionInput.tracks, {
+          useProxy,
+          onItemFailure: (mediaId) => failedMediaIds.push(mediaId),
+        })
       })
       if (controller.signal.aborted) return
+      // A partial result must not be cached: the assets that failed may simply have lost a race
+      // with the workspace mirror or a permission grant, and the retry below will find them.
+      if (failedMediaIds.length > 0) dropResolvedTrackPromise(resolutionKey)
       if (!cancelled) {
         setResolvedTrackResult({ key: resolutionKey, tracks: nextResolvedTracks })
       }
@@ -214,7 +238,45 @@ const InlineCompositionPreviewContent = memo(function InlineCompositionPreviewCo
       cancelled = true
       controller.abort()
     }
-  }, [compositionId, compositionInput, presentation, resolutionKey, useProxy])
+  }, [compositionId, compositionInput, presentation, resolutionKey, useProxy, resolutionRetry])
+
+  useEffect(() => {
+    resolutionAttemptsRef.current = 0
+  }, [resolutionKey])
+
+  const hasUnresolved = useMemo(
+    () => hasUnresolvedMedia(resolvedTrackResult?.tracks),
+    [resolvedTrackResult],
+  )
+
+  /**
+   * Ask again for the assets that came back empty.
+   *
+   * Triggered by the two moments that can actually change the answer: the first user gesture
+   * (a file-handle permission can only be granted then) and the tab becoming visible (a
+   * suspended tab resumes with its handles intact). Bounded, so a genuinely missing file stops
+   * being retried and the broken-media UI takes over.
+   */
+  useEffect(() => {
+    if (!hasUnresolved) return
+    if (resolutionAttemptsRef.current >= MAX_RESOLUTION_RETRIES) return
+
+    const retry = () => {
+      if (resolutionAttemptsRef.current >= MAX_RESOLUTION_RETRIES) return
+      resolutionAttemptsRef.current += 1
+      setResolutionRetry((attempt) => attempt + 1)
+    }
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') retry()
+    }
+
+    window.addEventListener('pointerdown', retry, { once: true })
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      window.removeEventListener('pointerdown', retry)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [hasUnresolved])
 
   const compositionWidth = composition?.width || 640
   const compositionHeight = composition?.height || 360
