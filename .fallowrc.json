@@ -169,6 +169,15 @@
       "exports": ["*"]
     },
     {
+      // Vercel HTTP entry points: resolved by file-system routing, never imported.
+      "file": "api/transcribe-job.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/transcribe-precision.ts",
+      "exports": ["*"]
+    },
+    {
       "file": "api/flow-frame.ts",
       "exports": ["*"]
     },
