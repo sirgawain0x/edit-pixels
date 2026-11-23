@@ -150,6 +150,116 @@ describe('InlineCompositionPreview', () => {
     vi.restoreAllMocks()
   })
 
+  it('asks again for an asset that resolved empty, instead of keeping the blank', async () => {
+    const partialTracks = [
+      {
+        id: 'track-1',
+        type: 'video',
+        items: [
+          {
+            id: 'item-1',
+            type: 'video',
+            mediaId: 'media-2',
+            src: '',
+            startFrame: 0,
+            durationInFrames: 30,
+          },
+        ],
+      },
+    ]
+    const completeTracks = [
+      {
+        id: 'track-1',
+        type: 'video',
+        items: [
+          {
+            id: 'item-1',
+            type: 'video',
+            mediaId: 'media-2',
+            src: 'blob:recovered',
+            startFrame: 0,
+            durationInFrames: 30,
+          },
+        ],
+      },
+    ]
+
+    resolveMediaUrlsMock
+      .mockImplementationOnce(
+        async (_tracks: unknown, options: { onItemFailure?: (id: string) => void }) => {
+          // What the real resolver does when the bytes are not readable at that instant.
+          options.onItemFailure?.('media-2')
+          return partialTracks
+        },
+      )
+      .mockResolvedValue(completeTracks)
+
+    render(
+      <InlineCompositionPreview
+        compositionId="composition-1"
+        seekFrame={12}
+        containerSize={{ width: 800, height: 600 }}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(resolveMediaUrlsMock).toHaveBeenCalledTimes(1)
+    })
+
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
+
+    // The result was incomplete, so it was not cached: becoming visible again re-resolves.
+    // Dispatched in a loop because the listener only exists once React has committed the
+    // partial result, which is an async render behind the awaited promise.
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await act(async () => {
+        document.dispatchEvent(new Event('visibilitychange'))
+      })
+    }
+
+    await waitFor(() => {
+      expect(resolveMediaUrlsMock).toHaveBeenCalledTimes(2)
+    })
+    // The second answer was complete, so it was cached and nothing retried a third time.
+    expect(resolveMediaUrlsMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('stops retrying once a missing asset is clearly missing', async () => {
+    resolveMediaUrlsMock.mockImplementation(
+      async (_tracks: unknown, options: { onItemFailure?: (id: string) => void }) => {
+        options.onItemFailure?.('media-gone')
+        return [
+          {
+            id: 'track-1',
+            type: 'video',
+            items: [{ id: 'item-1', type: 'video', mediaId: 'media-gone', src: '' }],
+          },
+        ]
+      },
+    )
+
+    render(
+      <InlineCompositionPreview
+        compositionId="composition-1"
+        seekFrame={12}
+        containerSize={{ width: 800, height: 600 }}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(resolveMediaUrlsMock).toHaveBeenCalledTimes(1)
+    })
+
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      await act(async () => {
+        document.dispatchEvent(new Event('visibilitychange'))
+      })
+    }
+
+    // Three retries, then the broken-media UI takes over instead of hammering storage forever.
+    expect(resolveMediaUrlsMock).toHaveBeenCalledTimes(4)
+  })
+
   it('resolves compound clip tracks with proxy playback when enabled', async () => {
     render(
       <InlineCompositionPreview
@@ -160,7 +270,10 @@ describe('InlineCompositionPreview', () => {
     )
 
     await waitFor(() => {
-      expect(resolveMediaUrlsMock).toHaveBeenCalledWith(expect.any(Array), { useProxy: true })
+      expect(resolveMediaUrlsMock).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.objectContaining({ useProxy: true, onItemFailure: expect.any(Function) }),
+      )
     })
 
     await waitFor(() => {
