@@ -16,6 +16,7 @@ import {
   type CloudPartTranscript,
   type MergedCloudTranscript,
 } from './merge-part-transcripts'
+import { getPrecisionPayment } from './precision-payment'
 import { saveCloudTranscript } from './save-cloud-transcript'
 
 /** One sub-file: where it starts and ends in the source, and how much it shares with its neighbour. */
@@ -36,9 +37,11 @@ export interface PrecisionQuote {
   /** True when the monthly free run covers this job, so no payment is sent. */
   free: boolean
   priceUsd: number
+  /** Wei floor pinned on the signed quote. The wallet must send at least this, exactly. */
+  minCrtvaiWei: string
 }
 
-export interface UploadedPart {
+export interface LandedPart {
   index: number
   uri: string
 }
@@ -51,10 +54,13 @@ export interface PartResult {
 export interface PrecisionDeps {
   plan: () => Promise<PrecisionPlan>
   quote: (plan: PrecisionPlan) => Promise<PrecisionQuote>
-  /** Resolve with the tx hash once the payment is mined; throw if the user declines. */
-  pay: (quote: PrecisionQuote) => Promise<string>
-  upload: (jobId: string, parts: PrecisionPart[]) => Promise<UploadedPart[]>
-  submit: (input: { jobId: string; txHash: string | null; files: UploadedPart[] }) => Promise<void>
+  /**
+   * Resolve with the tx hash once the payment is mined; throw if the user declines.
+   * Defaults to the registered wallet bridge, which is how non-React callers pay.
+   */
+  pay?: (quote: PrecisionQuote) => Promise<string>
+  upload: (jobId: string, parts: PrecisionPart[]) => Promise<LandedPart[]>
+  submit: (input: { jobId: string; txHash: string | null; files: LandedPart[] }) => Promise<void>
   transcribePart: (input: { jobId: string; partIndex: number; uri: string }) => Promise<PartResult>
   /** Overrides the default `saveCloudTranscript` write, for tests. */
   save?: (merged: MergedCloudTranscript, model: MediaTranscriptModel) => Promise<MediaTranscript>
@@ -138,7 +144,7 @@ async function requestPart(
 async function transcribeParts(
   deps: PrecisionDeps,
   jobId: string,
-  files: readonly UploadedPart[],
+  files: readonly LandedPart[],
   parts: readonly PrecisionPart[],
 ): Promise<CloudPartTranscript[]> {
   const results: CloudPartTranscript[] = []
@@ -162,6 +168,26 @@ async function transcribeParts(
   return results
 }
 
+/** Send the payment, or nothing for a free run, which is already paid by the allowance. */
+async function payForRun(deps: PrecisionDeps, quote: PrecisionQuote): Promise<string | null> {
+  if (quote.free) return null
+  deps.onProgress?.('paying', 0)
+  return (deps.pay ?? getPrecisionPayment())(quote)
+}
+
+/** Write the merged result through the injected saver, or the workspace-backed default. */
+function persist(
+  deps: PrecisionDeps,
+  options: { mediaId: string; model: MediaTranscriptModel },
+  merged: MergedCloudTranscript,
+): Promise<MediaTranscript> {
+  const save =
+    deps.save ??
+    ((result: MergedCloudTranscript, model: MediaTranscriptModel) =>
+      saveCloudTranscript({ mediaId: options.mediaId, merged: result, model }))
+  return save(merged, options.model)
+}
+
 /**
  * Run a Precision transcription end to end and return the saved transcript.
  *
@@ -179,11 +205,7 @@ export async function runPrecisionJob(
   const quote = await deps.quote(plan)
 
   // A free run is paid for by the allowance, so paying again would double-charge.
-  let txHash: string | null = null
-  if (!quote.free) {
-    deps.onProgress?.('paying', 0)
-    txHash = await deps.pay(quote)
-  }
+  const txHash = await payForRun(deps, quote)
 
   deps.onProgress?.('uploading', 0)
   const files = await deps.upload(quote.jobId, plan.parts)
@@ -199,9 +221,5 @@ export async function runPrecisionJob(
   }
 
   deps.onProgress?.('saving', 0)
-  const save =
-    deps.save ??
-    ((result: MergedCloudTranscript, model: MediaTranscriptModel) =>
-      saveCloudTranscript({ mediaId: options.mediaId, merged: result, model }))
-  return save(merged, options.model)
+  return persist(deps, options, merged)
 }

@@ -8,6 +8,7 @@ import { PwaInstallPrompt } from '@/app/pwa-install-prompt'
 import { RouteErrorScreen } from '@/app/route-error'
 import { WorkspaceGate } from '@/features/workspace-gate/workspace-gate'
 import { WalletProvider } from '@/context/wallet-context'
+import { PrecisionPaymentBridge } from '@/features/media-library/transcription/hooks/precision-payment-bridge'
 import { routeTree } from './routeTree.gen'
 
 // Route errors (thrown from beforeLoad/loader) never reach the React
@@ -90,6 +91,9 @@ export function App() {
       <QueryClientProvider client={queryClient}>
         <TooltipProvider delayDuration={300}>
           <WalletProvider>
+            {/* Registers the wallet as the payer for cloud transcription runs. Inside the
+                provider because it is a no-op until the wallet can send. */}
+            <PrecisionPaymentBridge />
             <WorkspaceGate>
               <RouterProvider router={router} />
             </WorkspaceGate>

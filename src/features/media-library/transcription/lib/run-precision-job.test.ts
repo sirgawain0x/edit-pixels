@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { MediaTranscript } from '@/types/storage'
+import { registerPrecisionPayment } from './precision-payment'
 import {
   IncompleteTranscriptError,
   PrecisionPartError,
@@ -41,7 +42,7 @@ function makeDeps(overrides: Partial<PrecisionDeps> = {}) {
     }),
     quote: vi.fn(async () => {
       calls.push('quote')
-      return { jobId: 'job-1', free: false, priceUsd: 0.3 }
+      return { jobId: 'job-1', free: false, priceUsd: 0.3, minCrtvaiWei: '2970000000000000' }
     }),
     pay: vi.fn(async () => {
       calls.push('pay')
@@ -110,7 +111,7 @@ describe('runPrecisionJob', () => {
 
   it('sends the tx hash to submit and never pays a free run', async () => {
     const { deps } = makeDeps({
-      quote: vi.fn(async () => ({ jobId: 'job-2', free: true, priceUsd: 0 })),
+      quote: vi.fn(async () => ({ jobId: 'job-2', free: true, priceUsd: 0, minCrtvaiWei: '0' })),
     })
 
     await runPrecisionJob(deps, { mediaId: 'media-1', model: MODEL })
@@ -236,6 +237,33 @@ describe('runPrecisionJob', () => {
     await runPrecisionJob(deps, { mediaId: 'media-1', model: MODEL })
 
     expect(order).toEqual([0, 1])
+  })
+
+  it('pays through the registered bridge when no payer is injected', async () => {
+    const { deps } = makeDeps()
+    delete deps.pay
+    const unregister = registerPrecisionPayment(async () => '0xbridge')
+
+    try {
+      await runPrecisionJob(deps, { mediaId: 'media-1', model: MODEL })
+    } finally {
+      unregister()
+    }
+
+    // This is the whole point of the registry: a caller with no wallet in scope still pays.
+    expect(vi.mocked(deps.submit).mock.calls[0]?.[0]).toMatchObject({ txHash: '0xbridge' })
+  })
+
+  it('stops before uploading when no bridge is registered and the run is paid', async () => {
+    const { deps, calls } = makeDeps()
+    delete deps.pay
+
+    await expect(runPrecisionJob(deps, { mediaId: 'media-1', model: MODEL })).rejects.toThrow(
+      /not registered/,
+    )
+    // Audio must not reach the bucket for a run that could never be paid for.
+    expect(calls).toEqual(['plan', 'quote'])
+    expect(vi.mocked(deps.upload)).not.toHaveBeenCalled()
   })
 
   it('reports the stage it is in, so the dialog can show something honest', async () => {
