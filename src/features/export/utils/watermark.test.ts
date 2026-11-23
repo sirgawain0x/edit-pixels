@@ -134,6 +134,55 @@ describe('loadWatermarkImage', () => {
     expect(loaded).toEqual({ source: bitmap, width: 500, height: 500 })
   })
 
+  it('falls back to an image element when the engine cannot decode the asset as a bitmap', async () => {
+    // Chrome refuses SVG blobs from `createImageBitmap` with InvalidStateError even though
+    // `<img>` draws them fine. Treating that rejection as "asset missing" failed every export.
+    class LoadableImage {
+      naturalWidth = 500
+      naturalHeight = 500
+      decoding = 'async'
+      onload: (() => void) | null = null
+      onerror: (() => void) | null = null
+      set src(_value: string) {
+        queueMicrotask(() => this.onload?.())
+      }
+    }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(new Blob(['<svg/>']), { status: 200 })),
+    )
+    vi.stubGlobal(
+      'createImageBitmap',
+      vi.fn(async () => {
+        throw new DOMException('The source image could not be decoded.', 'InvalidStateError')
+      }),
+    )
+    vi.stubGlobal('Image', LoadableImage)
+
+    const loaded = await loadWatermarkImage('/brand/crtv-watermark.svg')
+
+    expect(loaded).toEqual({ source: expect.any(LoadableImage), width: 500, height: 500 })
+  })
+
+  it('fails loudly when every route cannot rasterise, rather than exporting unmarked', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(new Blob(['<svg/>']), { status: 200 })),
+    )
+    vi.stubGlobal(
+      'createImageBitmap',
+      vi.fn(async () => {
+        throw new DOMException('nope', 'InvalidStateError')
+      }),
+    )
+    // A worker has no `Image`: this is the combination that shipped broken.
+    vi.stubGlobal('Image', undefined)
+
+    await expect(loadWatermarkImage('/brand/crtv-watermark.png')).rejects.toBeInstanceOf(
+      WatermarkUnavailableError,
+    )
+  })
+
   it('fails loudly when the asset is missing, rather than exporting an unmarked video', async () => {
     vi.stubGlobal(
       'fetch',

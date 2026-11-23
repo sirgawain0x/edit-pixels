@@ -5,24 +5,26 @@
  * the only place to do this: anything applied afterwards would be a second video encode, and
  * anything applied in the UI would not survive a re-export.
  *
- * Two things shape this module:
+ * Three things shape this module:
  *
  * 1. The mark is drawn *after* the frame has been scaled to the export resolution, so it is
  *    always the same proportion of the picture — a 4K export and a 720p export match.
  * 2. Export can run inside a Web Worker (`export-render.worker.ts`), where `Image` does not
  *    exist. The loader therefore prefers `createImageBitmap`, which works on both threads.
- *    Using `new Image()` alone would have produced unmarked videos on the worker path only —
- *    which is the path production actually uses.
+ * 3. The shipped asset is a PNG, not the SVG. `createImageBitmap` cannot decode an SVG blob in
+ *    Chrome (`InvalidStateError: The source image could not be decoded`) and a worker has no
+ *    `<img>` to fall back on, so an SVG mark made every export fail on the path production
+ *    uses. `scripts/build-watermark-png.mjs` rasterises the SVG the design ships.
  */
 
 /** Fraction of the shorter edge the mark occupies. Small enough to stay out of the way. */
 const MARK_SCALE = 0.09
 /** Fraction of the shorter edge kept clear between the mark and the frame edges. */
 const MARK_MARGIN = 0.035
-/** The SVG is white artwork, so it needs no tint — only a slight knock-back on bright frames. */
+/** The artwork already carries its own colour; only a slight knock-back so it sits on the frame. */
 const MARK_OPACITY = 0.9
 
-const WATERMARK_SRC = '/brand/crtv-watermark.svg'
+const WATERMARK_SRC = '/brand/crtv-watermark.png'
 
 /** A missing mark is a revenue leak nobody would notice, so it fails the export instead. */
 export class WatermarkUnavailableError extends Error {
@@ -90,8 +92,14 @@ async function loadViaImageBitmap(src: string): Promise<WatermarkImage | null> {
   const response = await fetch(src)
   if (!response.ok) throw new WatermarkUnavailableError(`HTTP ${response.status}`)
 
-  const bitmap = await createImageBitmap(await response.blob())
-  return { source: bitmap, width: bitmap.width, height: bitmap.height }
+  try {
+    const bitmap = await createImageBitmap(await response.blob())
+    return { source: bitmap, width: bitmap.width, height: bitmap.height }
+  } catch {
+    // An engine can refuse a format it cannot decode here while still drawing it through
+    // `<img>`. That is not a missing asset, so the next route gets a turn.
+    return null
+  }
 }
 
 /** Fallback for engines without `createImageBitmap` on the main thread. */
