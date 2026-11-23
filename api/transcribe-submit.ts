@@ -17,6 +17,7 @@ import {
   verifyGenerativeCrtvaiPayment,
 } from './_pixels-generate-route-auth.js'
 import { submitTranscriptionBatch, type BatchInputFile } from './_transcribe-batch.js'
+import { statParts } from './_transcribe-gcs.js'
 import { isOwnedInputUri } from './_transcribe-uris.js'
 import {
   readTranscriptionJob,
@@ -100,6 +101,25 @@ function alreadySubmittedResponse(job: TranscriptionJobSummary, jobId: string): 
 function notSubmittableResponse(job: TranscriptionJobSummary): Response | null {
   if (job.status === 'quoted') return null
   return Response.json({ error: 'job_not_submittable', status: job.status }, { status: 409 })
+}
+
+type UploadsCheck = { ok: true; missing: string[] } | { ok: false; response: Response }
+
+/**
+ * Prove every part actually landed before we spend anything.
+ *
+ * Google reports a missing input as a per-file error and still bills the rest of the
+ * batch, so a hole discovered late looks exactly like a bad transcript. A GCS failure
+ * is reported as 502 rather than treated as "probably fine".
+ */
+async function checkPartsUploaded(files: BatchInputFile[]): Promise<UploadsCheck> {
+  try {
+    const stats = await statParts(files.map((file) => file.uri))
+    return { ok: true, missing: stats.filter((stat) => !stat.exists).map((stat) => stat.uri) }
+  } catch (error) {
+    console.error('transcription upload verification failed', error)
+    return { ok: false, response: Response.json({ error: 'storage_unavailable' }, { status: 502 }) }
+  }
 }
 
 /** Files outside this job's own prefix, which is a hard refusal before any money moves. */
@@ -196,6 +216,12 @@ export async function POST(request: Request): Promise<Response> {
   const foreign = foreignFiles(req.files, accountId, req.jobId)
   if (foreign.length > 0) {
     return Response.json({ error: 'file_not_owned_by_job', files: foreign }, { status: 400 })
+  }
+
+  const uploads = await checkPartsUploaded(req.files)
+  if (!uploads.ok) return uploads.response
+  if (uploads.missing.length > 0) {
+    return Response.json({ error: 'files_missing', files: uploads.missing }, { status: 400 })
   }
 
   const freeRun = job.freeRunMonth !== null

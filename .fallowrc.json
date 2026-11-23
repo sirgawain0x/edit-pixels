@@ -201,6 +201,10 @@
       "exports": ["*"]
     },
     {
+      "file": "api/transcribe-upload-session.ts",
+      "exports": ["*"]
+    },
+    {
       "file": "api/flow-frame.ts",
       "exports": ["*"]
     },
