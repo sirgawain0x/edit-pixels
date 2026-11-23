@@ -955,6 +955,8 @@ const MediaCardInternal = memo(function MediaCardInternal({
                 model: values.model,
                 quantization: values.quantization,
                 language: values.language || undefined,
+                // The cloud tier biases towards these; on-device models ignore them.
+                glossary: values.glossary,
                 onModelFallback: () => {
                   store.showNotification({
                     type: 'info',
