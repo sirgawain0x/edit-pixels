@@ -30,22 +30,39 @@ async function accessToken(): Promise<string> {
  *
  * The returned URI is a bearer capability: whoever holds it can write that object,
  * so it may only ever point inside the caller's own `input/<account>/<job>/` prefix.
+ *
+ * `ifGenerationMatch=0` makes the write create-only. GCS enforces it at finalize,
+ * not at session creation, so a second session for a part that already landed still
+ * gets a URI — and then fails with 412 instead of replacing the audio. That closes
+ * the window where a client could re-upload a part after `transcribe-submit`
+ * verified it and Google had already started reading the old bytes. Retrying the
+ * *same* session stays possible, because a resumable session is resumable; only
+ * starting over is blocked.
+ *
+ * `origin` is the browser's Origin, forwarded as-is. GCS mirrors it back as
+ * `Access-Control-Allow-Origin` on the session and on the PUT; without it the upload
+ * still lands but the browser cannot read the response, which surfaces as a CORS
+ * failure. Verified both ways against the real bucket.
  */
 export async function createUploadSession(input: {
   objectName: string
   contentType: UploadContentType
   metadata?: Record<string, string>
+  /** Same-origin only — see `sameOriginOf` in the route. */
+  origin?: string | null
 }): Promise<{ sessionUri: string }> {
   const token = await accessToken()
   const url =
     `${UPLOAD_API}/b/${encodeURIComponent(transcribeBucket())}/o` +
-    `?uploadType=resumable&name=${encodeURIComponent(input.objectName)}`
+    `?uploadType=resumable&name=${encodeURIComponent(input.objectName)}` +
+    `&ifGenerationMatch=0`
 
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
+      ...(input.origin ? { Origin: input.origin } : {}),
     },
     body: JSON.stringify({
       contentType: input.contentType,

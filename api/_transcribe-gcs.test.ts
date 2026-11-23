@@ -46,13 +46,19 @@ describe('createUploadSession', () => {
     expect(result.sessionUri).toBe('https://storage.googleapis.com/upload/session/abc')
     const call = vi.mocked(globalThis.fetch).mock.calls[0]
     // The object name is URL-encoded, so the slashes cannot be reinterpreted as a path.
+    // `ifGenerationMatch=0` makes the write create-only: a second session for a part
+    // that already landed gets 412 at finalize instead of replacing the audio.
     expect(call?.[0]).toBe(
       `https://storage.googleapis.com/upload/storage/v1/b/${BUCKET}/o` +
-        `?uploadType=resumable&name=${encodeURIComponent(OBJECT)}`,
+        `?uploadType=resumable&name=${encodeURIComponent(OBJECT)}` +
+        `&ifGenerationMatch=0`,
     )
     const init = call?.[1] as RequestInit
     expect(init.method).toBe('POST')
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer test-token')
+    // No Origin given, so none is sent: the header decides whether a browser can read
+    // the upload response, and inventing one would bind the session to the wrong site.
+    expect((init.headers as Record<string, string>).Origin).toBeUndefined()
     expect(JSON.parse(String(init.body))).toEqual({
       contentType: 'audio/webm',
       metadata: { jobId: 'job-1' },
@@ -91,6 +97,26 @@ describe('createUploadSession', () => {
     await expect(
       createUploadSession({ objectName: OBJECT, contentType: 'audio/webm' }),
     ).rejects.toThrow('403')
+  })
+
+  it('forwards the browser Origin so GCS can answer CORS for the PUT', async () => {
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(null, {
+          status: 200,
+          headers: { location: 'https://storage.googleapis.com/upload/session/abc' },
+        }),
+    ) as unknown as typeof fetch
+    const { createUploadSession } = await gcs()
+
+    await createUploadSession({
+      objectName: OBJECT,
+      contentType: 'audio/webm',
+      origin: 'https://pixels.example',
+    })
+
+    const init = vi.mocked(globalThis.fetch).mock.calls[0]?.[1] as RequestInit
+    expect((init.headers as Record<string, string>).Origin).toBe('https://pixels.example')
   })
 })
 

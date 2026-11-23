@@ -65,6 +65,31 @@ function parseRequest(
   return { jobId, parts }
 }
 
+/** `https://app.example:3000` -> `app.example:3000`; null when it is not a URL. */
+function hostOf(value: string): string | null {
+  try {
+    return new URL(value).host.toLowerCase()
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The caller's Origin, but only when it is this deployment's own host.
+ *
+ * GCS echoes whatever Origin initiates a session back as Access-Control-Allow-Origin,
+ * so forwarding an arbitrary value would let any site name itself on a capability the
+ * caller already owns. A foreign Origin is simply not forwarded: server-side callers
+ * still work, and a foreign browser gets a session it cannot read the result of.
+ */
+function sameOriginOf(request: Request): string | null {
+  const origin = request.headers.get('origin')
+  if (!origin) return null
+  const host = (request.headers.get('host') ?? '').trim().toLowerCase()
+  if (!host) return null
+  return hostOf(origin) === host ? origin : null
+}
+
 export async function POST(request: Request): Promise<Response> {
   const authenticated = await authenticateGenerativePost(request)
   if (!authenticated.ok) return authenticated.response
@@ -92,6 +117,7 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const prefix = inputPrefixFor(accountId, req.jobId)
+  const origin = sameOriginOf(request)
   try {
     const files = await Promise.all(
       req.parts.map(async (part) => {
@@ -100,6 +126,7 @@ export async function POST(request: Request): Promise<Response> {
           objectName,
           contentType: part.contentType,
           metadata: { jobId: req.jobId, accountId },
+          origin,
         })
         return {
           name: part.name,

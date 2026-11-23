@@ -39,10 +39,10 @@ const quotedJob = {
   freeRunMonth: null,
 }
 
-function post(body: Record<string, unknown>): Request {
+function post(body: Record<string, unknown>, headers: Record<string, string> = {}): Request {
   return new Request('https://pixels.test/api/transcribe-upload-session', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...headers },
     body: JSON.stringify(body),
   })
 }
@@ -115,6 +115,32 @@ describe('POST /api/transcribe-upload-session', () => {
     expect(vi.mocked(createUploadSession).mock.calls[0]?.[0].objectName).toBe(
       `input/${ACCOUNT}/${JOB}/part-0.webm`,
     )
+  })
+
+  it('forwards the browser Origin to GCS when it is this deployment’s own', async () => {
+    const response = await POST(
+      post(
+        { jobId: JOB, files: [{ name: 'part-0.webm', contentType: 'audio/webm' }] },
+        { host: 'pixels.test', origin: 'https://pixels.test' },
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    // Without this header GCS answers the PUT with no Access-Control-Allow-Origin,
+    // so the bytes land but the browser reports a CORS failure.
+    expect(vi.mocked(createUploadSession).mock.calls[0]?.[0].origin).toBe('https://pixels.test')
+  })
+
+  it('does not forward a foreign Origin, which would name another site on the session', async () => {
+    const response = await POST(
+      post(
+        { jobId: JOB, files: [{ name: 'part-0.webm', contentType: 'audio/webm' }] },
+        { host: 'pixels.test', origin: 'https://evil.test' },
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(vi.mocked(createUploadSession).mock.calls[0]?.[0].origin).toBeNull()
   })
 
   it.each([
