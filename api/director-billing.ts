@@ -8,10 +8,7 @@
 import { createPublicClient, http, type Hex } from 'viem'
 import { base } from 'viem/chains'
 import { isPremiumWallet } from './_premium-membership.js'
-import {
-  isPaymentLedgerReady,
-  releasePaymentTxLog,
-} from './_payment-ledger.js'
+import { isPaymentLedgerReady, releasePaymentTxLog } from './_payment-ledger.js'
 import { assertPaymentPayerMatchesSigner } from './_pixels-payment-payer.js'
 import { verifyCrtvaiPaymentFromReceipt } from './_pixels-crtvai-payment.js'
 import { consumePaymentTxLog } from './_payment-ledger.js'
@@ -154,7 +151,13 @@ function alchemyRpcUrl(): string {
 }
 
 export type PaymentVerifyResult =
-  | { ok: true; amountWei: bigint; logIndex: number }
+  | {
+      ok: true
+      amountWei: bigint
+      logIndex: number
+      /** Block time of the transfer, when the caller asked for it (`includeMinedAt`). */
+      blockTimestampMs?: number
+    }
   | { ok: false; reason: string; httpStatus?: number }
 
 /**
@@ -166,6 +169,11 @@ export async function verifyDirectorPayment(options: {
   from: string
   minAmountWei: bigint
   verifiedSignerAddress: string
+  /**
+   * Also report when the transfer was mined. Costs one extra block lookup, so it is opt-in:
+   * only flows that settle against a time-bounded quote need it.
+   */
+  includeMinedAt?: boolean
 }): Promise<PaymentVerifyResult> {
   const treasury = getDirectorTreasury()
   if (!treasury) return { ok: false, reason: 'Treasury not configured' }
@@ -201,7 +209,18 @@ export async function verifyDirectorPayment(options: {
       minAmountWei: options.minAmountWei,
     })
     if (!verified.ok) return verified
-    return { ok: true, amountWei: verified.amountWei, logIndex: verified.logIndex }
+    if (!options.includeMinedAt)
+      return { ok: true, amountWei: verified.amountWei, logIndex: verified.logIndex }
+
+    // The block time, not the request time: it is what decides whether a payment arrived inside
+    // the window its quote was sold in.
+    const block = await client.getBlock({ blockNumber: receipt.blockNumber })
+    return {
+      ok: true,
+      amountWei: verified.amountWei,
+      logIndex: verified.logIndex,
+      blockTimestampMs: Number(block.timestamp) * 1000,
+    }
   } catch (error) {
     return {
       ok: false,
@@ -224,10 +243,7 @@ export async function verifyAndConsumeDirectorPayment(options: {
     return { ok: false, reason: 'Payment ledger unavailable (configure Upstash/Vercel KV)' }
   }
 
-  const payerBinding = assertPaymentPayerMatchesSigner(
-    options.from,
-    options.verifiedSignerAddress,
-  )
+  const payerBinding = assertPaymentPayerMatchesSigner(options.from, options.verifiedSignerAddress)
   if (!payerBinding.ok) {
     return { ok: false, reason: payerBinding.reason, httpStatus: 403 }
   }

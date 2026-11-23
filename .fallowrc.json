@@ -212,6 +212,10 @@
       "exports": ["*"]
     },
     {
+      "file": "api/export-permit.ts",
+      "exports": ["*"]
+    },
+    {
       "file": "api/flow-frame.ts",
       "exports": ["*"]
     },

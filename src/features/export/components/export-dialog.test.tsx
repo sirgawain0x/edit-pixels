@@ -68,6 +68,36 @@ vi.mock('./export-preview-player', () => ({
   ExportPreviewPlayer: () => <div data-testid="export-preview-player" />,
 }))
 
+// The unlock card's own hook talks to the wallet provider and the query client; this suite
+// only cares that the dialog renders its state, so the hook is stubbed.
+const mockUnlock = vi.fn()
+vi.mock('../hooks/use-export-unlock', () => ({
+  useExportUnlock: () => mockUnlock(),
+}))
+
+function lockedUnlock() {
+  return {
+    status: 'locked' as const,
+    unlocked: false,
+    quote: {
+      projectId: 'p1',
+      priceUsd: 5,
+      estimatedUsdc6: 5_000_000,
+      minCrtvaiWei: '400000000000000000000',
+      expiresAtMs: Date.now() + 60_000,
+    },
+    crtvaiCost: '400',
+    balanceFormatted: '1,000',
+    canPay: false,
+    blockedReason: 'no-wallet' as const,
+    error: null,
+    expiresAtMs: null,
+    hasPendingPayment: false,
+    unlock: vi.fn(),
+    refreshQuote: vi.fn(),
+  }
+}
+
 describe('ExportDialog', () => {
   beforeEach(() => {
     mockStartExport.mockReset()
@@ -75,6 +105,8 @@ describe('ExportDialog', () => {
     mockDownloadVideo.mockReset()
     mockResetState.mockReset()
     mockGetSupportedCodecs.mockReset()
+    mockUnlock.mockReset()
+    mockUnlock.mockReturnValue(lockedUnlock())
 
     if (!HTMLElement.prototype.scrollIntoView) {
       HTMLElement.prototype.scrollIntoView = () => {}
@@ -118,5 +150,33 @@ describe('ExportDialog', () => {
 
     const h265Option = await screen.findByRole('option', { name: /H\.265/i })
     expect(h265Option).toHaveAttribute('data-disabled')
+  })
+
+  it('shows the watermark card for video exports and hides it for audio', async () => {
+    mockGetSupportedCodecs.mockResolvedValue(['avc'])
+
+    render(<ExportDialog open onClose={() => {}} />)
+
+    expect(await screen.findByText('CRTV mark')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Audio/i }))
+
+    await waitFor(() => {
+      expect(screen.queryByText('CRTV mark')).not.toBeInTheDocument()
+    })
+  })
+
+  it('shows the paid state when the project already holds a permit', async () => {
+    mockGetSupportedCodecs.mockResolvedValue(['avc'])
+    mockUnlock.mockReturnValue({
+      ...lockedUnlock(),
+      status: 'unlocked',
+      unlocked: true,
+      expiresAtMs: Date.now() + 86_400_000,
+    })
+
+    render(<ExportDialog open onClose={() => {}} />)
+
+    expect(await screen.findByText('Removed for this project')).toBeInTheDocument()
   })
 })

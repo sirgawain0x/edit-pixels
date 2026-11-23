@@ -106,7 +106,8 @@
         "visual-processing": "Unavailable because visual edits, captions, transitions, or keyframes must be rendered.",
         "audio-processing": "Unavailable because the audio or track mix has been changed.",
         "project-mismatch": "Project resolution or frame rate does not match the source.",
-        "format-mismatch": "Selected format or codec does not match the source."
+        "format-mismatch": "Selected format or codec does not match the source.",
+        "watermarked": "Available only after the watermark is removed for this project."
       },
       "subtitleMode": {
         "off": "Off",
@@ -212,6 +213,34 @@
           "detail": "The export worker can render this composition without a known main-thread fallback."
         }
       }
+    },
+    "watermark": {
+      "title": "Watermark",
+      "lockedTitle": "CRTV mark",
+      "lockedBody": "Your export carries the CRTV mark in the corner.",
+      "buy": "Remove · ${{price}}",
+      "buyNoPrice": "Remove",
+      "quoting": "Pricing…",
+      "retry": "Retry",
+      "finish": "Finish unlocking",
+      "costHint": "≈ {{crtvai}} CRTVAI · one payment, this project only.",
+      "unlockedTitle": "Removed for this project",
+      "unlockedBody": "This project exports clean until {{date}}.",
+      "unlockedBodyNoDate": "This project exports without the mark.",
+      "stampAnyway": "Stamp the mark anyway",
+      "stampAnywayHint": "The removal is kept — this only affects the current export.",
+      "stampedHint": "The mark will be stamped on this export.",
+      "confirmTitle": "Remove the CRTV mark",
+      "confirmBody": "One payment unlocks clean exports for this project only. Every other project keeps the mark.",
+      "confirmPrice": "Price",
+      "confirmCost": "Charged in",
+      "confirmBalance": "Your balance",
+      "confirmPay": "Pay {{crtvai}} CRTVAI",
+      "unit": "CRTVAI",
+      "paying": "Confirm in your wallet…",
+      "verifying": "Verifying payment…",
+      "insufficient": "Not enough CRTVAI for this unlock. Buy some from the wallet panel first.",
+      "noWallet": "Connect a wallet to pay for this."
     }
   }
 }

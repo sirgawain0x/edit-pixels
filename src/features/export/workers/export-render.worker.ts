@@ -2,9 +2,14 @@ import { isGifUrl, isWebpUrl } from '@/shared/utils/media-utils'
 import { createLogger } from '@/shared/logging/logger'
 import type { ImageItem } from '@/types/timeline'
 import type { CompositionInputProps } from '@/types/export'
-import type { RenderProgress, ClientRenderResult } from '../utils/client-renderer'
+import type {
+  ClientExportSettings,
+  RenderProgress,
+  ClientRenderResult,
+} from '../utils/client-renderer'
 import { signRenderResultIfConfigured } from '../utils/c2pa-sign'
 import type {
+  ExportRenderStartRequest,
   ExportRenderWorkerRequest,
   ExportRenderWorkerResponse,
 } from './export-render-worker.types'
@@ -101,60 +106,83 @@ async function signResultIfConfigured(opts: {
   return signRenderResultIfConfigured(opts)
 }
 
-self.onmessage = async (event: MessageEvent<ExportRenderWorkerRequest>) => {
-  const message = event.data
+/** Refuse work the worker cannot do, naming the main-thread fallback the caller should use. */
+function assertWorkerCanRender(
+  settings: ClientExportSettings,
+  composition: CompositionInputProps,
+): void {
+  if (settings.mode === 'video' && compositionHasAnimatedImage(composition.tracks ?? [])) {
+    throw new Error('WORKER_REQUIRES_MAIN_THREAD:animated-image')
+  }
+  if (compositionHasAudio(composition.tracks ?? []) && typeof OfflineAudioContext === 'undefined') {
+    throw new Error('WORKER_REQUIRES_MAIN_THREAD:audio-context')
+  }
+}
 
-  if (message.type === 'cancel') {
-    const controller = activeRequests.get(message.requestId)
-    if (controller) {
-      controller.abort()
-    }
+/** Dispatch one request to the audio or video renderer. */
+async function renderRequest(
+  message: ExportRenderStartRequest,
+  signal: AbortSignal,
+): Promise<ClientRenderResult> {
+  const { settings, composition, requestId } = message
+  assertWorkerCanRender(settings, composition)
+
+  const { renderAudioOnly, renderComposition } = await loadRenderers()
+  const onProgress = (progress: RenderProgress) => {
+    const response: ExportRenderWorkerResponse = { type: 'progress', requestId, progress }
+    self.postMessage(response)
+  }
+
+  if (settings.mode === 'audio') {
+    return renderAudioOnly({ settings, composition, onProgress, signal })
+  }
+  return renderComposition({
+    settings,
+    composition,
+    onProgress,
+    signal,
+    // Stamped unless the project holds a paid removal; `settings.watermark` is the mapped
+    // form of the dialog's decision and defaults to on.
+    watermark: settings.watermark ?? true,
+  })
+}
+
+/** Report a failed request, mapping an abort and a DOM leak onto the protocol the caller expects. */
+function postFailure(requestId: string, error: unknown): void {
+  if (error instanceof DOMException && error.name === 'AbortError') {
+    self.postMessage({ type: 'cancelled', requestId } satisfies ExportRenderWorkerResponse)
     return
   }
 
-  if (message.type !== 'start') {
-    return
-  }
+  const messageText = error instanceof Error ? error.message : String(error)
+  const stack = error instanceof Error ? error.stack : undefined
+  // Surface the stack: bare mediabunny asserts report only "Assertion failed",
+  // so without the stack the failing call site is invisible on the main thread.
+  log.error('Export worker failed', { requestId, error: messageText, stack })
+  // A DOM global reaching worker code is a bug in that code, not something the
+  // user can act on — and it used to fail the whole export. Report it as a
+  // main-thread fallback instead: the render still completes, and the reason
+  // (with the original message) lands in the export's wide event so the
+  // offending call site stays visible rather than being silently absorbed.
+  const isDomDependency =
+    error instanceof ReferenceError && /\b(document|navigator|HTML\w*Element)\b/.test(messageText)
+  self.postMessage({
+    type: 'error',
+    requestId,
+    error: isDomDependency
+      ? `WORKER_REQUIRES_MAIN_THREAD:dom-dependency:${messageText}`
+      : messageText,
+  } satisfies ExportRenderWorkerResponse)
+}
 
-  const { requestId, settings, composition } = message
+/** Render one request and report it, mapping failures onto the response protocol. */
+async function handleStart(message: ExportRenderStartRequest): Promise<void> {
+  const { requestId, composition } = message
   const controller = new AbortController()
   activeRequests.set(requestId, controller)
 
   try {
-    const tracks = composition.tracks ?? []
-
-    if (settings.mode === 'video' && compositionHasAnimatedImage(composition.tracks ?? [])) {
-      throw new Error('WORKER_REQUIRES_MAIN_THREAD:animated-image')
-    }
-    if (compositionHasAudio(tracks) && typeof OfflineAudioContext === 'undefined') {
-      throw new Error('WORKER_REQUIRES_MAIN_THREAD:audio-context')
-    }
-
-    const { renderAudioOnly, renderComposition } = await loadRenderers()
-
-    const onProgress = (progress: RenderProgress) => {
-      const response: ExportRenderWorkerResponse = {
-        type: 'progress',
-        requestId,
-        progress,
-      }
-      self.postMessage(response)
-    }
-
-    const result =
-      settings.mode === 'audio'
-        ? await renderAudioOnly({
-            settings,
-            composition,
-            onProgress,
-            signal: controller.signal,
-          })
-        : await renderComposition({
-            settings,
-            composition,
-            onProgress,
-            signal: controller.signal,
-          })
+    const result = await renderRequest(message, controller.signal)
 
     // C2PA provenance signing — optional and non-fatal. If the signer is
     // unavailable or fails, the unsigned blob is delivered unchanged.
@@ -163,48 +191,38 @@ self.onmessage = async (event: MessageEvent<ExportRenderWorkerRequest>) => {
       composition,
       wallet: message.wallet,
       certId: message.certId,
-      onProgress,
+      onProgress: (progress) => {
+        self.postMessage({
+          type: 'progress',
+          requestId,
+          progress,
+        } satisfies ExportRenderWorkerResponse)
+      },
       signal: controller.signal,
     })
 
-    const complete: ExportRenderWorkerResponse = {
+    self.postMessage({
       type: 'complete',
       requestId,
       result: signedResult,
-    }
-    self.postMessage(complete)
+    } satisfies ExportRenderWorkerResponse)
   } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
-      const cancelled: ExportRenderWorkerResponse = {
-        type: 'cancelled',
-        requestId,
-      }
-      self.postMessage(cancelled)
-      return
-    }
-
-    const messageText = error instanceof Error ? error.message : String(error)
-    const stack = error instanceof Error ? error.stack : undefined
-    // Surface the stack: bare mediabunny asserts report only "Assertion failed",
-    // so without the stack the failing call site is invisible on the main thread.
-    log.error('Export worker failed', { requestId, error: messageText, stack })
-    // A DOM global reaching worker code is a bug in that code, not something the
-    // user can act on — and it used to fail the whole export. Report it as a
-    // main-thread fallback instead: the render still completes, and the reason
-    // (with the original message) lands in the export's wide event so the
-    // offending call site stays visible rather than being silently absorbed.
-    const isDomDependency =
-      error instanceof ReferenceError && /\b(document|navigator|HTML\w*Element)\b/.test(messageText)
-    const failure: ExportRenderWorkerResponse = {
-      type: 'error',
-      requestId,
-      error: isDomDependency
-        ? `WORKER_REQUIRES_MAIN_THREAD:dom-dependency:${messageText}`
-        : messageText,
-    }
-    self.postMessage(failure)
+    postFailure(requestId, error)
   } finally {
     activeRequests.delete(requestId)
+  }
+}
+
+self.onmessage = (event: MessageEvent<ExportRenderWorkerRequest>) => {
+  const message = event.data
+
+  if (message.type === 'cancel') {
+    activeRequests.get(message.requestId)?.abort()
+    return
+  }
+
+  if (message.type === 'start') {
+    void handleStart(message)
   }
 }
 
