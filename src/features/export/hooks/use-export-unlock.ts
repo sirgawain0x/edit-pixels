@@ -12,7 +12,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { formatUnits } from 'viem'
-import { useSmartWalletOps } from '@/hooks/use-smart-wallet-ops'
+import {
+  useSmartWalletOps,
+  type SendOpsResult,
+  type SmartWalletOp,
+} from '@/hooks/use-smart-wallet-ops'
 import { buildCrtvaiTransferOp } from '@/shared/web3/build-metoken-payment-op'
 import { invalidateWalletTokenBalances } from '@/hooks/invalidate-wallet-balances'
 import { useCrtvaiBalance } from '@/hooks/use-crtvai-balance'
@@ -30,6 +34,7 @@ import {
   type ExportUnlockIdentity,
   type ExportUnlockQuote,
   type PendingExportPayment,
+  type StoredExportPermit,
 } from '../utils/export-unlock'
 
 const log = createLogger('ExportUnlock')
@@ -72,6 +77,9 @@ function formatCrtvai(wei: bigint): string {
   return n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 }
 
+/** The wallet's call sender, narrowed to what this hook needs. */
+type SendOps = (ops: SmartWalletOp[]) => Promise<SendOpsResult>
+
 /**
  * Re-price when the held quote is missing or has aged out; the server pins the amount anyway,
  * but paying against a stale number would fail verification for no good reason.
@@ -83,6 +91,43 @@ async function quoteOrRefresh(
 ): Promise<ExportUnlockQuote> {
   if (current && current.expiresAtMs > Date.now()) return current
   return fetchExportUnlockQuote(identity, projectId)
+}
+
+/** Redeem an already-sent payment and keep the permit. Never sends money. */
+async function redeemPendingPayment(
+  identity: ExportUnlockIdentity,
+  projectId: string,
+  payment: PendingExportPayment,
+): Promise<StoredExportPermit> {
+  const permit = await redeemExportUnlockPermit(identity, {
+    projectId,
+    paymentTxHash: payment.txHash,
+    quote: payment.quote,
+  })
+  storeExportPermit(identity.payerAddress, permit)
+  clearPendingPayment(identity.payerAddress, projectId)
+  return permit
+}
+
+/**
+ * Pay for this project's unlock, then redeem it.
+ *
+ * `onSent` runs between the transfer and the redemption, which is the only window where the
+ * money is gone and no permit exists yet — that is why the payment is handed back there for
+ * the caller to record.
+ */
+async function payForUnlock(input: {
+  identity: ExportUnlockIdentity
+  projectId: string
+  quote: ExportUnlockQuote
+  sendOps: SendOps
+  onSent: (payment: PendingExportPayment) => void
+}): Promise<StoredExportPermit> {
+  // Send exactly the pinned minimum: a smaller transfer is one the server will refuse.
+  const { txHash } = await input.sendOps([buildCrtvaiTransferOp(BigInt(input.quote.minCrtvaiWei))])
+  const payment: PendingExportPayment = { txHash, quote: input.quote }
+  input.onSent(payment)
+  return redeemPendingPayment(input.identity, input.projectId, payment)
 }
 
 export function useExportUnlock(options: {
@@ -189,50 +234,30 @@ export function useExportUnlock(options: {
       // Resume first: if a transfer already left the wallet, the only thing left to do is
       // redeem it. Sending another one would charge twice for the same unlock.
       const pending = pendingRef.current ?? readPendingPayment(identity.payerAddress, projectId)
-
+      let permit: StoredExportPermit
       if (pending) {
         setStatus('verifying')
-        const permit = await redeemExportUnlockPermit(identity, {
+        permit = await redeemPendingPayment(identity, projectId, pending)
+      } else {
+        const activeQuote = await quoteOrRefresh(identity, projectId, quote)
+        if (mountedRef.current) setQuote(activeQuote)
+        setStatus('paying')
+        permit = await payForUnlock({
+          identity,
           projectId,
-          paymentTxHash: pending.txHash,
-          quote: pending.quote,
+          quote: activeQuote,
+          sendOps,
+          onSent: (payment) => {
+            // Recorded before the redemption so a failure is resumable rather than a second
+            // payment; the quote proof travels with it so the server can verify the amount.
+            pendingRef.current = payment
+            rememberPendingPayment(identity.payerAddress, projectId, payment)
+            if (mountedRef.current) setHasPendingPayment(true)
+          },
         })
-        storeExportPermit(identity.payerAddress, permit)
-        clearPendingPayment(identity.payerAddress, projectId)
-        pendingRef.current = null
-
-        if (!mountedRef.current) return
-        setExpiresAtMs(permit.expiresAtMs)
-        setHasPendingPayment(false)
-        setStatus('unlocked')
-        invalidateWalletTokenBalances(queryClient, undefined, account)
-        return
       }
 
-      const activeQuote = await quoteOrRefresh(identity, projectId, quote)
-      if (mountedRef.current) setQuote(activeQuote)
-
-      setStatus('paying')
-      // Send exactly the pinned minimum: a smaller transfer is one the server will refuse.
-      const { txHash } = await sendOps([buildCrtvaiTransferOp(BigInt(activeQuote.minCrtvaiWei))])
-
-      // Recorded before the network call, so a failed redemption is resumable rather than a
-      // second payment. The proof travels with it: the server verifies the quoted amount.
-      const payment = { txHash, quote: activeQuote }
-      pendingRef.current = payment
-      rememberPendingPayment(identity.payerAddress, projectId, payment)
-      if (mountedRef.current) setHasPendingPayment(true)
-
-      setStatus('verifying')
-      const permit = await redeemExportUnlockPermit(identity, {
-        projectId,
-        paymentTxHash: txHash,
-        quote: activeQuote,
-      })
-      storeExportPermit(identity.payerAddress, permit)
-      clearPendingPayment(identity.payerAddress, projectId)
       pendingRef.current = null
-
       if (!mountedRef.current) return
       setExpiresAtMs(permit.expiresAtMs)
       setHasPendingPayment(false)

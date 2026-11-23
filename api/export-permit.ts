@@ -58,16 +58,29 @@ interface PermitRequest {
   quote: ExportQuoteProof | null
 }
 
+function readProofString(raw: Record<string, unknown>, key: string): string | null {
+  const value = raw[key]
+  return typeof value === 'string' && value.length > 0 ? value : null
+}
+
+function readProofNumber(raw: Record<string, unknown>, key: string): number | null {
+  const value = raw[key]
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
 function readQuoteProof(value: unknown): ExportQuoteProof | null {
   if (!value || typeof value !== 'object') return null
   const raw = value as Record<string, unknown>
-  const { quoteId, signature, minCrtvaiWei, expiresAtMs, slippageBps } = raw
 
-  if (typeof quoteId !== 'string' || !quoteId) return null
-  if (typeof signature !== 'string' || !signature) return null
-  if (typeof minCrtvaiWei !== 'string' || !/^\d+$/.test(minCrtvaiWei)) return null
-  if (typeof expiresAtMs !== 'number' || !Number.isFinite(expiresAtMs)) return null
-  if (typeof slippageBps !== 'number' || !Number.isFinite(slippageBps)) return null
+  const quoteId = readProofString(raw, 'quoteId')
+  const signature = readProofString(raw, 'signature')
+  const minCrtvaiWei = readProofString(raw, 'minCrtvaiWei')
+  const expiresAtMs = readProofNumber(raw, 'expiresAtMs')
+  const slippageBps = readProofNumber(raw, 'slippageBps')
+
+  if (!quoteId || !signature || !minCrtvaiWei) return null
+  if (expiresAtMs === null || slippageBps === null) return null
+  if (!/^\d+$/.test(minCrtvaiWei)) return null
 
   return { quoteId, signature, minCrtvaiWei, expiresAtMs, slippageBps }
 }
