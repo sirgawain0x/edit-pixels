@@ -139,6 +139,8 @@ export interface TranscriptionJobSummary {
   /** Google operation name, pinned at submit; null until the batch is submitted. */
   operationName: string | null
   txHash: string | null
+  /** Set only while this run holds a free-run credit; null once refunded or priced. */
+  freeRunMonth: string | null
 }
 
 /**
@@ -338,8 +340,9 @@ export async function markTranscriptionJobFailed(jobId: string): Promise<boolean
 export async function recordBatchSubmission(input: {
   jobId: string
   operationName: string
-  txHash: string
-  logIndex: number
+  /** Null for a free run, which is paid for by its monthly allowance, not a tx. */
+  txHash: string | null
+  logIndex: number | null
   submittedAt: number
 }): Promise<boolean> {
   return patchFirestoreDocument({
@@ -349,9 +352,31 @@ export async function recordBatchSubmission(input: {
     fields: {
       status: encodeFirestoreString('running'),
       operationName: encodeFirestoreString(input.operationName),
-      txHash: encodeFirestoreString(input.txHash),
-      logIndex: encodeFirestoreInteger(input.logIndex),
+      txHash: input.txHash ? encodeFirestoreString(input.txHash) : encodeFirestoreNull(),
+      logIndex:
+        input.logIndex === null ? encodeFirestoreNull() : encodeFirestoreInteger(input.logIndex),
       submittedAt: encodeFirestoreInteger(input.submittedAt),
+      updatedAt: encodeFirestoreTimestamp(),
+    },
+  })
+}
+
+/**
+ * Give a free run back.
+ *
+ * The allowance is counted as "records in this month with `freeRunMonth` set", so
+ * clearing it *is* the refund. `freeRunRefundedAt` keeps the audit trail: a record
+ * showing both fields says a credit was granted and then returned, which a bare
+ * null could not distinguish from a priced run.
+ */
+export async function refundFreeRun(jobId: string, atMs = Date.now()): Promise<boolean> {
+  return patchFirestoreDocument({
+    collection: COLLECTION,
+    documentId: jobId,
+    timeoutMs: FIRESTORE_REST_TIMEOUT_MS,
+    fields: {
+      freeRunMonth: encodeFirestoreNull(),
+      freeRunRefundedAt: encodeFirestoreInteger(atMs),
       updatedAt: encodeFirestoreTimestamp(),
     },
   })
@@ -393,5 +418,6 @@ export async function readTranscriptionJob(jobId: string): Promise<Transcription
     submittedSecondsCeil: readFirestoreInteger(fields.submittedSecondsCeil),
     operationName: readFirestoreString(fields.operationName),
     txHash: readFirestoreString(fields.txHash),
+    freeRunMonth: readFirestoreString(fields.freeRunMonth),
   }
 }

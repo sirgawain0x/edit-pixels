@@ -245,6 +245,36 @@ describe('POST /api/transcribe-precision — priced run', () => {
   })
 })
 
+describe('POST /api/transcribe-precision — pricing basis', () => {
+  it('prices on source minutes even when the plan submits more seconds', async () => {
+    // Product decision (2026-11): the quote follows the user's source audio length,
+    // while submitted seconds are pinned only so COGS can be computed later.
+    // Two parts overlapping by 10s: 1210 submitted seconds for 1200s of source.
+    const jobs = await store()
+    vi.mocked(jobs.countFreeRunsThisMonth).mockResolvedValue(5)
+
+    const response = await start({
+      ...BASE,
+      sourceDurationSec: 1200,
+      plan: [
+        { startSec: 0, endSec: 600, overlapSec: 10, forcedCut: false, vadSpeechSeconds: 540 },
+        { startSec: 590, endSec: 1200, overlapSec: 0, forcedCut: false, vadSpeechSeconds: 550 },
+      ],
+    })
+    const body = (await response.json()) as { free: boolean }
+
+    // 20 minutes at $0.0075/min, from the source duration alone.
+    expect(body.free).toBe(false)
+    const quotes = await quoteModule()
+    expect(vi.mocked(quotes.quoteCrtvaiForUsdc6)).toHaveBeenCalledWith(150_000, expect.anything())
+
+    const created = vi.mocked(jobs.createQuotedTranscriptionJob).mock.calls[0]?.[0]
+    expect(created?.estimatedUsdc6).toBe(150_000)
+    // The extra 10 seconds only show up on the cost side.
+    expect(created?.submittedSecondsCeil).toBe(1210)
+  })
+})
+
 describe('POST /api/transcribe-precision — validation', () => {
   it('rejects a source over the hard ceiling without touching the ledger', async () => {
     const response = await start({ ...BASE, sourceDurationSec: 481 * 60, plan: planOf(1200, 2) })

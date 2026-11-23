@@ -164,6 +164,11 @@ export interface TranscriptionJob {
    * without it does not count against the monthly allowance.
    */
   freeRunMonth: string | null
+  /**
+   * When a granted free run was given back, e.g. because the batch failed. A record
+   * with both this and `freeRunMonth` never had its credit spent.
+   */
+  freeRunRefundedAt: number | null
 
   // ── Execution (permanent) ──
   /** Rate pinned at submit time; used to compute cogsUsdc6 from measured seconds. */

@@ -33,6 +33,7 @@ const FINISHED_JOB = {
   submittedSecondsCeil: 1200,
   operationName: OPERATION,
   txHash: '0xfeed',
+  freeRunMonth: null,
 }
 
 const RUNNING_JOB = { ...FINISHED_JOB, status: 'running' as const, reconcileVerdict: null }

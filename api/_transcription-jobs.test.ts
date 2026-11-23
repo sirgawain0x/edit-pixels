@@ -206,6 +206,24 @@ describe('attachQuoteToTranscriptionJob', () => {
   })
 })
 
+describe('refundFreeRun', () => {
+  it('clears the month and stamps the refund, so the credit counts again', async () => {
+    const { patchFirestoreDocument } = await firestore()
+    vi.mocked(patchFirestoreDocument).mockClear()
+    vi.mocked(patchFirestoreDocument).mockResolvedValue(true)
+
+    const { refundFreeRun } = await store()
+    expect(await refundFreeRun('job-free', 1_234_000)).toBe(true)
+
+    const write = vi.mocked(patchFirestoreDocument).mock.calls[0]?.[0]
+    expect(write?.documentId).toBe('job-free')
+    // The allowance is counted off `freeRunMonth`, so clearing it IS the refund.
+    expect(write?.fields.freeRunMonth).toEqual({ nullValue: null })
+    // And the audit keeps the fact that a credit was granted and returned.
+    expect(write?.fields.freeRunRefundedAt).toEqual({ integerValue: '1234000' })
+  })
+})
+
 describe('readTranscriptionJob', () => {
   it('maps a stored record to the poll response shape', async () => {
     const { getFirestoreDocument } = await firestore()
@@ -228,6 +246,7 @@ describe('readTranscriptionJob', () => {
       submittedSecondsCeil: null,
       operationName: null,
       txHash: null,
+      freeRunMonth: null,
     })
   })
 
@@ -296,6 +315,7 @@ describe('readTranscriptionJob', () => {
       submittedSecondsCeil: null,
       operationName: null,
       txHash: null,
+      freeRunMonth: null,
     })
   })
 })

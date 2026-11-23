@@ -22,6 +22,7 @@ vi.mock('./_transcribe-batch.js', () => ({
 vi.mock('./_transcription-jobs.js', () => ({
   readTranscriptionJob: vi.fn(),
   recordBatchSubmission: vi.fn(),
+  refundFreeRun: vi.fn(),
 }))
 
 vi.mock('./flow-billing.js', () => ({
@@ -34,7 +35,11 @@ import {
   verifyGenerativeCrtvaiPayment,
 } from './_pixels-generate-route-auth.js'
 import { submitTranscriptionBatch } from './_transcribe-batch.js'
-import { readTranscriptionJob, recordBatchSubmission } from './_transcription-jobs.js'
+import {
+  readTranscriptionJob,
+  recordBatchSubmission,
+  refundFreeRun,
+} from './_transcription-jobs.js'
 import { POST } from './transcribe-submit.js'
 
 const quotedJob = {
@@ -47,6 +52,7 @@ const quotedJob = {
   submittedSecondsCeil: 1200,
   operationName: null,
   txHash: null,
+  freeRunMonth: null,
 }
 
 function post(body: Record<string, unknown>): Request {
@@ -81,6 +87,9 @@ beforeEach(() => {
 
   vi.mocked(releaseFlowPayment).mockReset()
   vi.mocked(releaseFlowPayment).mockResolvedValue(undefined)
+
+  vi.mocked(refundFreeRun).mockReset()
+  vi.mocked(refundFreeRun).mockResolvedValue(true)
 })
 
 describe('POST /api/transcribe-submit', () => {
@@ -178,6 +187,7 @@ describe('POST /api/transcribe-submit', () => {
     expect(await response.json()).toEqual({
       jobId: JOB,
       operationName: 'projects/1037240986506/locations/us/operations/v2-abc',
+      free: false,
     })
     expect(vi.mocked(submitTranscriptionBatch)).toHaveBeenCalledWith({
       files: [{ uri: OWN_URI }],
@@ -244,6 +254,52 @@ describe('POST /api/transcribe-submit', () => {
     // The tx was consumed before the call, so a failed submit must release it.
     expect(vi.mocked(releaseFlowPayment)).toHaveBeenCalledWith('0xabc', 7)
     expect(vi.mocked(recordBatchSubmission)).not.toHaveBeenCalled()
+  })
+
+  it('submits a free run without a payment, since the allowance is the payment', async () => {
+    vi.mocked(readTranscriptionJob).mockResolvedValue({
+      ...quotedJob,
+      minCrtvaiWei: null,
+      estimatedUsdc6: 0,
+      freeRunMonth: '2025-11',
+    })
+
+    const response = await POST(post({ jobId: JOB, files: [{ uri: OWN_URI }] }))
+    const body = (await response.json()) as Record<string, unknown>
+
+    expect(response.status).toBe(200)
+    expect(body.free).toBe(true)
+    expect(vi.mocked(verifyGenerativeCrtvaiPayment)).not.toHaveBeenCalled()
+    expect(vi.mocked(recordBatchSubmission).mock.calls[0]?.[0]).toMatchObject({
+      jobId: JOB,
+      txHash: null,
+      logIndex: null,
+    })
+  })
+
+  it('hands the free-run credit back when Google refuses a free batch', async () => {
+    vi.mocked(readTranscriptionJob).mockResolvedValue({
+      ...quotedJob,
+      minCrtvaiWei: null,
+      estimatedUsdc6: 0,
+      freeRunMonth: '2025-11',
+    })
+    vi.mocked(submitTranscriptionBatch).mockRejectedValue(new Error('Speech error 400'))
+
+    const response = await POST(post({ jobId: JOB, files: [{ uri: OWN_URI }] }))
+
+    expect(response.status).toBe(502)
+    // A failed run must not eat one of the five: the credit goes back to the allowance.
+    expect(vi.mocked(refundFreeRun)).toHaveBeenCalledWith(JOB)
+    expect(vi.mocked(releaseFlowPayment)).not.toHaveBeenCalled()
+  })
+
+  it('asks for a payment when a priced job arrives without a tx hash', async () => {
+    const response = await POST(post({ jobId: JOB, files: [{ uri: OWN_URI }] }))
+
+    expect(response.status).toBe(400)
+    expect(await response.json()).toMatchObject({ error: 'payment_required' })
+    expect(vi.mocked(submitTranscriptionBatch)).not.toHaveBeenCalled()
   })
 
   it('still reports the batch as running when the record write fails', async () => {
