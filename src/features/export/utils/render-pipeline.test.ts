@@ -79,4 +79,26 @@ describe('export worker startup', () => {
     worker.onmessage!({ data: { type: 'complete', requestId, result: rendered } } as MessageEvent)
     await expect(outcome).resolves.toMatchObject({ renderPath: 'worker' })
   })
+
+  it('carries the watermark decision to the main-thread renderer, absent meaning stamped', async () => {
+    const silentWorkerRender = runRender(args())
+    await vi.advanceTimersByTimeAsync(30000)
+    await silentWorkerRender
+
+    expect(mocks.render.mock.calls[0]?.[0]).toMatchObject({ watermark: true })
+
+    vi.clearAllMocks()
+    mocks.render.mockResolvedValue(rendered)
+    mocks.sign.mockImplementation(({ result }: { result: ClientRenderResult }) => result)
+
+    const paidRender = runRender({
+      ...args(),
+      clientSettings: { watermark: false } as ClientExportSettings,
+    })
+    await vi.advanceTimersByTimeAsync(30000)
+    await paidRender
+
+    // Only a paid removal turns the mark off; the flag is never inferred from absence.
+    expect(mocks.render.mock.calls[0]?.[0]).toMatchObject({ watermark: false })
+  })
 })

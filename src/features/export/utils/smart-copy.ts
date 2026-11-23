@@ -19,6 +19,7 @@ export type SmartCopyReason =
   | 'audio-processing'
   | 'project-mismatch'
   | 'format-mismatch'
+  | 'watermarked'
 
 export interface SmartCopyAssessment {
   eligible: boolean
@@ -283,6 +284,9 @@ function outputMatchesSource(context: SmartCopyContext, source: MediaMetadata): 
 export function assessSmartCopyEligibility(context: SmartCopyContext): SmartCopyAssessment {
   if (context.settings.smartCopy === false) return { eligible: false, reason: 'disabled' }
   if (context.settings.mode !== 'video') return { eligible: false, reason: 'not-video' }
+  // A packet copy re-uses the source frames, so it cannot carry the CRTV mark. Offering the
+  // fast path before the mark is paid off would export a clean file through the back door.
+  if (context.settings.watermark !== false) return { eligible: false, reason: 'watermarked' }
   if (context.inPoint !== null || context.outPoint !== null) {
     return { eligible: false, reason: 'range' }
   }

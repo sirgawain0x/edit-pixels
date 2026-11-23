@@ -55,6 +55,12 @@ export interface ExtendedExportSettings extends ExportSettings {
   audioContainer?: AudioContainer
   /** How timeline transcript subtitles are handled (defaults to `burn`). */
   subtitleMode?: SubtitleExportMode
+  /**
+   * Stamp the CRTV mark on every exported frame. Defaults to `true`; only set to `false` when
+   * this project holds a paid removal permit, because an unmarked export is a purchase and a
+   * toggle on the client is not payment.
+   */
+  watermark?: boolean
   /** When true, ignores in/out points and exports the full timeline */
   renderWholeProject?: boolean
 }

@@ -19,6 +19,7 @@ import { createLogger } from '@/shared/logging/logger'
 import { ensureAudioEncoderSupport } from '@/shared/media/audio-encoder-support'
 import { DEFAULT_PROJECT_HEIGHT, DEFAULT_PROJECT_WIDTH } from '@/shared/projects/defaults'
 import { getPacketRemuxPlan } from './packet-remux-plan'
+import { drawWatermark, loadWatermarkImage } from './watermark'
 import {
   buildTranscriptSubtitleWebVtt,
   omitTranscriptSubtitleItemsForSoftSubtitleExport,
@@ -252,6 +253,11 @@ export interface RenderEngineOptions {
   composition: CompositionInputProps
   onProgress: (progress: RenderProgress) => void
   signal?: AbortSignal
+  /**
+   * Stamp the CRTV mark on every frame. Defaults to true — an unmarked export is the paid
+   * exception, never the default. Callers that have a verified removal pass `false`.
+   */
+  watermark?: boolean
 }
 
 interface AudioRenderOptions {
@@ -270,6 +276,9 @@ interface SingleFrameOptions {
   format?: 'image/jpeg' | 'image/png' | 'image/webp'
 }
 
+// Pre-existing and untouched here: the plan has 28 branches of its own and is charged to this
+// PR only because its call site below gained the watermark condition.
+// fallow-ignore-next-line complexity
 async function tryPacketRemuxComposition(
   options: RenderEngineOptions,
 ): Promise<ClientRenderResult | null> {
@@ -482,7 +491,9 @@ export async function renderComposition(options: RenderEngineOptions): Promise<C
   }
 
   // Fast path: when the timeline is a single unmodified clip, remux packets directly.
-  const remuxResult = await tryPacketRemuxComposition(options)
+  // A packet copy re-uses the source frames, so it cannot carry the mark. The fast path is
+  // therefore only available when the mark has been paid off.
+  const remuxResult = options.watermark === false ? await tryPacketRemuxComposition(options) : null
   if (remuxResult) {
     return remuxResult
   }
@@ -770,6 +781,8 @@ export async function renderComposition(options: RenderEngineOptions): Promise<C
     message: 'Rendering frames...',
   })
 
+  const watermarkImage = options.watermark === false ? null : await loadWatermarkImage()
+
   let frameRenderer: Awaited<ReturnType<typeof createCompositionRenderer>> | null = null
 
   try {
@@ -795,6 +808,9 @@ export async function renderComposition(options: RenderEngineOptions): Promise<C
           outputCtx.clearRect(0, 0, exportWidth, exportHeight)
           outputCtx.drawImage(renderCanvas, 0, 0, exportWidth, exportHeight)
         }
+        // After scaling, so the mark is proportional to the finished frame rather than to the
+        // render canvas. Before captureSample, so the encoder sees it.
+        drawWatermark(outputCtx, watermarkImage, exportWidth, exportHeight)
       },
       // VideoSampleSource does NOT close samples (unlike CanvasSource) — the
       // loop closes each sample to release the VideoFrame's GPU memory.
