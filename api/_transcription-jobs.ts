@@ -23,6 +23,7 @@ import {
   FIRESTORE_REST_TIMEOUT_MS,
   getFirestoreDocument,
   patchFirestoreDocument,
+  readFirestoreInteger,
   readFirestoreString,
   runFirestoreStructuredQuery,
   type FirestoreRestValue,
@@ -105,10 +106,24 @@ export interface StartTranscriptionPrecisionResponse {
 }
 
 /** Output from `GET /api/transcribe-job?jobId=...`. */
+export interface TranscriptionBatchFileView {
+  inputUri: string
+  /** `gs://` result object; the client fetches it through our own proxy. */
+  outputUri: string | null
+  billedSeconds: number | null
+  errorMessage: string | null
+}
+
 export interface GetTranscriptionJobResponse {
   jobId: string
   status: TranscriptionJobStatus
   reconcileVerdict: TranscriptionReconcileVerdict | null
+  /** Live progress from the Google operation, only while the job is running. */
+  progressPercent?: number
+  /** Per-file results once the operation finished. */
+  files?: TranscriptionBatchFileView[]
+  totalBilledSeconds?: number | null
+  errorMessage?: string
 }
 
 /** What a poll needs from the stored record; nothing else is read on the hot path. */
@@ -116,6 +131,14 @@ export interface TranscriptionJobSummary {
   accountId: string
   status: TranscriptionJobStatus
   reconcileVerdict: TranscriptionReconcileVerdict | null
+  quoteId: string | null
+  /** Minimum CRTVAI the quote demanded; the payment is verified against it. */
+  minCrtvaiWei: string | null
+  estimatedUsdc6: number | null
+  submittedSecondsCeil: number | null
+  /** Google operation name, pinned at submit; null until the batch is submitted. */
+  operationName: string | null
+  txHash: string | null
 }
 
 /**
@@ -307,6 +330,33 @@ export async function markTranscriptionJobFailed(jobId: string): Promise<boolean
   })
 }
 
+/**
+ * Pin the batch submission onto the record: the operation name is the only handle
+ * to that job's progress and billing from here on, and the tx hash is what a later
+ * reconciliation uses to prove the user paid for it.
+ */
+export async function recordBatchSubmission(input: {
+  jobId: string
+  operationName: string
+  txHash: string
+  logIndex: number
+  submittedAt: number
+}): Promise<boolean> {
+  return patchFirestoreDocument({
+    collection: COLLECTION,
+    documentId: input.jobId,
+    timeoutMs: FIRESTORE_REST_TIMEOUT_MS,
+    fields: {
+      status: encodeFirestoreString('running'),
+      operationName: encodeFirestoreString(input.operationName),
+      txHash: encodeFirestoreString(input.txHash),
+      logIndex: encodeFirestoreInteger(input.logIndex),
+      submittedAt: encodeFirestoreInteger(input.submittedAt),
+      updatedAt: encodeFirestoreTimestamp(),
+    },
+  })
+}
+
 function asJobStatus(value: string | null): TranscriptionJobStatus | null {
   return value && (JOB_STATUSES as readonly string[]).includes(value)
     ? (value as TranscriptionJobStatus)
@@ -337,5 +387,11 @@ export async function readTranscriptionJob(jobId: string): Promise<Transcription
     accountId,
     status,
     reconcileVerdict: asReconcileVerdict(readFirestoreString(fields.reconcileVerdict)),
+    quoteId: readFirestoreString(fields.quoteId),
+    minCrtvaiWei: readFirestoreString(fields.minCrtvaiWei),
+    estimatedUsdc6: readFirestoreInteger(fields.estimatedUsdc6),
+    submittedSecondsCeil: readFirestoreInteger(fields.submittedSecondsCeil),
+    operationName: readFirestoreString(fields.operationName),
+    txHash: readFirestoreString(fields.txHash),
   }
 }

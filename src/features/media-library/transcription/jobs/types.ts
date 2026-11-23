@@ -174,6 +174,8 @@ export interface TranscriptionJob {
   quoteCreatedAtMs: number
   /** Absolute deadline by which a retry must be started. Pinned at submit. */
   settleByMs: number
+  /** When the batch was actually handed to Google; null while still quoting. */
+  submittedAt: number | null
   /** Observed p95 operation round time + buffer, pinned at submit so the clock wall is stable. */
   retryClock: TranscriptionRetryClock
   /** Sum of operation.measuredBilledSeconds across all operations (initial + retries). */
@@ -248,11 +250,25 @@ export interface StartTranscriptionPrecisionResponse {
   free: boolean
 }
 
+/** One BatchRecognize file result, as the poll reports it. */
+export interface TranscriptionBatchFileView {
+  inputUri: string
+  /** Stored result object; fetched through our own proxy, never handed to the client raw. */
+  outputUri: string | null
+  billedSeconds: number | null
+  errorMessage: string | null
+}
+
 /** Output from `GET /api/transcribe-job/[jobId]`. */
 export interface GetTranscriptionJobResponse {
   jobId: string
   status: TranscriptionJobStatus
   reconcileVerdict: TranscriptionReconcileVerdict | null
+  /** Google operation progress. The stored row keeps saying `running` until reconcile. */
+  progressPercent?: number
+  /** Per-file results, present once the operation finished. */
+  files?: TranscriptionBatchFileView[]
+  totalBilledSeconds?: number | null
   errorMessage?: string
   transcript?: {
     text: string

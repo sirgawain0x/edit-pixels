@@ -1,13 +1,47 @@
 /**
  * GET /api/transcribe-job?jobId=...
  *
- * Polls the persisted `transcription_jobs` record and returns status.
- * Never runs reconciliation here — it only reads already-persisted state, so a
- * poll cannot change what a job was billed.
+ * Reports a transcription job's state. While the batch is at Google this polls the
+ * operation so the client can show real progress; once it finishes it returns the
+ * per-file result URIs, which the client fetches and parses.
+ *
+ * Nothing is written here — a poll must not mutate billing state. `status` is
+ * therefore a *projection*: it reads `completed` as soon as Google says so, while
+ * the stored row still says `running` until the reconcile step pins the numbers.
  */
 
+import { pollTranscriptionOperation } from './_transcribe-batch.js'
 import { authenticateGenerativeGet } from './_pixels-generate-route-auth.js'
 import { readTranscriptionJob, type GetTranscriptionJobResponse } from './_transcription-jobs.js'
+
+async function projectRunningJob(job: {
+  operationName: string | null
+}): Promise<Partial<GetTranscriptionJobResponse>> {
+  if (!job.operationName) return {}
+  try {
+    const operation = await pollTranscriptionOperation(job.operationName)
+    if (operation.status === 'completed') {
+      return {
+        status: 'completed',
+        progressPercent: 100,
+        files: operation.files,
+        totalBilledSeconds: operation.totalBilledSeconds,
+      }
+    }
+    if (operation.status === 'failed') {
+      return {
+        status: 'failed',
+        progressPercent: operation.progressPercent,
+        errorMessage: operation.errorMessage ?? 'batch failed',
+      }
+    }
+    return { progressPercent: operation.progressPercent }
+  } catch (error) {
+    // A poll failure is not a job failure: report it alongside the stored status.
+    console.error('transcription operation poll failed', error)
+    return { errorMessage: 'operation poll failed' }
+  }
+}
 
 export async function GET(request: Request): Promise<Response> {
   const { searchParams } = new URL(request.url)
@@ -27,11 +61,12 @@ export async function GET(request: Request): Promise<Response> {
     return Response.json({ error: 'job not found' }, { status: 404 })
   }
 
-  const response: GetTranscriptionJobResponse = {
+  const base: GetTranscriptionJobResponse = {
     jobId,
     status: job.status,
     reconcileVerdict: job.reconcileVerdict,
   }
+  const projected = job.status === 'running' ? await projectRunningJob(job) : {}
 
-  return Response.json(response)
+  return Response.json({ ...base, ...projected })
 }

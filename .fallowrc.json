@@ -47,6 +47,9 @@
       "**/*.test.tsx",
       "scripts/check-fallow-*.mjs",
       "scripts/check-api-src-imports.mjs",
+      // Build config, not product code: the chunk map is a declarative table of
+      // module globs, so branch count says nothing about its risk.
+      "vite.config.ts",
       // Billing math is covered by its own node:test suite. `node --test` emits no
       // coverage file, and with no coverage data CRAP degenerates to cyc^2 + cyc,
       // so every function with cyclomatic >= 5 reads as a violation regardless of
@@ -191,6 +194,10 @@
     },
     {
       "file": "api/transcribe-precision.ts",
+      "exports": ["*"]
+    },
+    {
+      "file": "api/transcribe-submit.ts",
       "exports": ["*"]
     },
     {

@@ -9,6 +9,8 @@ vi.mock('./_firestore-rest.js', () => ({
   encodeFirestoreTimestamp: (iso = '2026-11-22T00:00:00.000Z') => ({ timestampValue: iso }),
   readFirestoreString: (value?: { stringValue?: string } | null) =>
     value && typeof value.stringValue === 'string' ? value.stringValue : null,
+  readFirestoreInteger: (value?: { integerValue?: string } | null) =>
+    value && typeof value.integerValue === 'string' ? Number(value.integerValue) : null,
   patchFirestoreDocument: vi.fn(async () => true),
   getFirestoreDocument: vi.fn(async () => null),
   runFirestoreStructuredQuery: vi.fn(async () => []),
@@ -220,6 +222,38 @@ describe('readTranscriptionJob', () => {
       accountId: ACCOUNT,
       status: 'completed',
       reconcileVerdict: 'exact',
+      quoteId: null,
+      minCrtvaiWei: null,
+      estimatedUsdc6: null,
+      submittedSecondsCeil: null,
+      operationName: null,
+      txHash: null,
+    })
+  })
+
+  it('reads the quote and submission fields the submit route verifies against', async () => {
+    const { getFirestoreDocument } = await firestore()
+    vi.mocked(getFirestoreDocument).mockResolvedValue({
+      fields: {
+        accountId: { stringValue: ACCOUNT },
+        status: { stringValue: 'running' },
+        quoteId: { stringValue: 'quote-9' },
+        minCrtvaiWei: { stringValue: '950000000000000000' },
+        estimatedUsdc6: { integerValue: '150000' },
+        submittedSecondsCeil: { integerValue: '1200' },
+        operationName: { stringValue: 'projects/1/locations/us/operations/abc' },
+        txHash: { stringValue: '0xfeed' },
+      },
+    })
+
+    const { readTranscriptionJob } = await store()
+    expect(await readTranscriptionJob('job-1')).toMatchObject({
+      quoteId: 'quote-9',
+      minCrtvaiWei: '950000000000000000',
+      estimatedUsdc6: 150_000,
+      submittedSecondsCeil: 1_200,
+      operationName: 'projects/1/locations/us/operations/abc',
+      txHash: '0xfeed',
     })
   })
 
@@ -256,6 +290,12 @@ describe('readTranscriptionJob', () => {
       accountId: ACCOUNT,
       status: 'running',
       reconcileVerdict: null,
+      quoteId: null,
+      minCrtvaiWei: null,
+      estimatedUsdc6: null,
+      submittedSecondsCeil: null,
+      operationName: null,
+      txHash: null,
     })
   })
 })
