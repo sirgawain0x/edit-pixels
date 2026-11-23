@@ -77,6 +77,9 @@
     },
     "api/transcribe-part.ts": {
       "maxDuration": 300
+    },
+    "api/export-permit.ts": {
+      "maxDuration": 30
     }
   },
   "rewrites": [
