@@ -666,6 +666,7 @@ class MediaTranscriptionService {
         submit: ({ jobId, txHash, files }) => submitPrecisionJob({ jobId, txHash, files }),
         transcribePart: ({ jobId, partIndex, uri }) =>
           requestTranscriptionPart({ jobId, partIndex, uri }),
+        shouldStop: () => job.cancelled,
         onProgress: (stage, fraction) =>
           notify({ stage: this.cloudStage(stage), progress: fraction }),
       },

@@ -266,6 +266,29 @@ describe('runPrecisionJob', () => {
     expect(vi.mocked(deps.upload)).not.toHaveBeenCalled()
   })
 
+  it('stops between parts when the caller cancels, instead of paying for the rest', async () => {
+    // Cancelled after the first part: the remaining requests are money we would spend for a
+    // transcript the caller has already thrown away.
+    let asked = 0
+    const { deps } = makeDeps({
+      shouldStop: () => asked >= 1,
+      transcribePart: vi.fn(async ({ partIndex }: { partIndex: number }) => {
+        asked += 1
+        return {
+          segments: [
+            { speakerLabel: null, text: 'a', words: words(['a', partIndex, partIndex + 1]) },
+          ],
+        }
+      }),
+    })
+
+    const run = runPrecisionJob(deps, { mediaId: 'media-1', model: MODEL })
+
+    await expect(run).rejects.toThrow('Transcription cancelled')
+    expect(vi.mocked(deps.transcribePart)).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(deps.save)).not.toHaveBeenCalled()
+  })
+
   it('reports the stage it is in, so the dialog can show something honest', async () => {
     const { deps, stages } = makeDeps()
 

@@ -9,6 +9,7 @@
  * Every side effect arrives as a dependency, so the whole sequence — including the two ways it
  * can fail and be retried — is testable without a wallet, a network, or a browser.
  */
+import { TRANSCRIPTION_CANCELLED_MESSAGE } from '@/shared/utils/transcription-cancellation'
 import type { MediaTranscript, MediaTranscriptModel } from '../../../../types/storage'
 import {
   mergePartTranscripts,
@@ -62,6 +63,11 @@ export interface PrecisionDeps {
   upload: (jobId: string, parts: PrecisionPart[]) => Promise<LandedPart[]>
   submit: (input: { jobId: string; txHash: string | null; files: LandedPart[] }) => Promise<void>
   transcribePart: (input: { jobId: string; partIndex: number; uri: string }) => Promise<PartResult>
+  /**
+   * Polled before each part. Cancelling must stop the loop, because every part is a request
+   * that spends money: finishing the run and discarding it bills the user for nothing.
+   */
+  shouldStop?: () => boolean
   /** Overrides the default `saveCloudTranscript` write, for tests. */
   save?: (merged: MergedCloudTranscript, model: MediaTranscriptModel) => Promise<MediaTranscript>
   onProgress?: (stage: PrecisionStage, fraction: number) => void
@@ -150,6 +156,10 @@ async function transcribeParts(
   const results: CloudPartTranscript[] = []
 
   for (const [position, file] of files.entries()) {
+    // Between parts, not mid-request: a part already in flight cannot be recalled, but the
+    // ones that have not been asked for yet never are.
+    if (deps.shouldStop?.()) throw new Error(TRANSCRIPTION_CANCELLED_MESSAGE)
+
     deps.onProgress?.('transcribing', position / files.length)
     const part = parts[file.index]
     if (!part) throw new PrecisionPartError(file.index)
