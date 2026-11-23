@@ -82,6 +82,63 @@ export async function consumePaymentTxLog(
   return { ok: true }
 }
 
+/**
+ * Read what a consumed payment log was spent on, if anything. Used by flows that may re-issue
+ * the same receipt for the same purchase rather than re-charging.
+ */
+export async function readPaymentTxLog(
+  txHash: string,
+  logIndex: number,
+): Promise<{ wallet: string; purpose: string; logIndex: number } | null> {
+  const normalized = normalizeTxHash(txHash)
+  if (!normalized || !Number.isInteger(logIndex) || logIndex < 0) return null
+  if (!isRedisConfigured()) return null
+
+  const redis = await getRedis()
+  if (!redis) return null
+
+  const raw = await redis.get(logConsumptionKey(normalized, logIndex))
+  if (typeof raw !== 'string') return null
+
+  try {
+    const parsed = JSON.parse(raw) as { wallet?: unknown; purpose?: unknown; logIndex?: unknown }
+    if (typeof parsed.wallet !== 'string' || typeof parsed.purpose !== 'string') return null
+    return {
+      wallet: parsed.wallet,
+      purpose: parsed.purpose,
+      logIndex: typeof parsed.logIndex === 'number' ? parsed.logIndex : logIndex,
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Spend a payment log once — or re-issue it to the *same* payer for the *same* purpose.
+ *
+ * A plain `consumePaymentTxLog` is right when the thing being bought is consumed immediately
+ * (a render, a batch). It is wrong for a purchase the buyer is expected to keep, such as a
+ * watermark removal whose certificate lives in the browser: losing that certificate must not
+ * mean paying twice, and the server can re-sign from the transfer it already verified. The
+ * purpose carries the project id, so "same purpose" cannot be widened to a second project.
+ */
+export async function claimPaymentTxLogForPurpose(
+  txHash: string,
+  logIndex: number,
+  meta: { wallet: string; purpose: string },
+): Promise<ConsumePaymentResult> {
+  const consumed = await consumePaymentTxLog(txHash, logIndex, meta)
+  if (consumed.ok) return consumed
+  if (consumed.reason !== 'Payment transaction already used') return consumed
+
+  const existing = await readPaymentTxLog(txHash, logIndex)
+  const sameClaim =
+    existing !== null &&
+    existing.wallet.toLowerCase() === meta.wallet.toLowerCase() &&
+    existing.purpose === meta.purpose
+  return sameClaim ? { ok: true } : consumed
+}
+
 /** @deprecated Prefer `consumePaymentTxLog` with the verified Transfer log index. */
 export async function consumePaymentTxHash(
   txHash: string,

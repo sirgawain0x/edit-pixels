@@ -73,6 +73,9 @@ function context(overrides: Partial<SmartCopyContext> = {}): SmartCopyContext {
       fps: 30,
       videoBitrate: 3_000_000,
       smartCopy: true,
+      // An unchanged clip can only be copied byte-for-byte when the mark is paid off; these
+      // tests are about the copy rules, so they start from an unlocked project.
+      watermark: false,
     },
     tracks: [track],
     items: [video],
@@ -89,6 +92,20 @@ function context(overrides: Partial<SmartCopyContext> = {}): SmartCopyContext {
 }
 
 describe('smart copy eligibility', () => {
+  it('refuses the packet-copy path while the mark is still stamped', () => {
+    // A byte-for-byte copy cannot carry the CRTV mark, so it must not be offered before the
+    // removal is paid for — otherwise the paywall is bypassed by a single-clip export.
+    expect(
+      assessSmartCopyEligibility(context({ settings: { ...context().settings, watermark: true } }))
+        .reason,
+    ).toBe('watermarked')
+    expect(
+      assessSmartCopyEligibility(
+        context({ settings: { ...context().settings, watermark: undefined } }),
+      ).reason,
+    ).toBe('watermarked')
+  })
+
   it('accepts an unchanged full-source clip with matching output properties', () => {
     expect(assessSmartCopyEligibility(context())).toMatchObject({
       eligible: true,

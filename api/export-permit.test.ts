@@ -17,12 +17,17 @@ vi.mock('./_metoken-curve-quote.js', () => ({
   quoteCrtvaiForUsdc6: vi.fn(),
 }))
 
+vi.mock('./_payment-ledger.js', () => ({
+  claimPaymentTxLogForPurpose: vi.fn(),
+}))
+
 import { checkPixelsRateLimits } from './_rate-limit.js'
 import {
   authenticateGenerativePost,
   verifyGenerativeCrtvaiPayment,
 } from './_pixels-generate-route-auth.js'
 import { quoteCrtvaiForUsdc6 } from './_metoken-curve-quote.js'
+import { claimPaymentTxLogForPurpose } from './_payment-ledger.js'
 import { EXPORT_UNLOCK_USDC6, verifyExportPermit } from './_export-permit.js'
 import { POST } from './export-permit.js'
 
@@ -57,6 +62,9 @@ beforeEach(() => {
 
   vi.mocked(verifyGenerativeCrtvaiPayment).mockReset()
   vi.mocked(verifyGenerativeCrtvaiPayment).mockResolvedValue({ ok: true, logIndex: 7 })
+
+  vi.mocked(claimPaymentTxLogForPurpose).mockReset()
+  vi.mocked(claimPaymentTxLogForPurpose).mockResolvedValue({ ok: true })
 })
 
 afterEach(() => {
@@ -126,6 +134,29 @@ describe('POST /api/export-permit', () => {
     expect(
       verifyExportPermit(body.permit, { accountId: ACCOUNT, projectId: 'project-2' }),
     ).toMatchObject({ ok: false, reason: 'wrong_project' })
+  })
+
+  it('spends the transfer once, so one payment cannot unlock a second project', async () => {
+    await POST(post({ projectId: PROJECT, paymentTxHash: '0xfeed' }))
+
+    expect(vi.mocked(claimPaymentTxLogForPurpose).mock.calls[0]).toEqual([
+      '0xfeed',
+      7,
+      { wallet: ACCOUNT, purpose: `export_unlock:${PROJECT}` },
+    ])
+
+    // The ledger refuses the second claim: same dollars, different project.
+    vi.mocked(claimPaymentTxLogForPurpose).mockResolvedValue({
+      ok: false,
+      reason: 'Payment transaction already used',
+    })
+
+    const response = await POST(post({ projectId: 'project-2', paymentTxHash: '0xfeed' }))
+    expect(response.status).toBe(402)
+    expect(await response.json()).toMatchObject({
+      error: 'payment_not_verified',
+      reason: 'Payment transaction already used',
+    })
   })
 
   it('returns 503 rather than an unsigned permit when signing is not configured', async () => {

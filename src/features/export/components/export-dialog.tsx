@@ -81,6 +81,9 @@ import {
   type ClientAudioContainer,
 } from '../utils/client-renderer'
 import { ExportPreviewPlayer } from './export-preview-player'
+import { ExportWatermarkCard } from './export-watermark-card'
+import { useExportUnlock } from '../hooks/use-export-unlock'
+import { useProjectStore } from '../deps/projects'
 import { useBrokenMediaIds, useMediaMetadataById } from '../deps/media-library'
 import { assessSmartCopyEligibility } from '../utils/smart-copy'
 import { resolveVideoBitrate } from '../utils/video-bitrate'
@@ -360,6 +363,14 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
   const [renderWholeProject, setRenderWholeProject] = useState(false)
   const wasOpenRef = useRef(false)
 
+  // Watermark removal is bought per project, and the permit is bound to that id.
+  const projectId = useProjectStore((s) => s.currentProject?.id)
+  const unlock = useExportUnlock({ projectId, enabled: open && exportMode === 'video' })
+  // `null` means "follow the purchase": a paid project exports clean until the user opts back
+  // into the mark. A real boolean is the user's explicit choice and wins.
+  const [stampPreference, setStampPreference] = useState<boolean | null>(null)
+  const stampWatermark = stampPreference ?? !unlock.unlocked
+
   // Calculate timeline duration from items
   const timelineDurationFrames = useMemo(() => {
     if (items.length === 0) return 0
@@ -458,11 +469,40 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
     ],
   )
 
+  /**
+   * The one extended-settings object every consumer reads: the live preview mapping, the
+   * preflight assessment, and the settings handed to the render pipeline. Built once so the
+   * watermark decision cannot drift between "what preflight predicted" and "what was rendered".
+   */
+  const exportSettings = useMemo<ExtendedExportSettings>(
+    () => ({
+      ...settings,
+      sourceVideo,
+      mode: exportMode,
+      videoContainer: exportMode === 'video' ? videoContainer : undefined,
+      audioContainer: exportMode === 'audio' ? audioContainer : undefined,
+      subtitleMode: exportMode === 'video' ? effectiveSubtitleMode : undefined,
+      renderWholeProject,
+      // Audio has no frame to mark, so the flag is meaningless there rather than misleading.
+      watermark: exportMode === 'video' ? stampWatermark : false,
+    }),
+    [
+      audioContainer,
+      effectiveSubtitleMode,
+      exportMode,
+      renderWholeProject,
+      settings,
+      sourceVideo,
+      stampWatermark,
+      videoContainer,
+    ],
+  )
+
   const previewClientSettings = useMemo(() => {
-    const mapped = mapToClientSettings({ ...settings, sourceVideo }, fps)
+    const mapped = mapToClientSettings(exportSettings, fps)
     mapped.container = videoContainer
     return mapped
-  }, [fps, settings, sourceVideo, videoContainer])
+  }, [exportSettings, fps, videoContainer])
 
   const smartCopyAssessment = useMemo(
     () =>
@@ -633,15 +673,7 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
 
   // Assemble the extended settings the render pipeline expects from the dialog
   // state. Shared by "Export now" and the "Add to queue" actions.
-  const buildExtendedSettings = (): ExtendedExportSettings => ({
-    ...settings,
-    sourceVideo,
-    mode: exportMode,
-    videoContainer: exportMode === 'video' ? videoContainer : undefined,
-    audioContainer: exportMode === 'audio' ? audioContainer : undefined,
-    subtitleMode: exportMode === 'video' ? effectiveSubtitleMode : undefined,
-    renderWholeProject,
-  })
+  const buildExtendedSettings = (): ExtendedExportSettings => exportSettings
 
   // Start export
   const handleStartExport = async () => {
@@ -764,6 +796,8 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
       setAudioContainer('mp3')
       setSubtitleMode('burn')
       setRenderWholeProject(false)
+      // Follow the project's purchase state again rather than last session's toggle.
+      setStampPreference(null)
       setSettings({
         codec: getDefaultCodecForFormat('mp4'),
         quality: 'medium',
@@ -896,15 +930,7 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
     }
 
     let cancelled = false
-    const settingsForPreflight: ExtendedExportSettings = {
-      ...settings,
-      sourceVideo,
-      mode: exportMode,
-      videoContainer: exportMode === 'video' ? videoContainer : undefined,
-      audioContainer: exportMode === 'audio' ? audioContainer : undefined,
-      subtitleMode: exportMode === 'video' ? effectiveSubtitleMode : undefined,
-      renderWholeProject,
-    }
+    const settingsForPreflight: ExtendedExportSettings = exportSettings
 
     void assessExportPreflight({
       settings: settingsForPreflight,
@@ -927,6 +953,7 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
     effectiveSubtitleMode,
     exportMode,
     exportRange.duration,
+    exportSettings,
     fps,
     hasTranscriptSubtitles,
     open,
@@ -1156,6 +1183,23 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
                 </div>
 
                 <ExportPreflightPanel preflight={preflight} />
+
+                {exportMode === 'video' && (
+                  <ExportWatermarkCard
+                    status={unlock.status}
+                    unlocked={unlock.unlocked}
+                    stamped={stampWatermark}
+                    priceUsd={unlock.quote?.priceUsd ?? null}
+                    crtvaiCost={unlock.crtvaiCost}
+                    balanceFormatted={unlock.balanceFormatted}
+                    blockedReason={unlock.blockedReason}
+                    error={unlock.error}
+                    expiresAtMs={unlock.expiresAtMs}
+                    onPay={() => void unlock.unlock()}
+                    onRetry={unlock.refreshQuote}
+                    onStampChange={setStampPreference}
+                  />
+                )}
               </div>
 
               <div className="space-y-5 min-w-0">

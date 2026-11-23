@@ -44,6 +44,8 @@ export interface ClientExportSettings {
   videoBitrate?: number
   bitrateMode?: 'constant' | 'variable'
   smartCopy?: boolean
+  /** Stamp the CRTV mark on video frames. Defaults to on; see `ExportSettings.watermark`. */
+  watermark?: boolean
   sampleRate?: number // For audio exports (default: 48000)
   subtitleMode?: SubtitleExportMode
 }
@@ -194,6 +196,8 @@ export function mapToClientSettings(
     }),
     bitrateMode: settings.rateControl === 'constant' ? 'constant' : 'variable',
     smartCopy: settings.smartCopy ?? true,
+    // Absent means stamped: an unmarked export is the paid exception, never the default.
+    watermark: ('watermark' in settings ? settings.watermark : undefined) ?? true,
     audioBitrate: 192_000, // 192 kbps
     subtitleMode,
   }

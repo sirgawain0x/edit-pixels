@@ -261,7 +261,14 @@ function renderOnMainThread(
   if (exportMode === 'audio') {
     return renderAudioOnly({ settings: clientSettings, composition, onProgress, signal })
   }
-  return renderComposition({ settings: clientSettings, composition, onProgress, signal })
+  // The mark decision rides on the settings, so worker and main-thread renders agree.
+  return renderComposition({
+    settings: clientSettings,
+    composition,
+    onProgress,
+    signal,
+    watermark: clientSettings.watermark ?? true,
+  })
 }
 
 /**
