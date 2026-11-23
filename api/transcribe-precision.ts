@@ -36,6 +36,12 @@ const FREE_MINUTES = 10
 const QUOTE_EXPIRY_MS = 75_000
 const SETTLEMENT_GRACE_MS = 825_000
 
+interface PricedRun {
+  usdc6: number
+  free: boolean
+  freeRunMonth: string | null
+}
+
 function estimateUsdc6(
   sourceMinutes: number,
   freeRunsUsed: number,
@@ -61,31 +67,60 @@ function isValidPlan(
   })
 }
 
+/**
+ * The rejection this request deserves, or null when it is well formed. Ordered
+ * coarse-to-fine so the client gets the actionable reason: shape, then the
+ * source ceiling, then the plan itself.
+ */
+function planRejection(req: StartTranscriptionPrecisionRequest): string | null {
+  if (!req.mediaId || typeof req.sourceDurationSec !== 'number' || !Array.isArray(req.plan)) {
+    return 'invalid request'
+  }
+  // Product ceiling is on source duration; price/cap are on submitted seconds.
+  if (req.sourceDurationSec / 60 > TRANSCRIPTION_MAX_AUDIO_MINUTES) return 'over hard cap'
+  if (!isValidPlan(req.plan, req.sourceDurationSec)) return 'invalid plan'
+  return null
+}
+
 /** Seconds Google will bill for: the sum of the real cut durations, rounded up once. */
 function submittedSecondsCeilOf(plan: StartTranscriptionPrecisionRequest['plan']): number {
   return Math.ceil(plan.reduce((sum, p) => sum + (p.endSec - p.startSec), 0))
 }
 
+/** Price the run, spending one free short-run allowance when the account still has any. */
+async function priceRun(input: {
+  accountId: string
+  sourceDurationSec: number
+  quoteCreatedAtMs: number
+}): Promise<PricedRun> {
+  const monthKey = transcriptionMonthKey(input.quoteCreatedAtMs)
+  const freeRunsUsed = await countFreeRunsThisMonth({
+    accountId: input.accountId,
+    monthKey,
+    cap: FREE_RUNS_MONTHLY,
+  })
+  const { usdc6, free } = estimateUsdc6(input.sourceDurationSec / 60, freeRunsUsed)
+  return { usdc6, free, freeRunMonth: free ? monthKey : null }
+}
+
 async function startJob(input: {
   accountId: string
   req: StartTranscriptionPrecisionRequest
+  priced: PricedRun
   quoteCreatedAtMs: number
   settleByMs: number
-  freeRunMonth: string | null
-  usdc6: number
-  submittedSecondsCeil: number
 }): Promise<{ jobId: string; created: boolean }> {
   const jobId = randomUUID()
   const created = await createQuotedTranscriptionJob({
     jobId,
     accountId: input.accountId,
     mediaId: input.req.mediaId,
-    estimatedUsdc6: input.usdc6,
-    submittedSecondsCeil: input.submittedSecondsCeil,
+    estimatedUsdc6: input.priced.usdc6,
+    submittedSecondsCeil: submittedSecondsCeilOf(input.req.plan),
     plannedParts: input.req.plan.length,
     quoteCreatedAtMs: input.quoteCreatedAtMs,
     settleByMs: input.settleByMs,
-    freeRunMonth: input.freeRunMonth,
+    freeRunMonth: input.priced.freeRunMonth,
   })
   return { jobId, created }
 }
@@ -102,61 +137,45 @@ export async function POST(request: Request): Promise<Response> {
   if (identityLimited) return identityLimited
 
   const req = body as unknown as StartTranscriptionPrecisionRequest
-  if (!req.mediaId || typeof req.sourceDurationSec !== 'number' || !Array.isArray(req.plan)) {
-    return Response.json({ error: 'invalid request' }, { status: 400 })
-  }
-
-  // Product ceiling is on source duration; price/cap are on submitted seconds.
-  if (req.sourceDurationSec / 60 > TRANSCRIPTION_MAX_AUDIO_MINUTES) {
-    return Response.json({ error: 'over hard cap' }, { status: 400 })
-  }
-
-  if (!isValidPlan(req.plan, req.sourceDurationSec)) {
-    return Response.json({ error: 'invalid plan' }, { status: 400 })
-  }
+  const rejection = planRejection(req)
+  if (rejection) return Response.json({ error: rejection }, { status: 400 })
 
   const accountId = signer.toLowerCase()
   const quoteCreatedAtMs = Date.now()
-  const monthKey = transcriptionMonthKey(quoteCreatedAtMs)
-  const freeRunsUsed = await countFreeRunsThisMonth({
-    accountId,
-    monthKey,
-    cap: FREE_RUNS_MONTHLY,
-  })
-
-  const sourceMinutes = req.sourceDurationSec / 60
-  const { usdc6, free } = estimateUsdc6(sourceMinutes, freeRunsUsed)
-  const submittedSecondsCeil = submittedSecondsCeilOf(req.plan)
   const settleByMs = quoteCreatedAtMs + QUOTE_EXPIRY_MS + SETTLEMENT_GRACE_MS
+  const priced = await priceRun({
+    accountId,
+    sourceDurationSec: req.sourceDurationSec,
+    quoteCreatedAtMs,
+  })
 
   const { jobId, created } = await startJob({
     accountId,
     req,
+    priced,
     quoteCreatedAtMs,
     settleByMs,
-    freeRunMonth: free ? monthKey : null,
-    usdc6,
-    submittedSecondsCeil,
   })
   if (!created) {
-    console.error('transcription_jobs record write failed', { jobId, accountId, free })
+    console.error('transcription_jobs record write failed', {
+      jobId,
+      accountId,
+      free: priced.free,
+    })
   }
 
-  if (free) {
+  if (priced.free) {
     // A free run is only safe to grant once its record landed: the record is the
     // free-run counter, so granting without it hands out unlimited free audio.
     if (!created) {
       return Response.json({ error: 'ledger_unavailable' }, { status: 503 })
     }
-    const response: StartTranscriptionPrecisionResponse = {
-      jobId,
-      free: true,
-    }
+    const response: StartTranscriptionPrecisionResponse = { jobId, free: true }
     return Response.json(response)
   }
 
   try {
-    const quote = await quoteCrtvaiForUsdc6(usdc6, { tier: 'transcribe', quoteId: jobId })
+    const quote = await quoteCrtvaiForUsdc6(priced.usdc6, { tier: 'transcribe', quoteId: jobId })
 
     const attached = await attachQuoteToTranscriptionJob({
       jobId,

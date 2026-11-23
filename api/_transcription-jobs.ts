@@ -182,6 +182,72 @@ export async function countFreeRunsThisMonth(input: {
   return documents.length
 }
 
+/** Everything the record pins at quote time; the submit path fills in the rest. */
+export interface QuotedJobInput {
+  jobId: string
+  accountId: string
+  mediaId: string
+  estimatedUsdc6: number
+  submittedSecondsCeil: number
+  plannedParts: number
+  quoteCreatedAtMs: number
+  settleByMs: number
+  /** Set only when this run was granted free; null for priced runs. */
+  freeRunMonth: string | null
+}
+
+/** The settlement clock, nested so a reader cannot mistake it for a top-level field. */
+function retryClockFields(input: QuotedJobInput): FirestoreRestValue {
+  return encodeFirestoreMap({
+    quoteCreatedAtMs: encodeFirestoreInteger(input.quoteCreatedAtMs),
+    settleByMs: encodeFirestoreInteger(input.settleByMs),
+    maxOperationRoundMs: encodeFirestoreInteger(MAX_OPERATION_ROUND_MS),
+    settleBufferMs: encodeFirestoreInteger(SETTLE_BUFFER_MS),
+  })
+}
+
+function quotedJobFields(input: QuotedJobInput): Record<string, FirestoreRestValue> {
+  const abortLimitUsdc6 = Math.round(input.estimatedUsdc6 * ABORT_RATIO)
+  return {
+    // ── Identity ──
+    jobId: encodeFirestoreString(input.jobId),
+    accountId: encodeFirestoreString(input.accountId),
+    mediaId: encodeFirestoreString(input.mediaId),
+
+    // ── Pinned pricing ──
+    estimatedUsdc6: encodeFirestoreInteger(input.estimatedUsdc6),
+    rateUsdc6PerSec: encodeFirestoreInteger(CHIRP3_BATCH_USDC6_PER_SEC),
+    submittedSecondsCeil: encodeFirestoreInteger(input.submittedSecondsCeil),
+    abortRatio: encodeFirestoreNumber(ABORT_RATIO),
+    abortLimitUsdc6: encodeFirestoreInteger(abortLimitUsdc6),
+    // Same line as the abort limit today; split here if product wants a
+    // separate margin alert before the hard stop.
+    alertAtUsdc6: encodeFirestoreInteger(abortLimitUsdc6),
+    plannedParts: encodeFirestoreInteger(input.plannedParts),
+    freeRunMonth: input.freeRunMonth
+      ? encodeFirestoreString(input.freeRunMonth)
+      : encodeFirestoreNull(),
+
+    // ── Settlement clock ──
+    pinnedAt: encodeFirestoreInteger(input.quoteCreatedAtMs),
+    quoteCreatedAtMs: encodeFirestoreInteger(input.quoteCreatedAtMs),
+    settleByMs: encodeFirestoreInteger(input.settleByMs),
+    retryClock: retryClockFields(input),
+
+    // ── Retry budget, untouched until the submit path starts spending ──
+    retrySpendUsdc6: encodeFirestoreInteger(0),
+    retryingAt: encodeFirestoreNull(),
+    retryingPartIndex: encodeFirestoreNull(),
+
+    // ── Status ──
+    status: encodeFirestoreString('quoted'),
+    reconcileVerdict: encodeFirestoreNull(),
+    releasedAt: encodeFirestoreNull(),
+    createdAt: encodeFirestoreInteger(input.quoteCreatedAtMs),
+    completedAt: encodeFirestoreNull(),
+  }
+}
+
 /**
  * Write the job record *before* any payment, pinning every number a later
  * reconcile has to trust: the cost rate, the ceil'd submitted seconds, the
@@ -195,66 +261,12 @@ export async function countFreeRunsThisMonth(input: {
  * Callers must treat that as "no durable ledger entry exists" — a free run in
  * particular is only safe to grant when its record actually landed.
  */
-export async function createQuotedTranscriptionJob(input: {
-  jobId: string
-  accountId: string
-  mediaId: string
-  estimatedUsdc6: number
-  submittedSecondsCeil: number
-  plannedParts: number
-  quoteCreatedAtMs: number
-  settleByMs: number
-  /** Set only when this run was granted free; null for priced runs. */
-  freeRunMonth: string | null
-}): Promise<boolean> {
-  const abortLimitUsdc6 = Math.round(input.estimatedUsdc6 * ABORT_RATIO)
+export async function createQuotedTranscriptionJob(input: QuotedJobInput): Promise<boolean> {
   return patchFirestoreDocument({
     collection: COLLECTION,
     documentId: input.jobId,
     timeoutMs: FIRESTORE_REST_TIMEOUT_MS,
-    fields: {
-      // ── Identity ──
-      jobId: encodeFirestoreString(input.jobId),
-      accountId: encodeFirestoreString(input.accountId),
-      mediaId: encodeFirestoreString(input.mediaId),
-
-      // ── Pinned pricing ──
-      estimatedUsdc6: encodeFirestoreInteger(input.estimatedUsdc6),
-      rateUsdc6PerSec: encodeFirestoreInteger(CHIRP3_BATCH_USDC6_PER_SEC),
-      submittedSecondsCeil: encodeFirestoreInteger(input.submittedSecondsCeil),
-      abortRatio: encodeFirestoreNumber(ABORT_RATIO),
-      abortLimitUsdc6: encodeFirestoreInteger(abortLimitUsdc6),
-      // Same line as the abort limit today; split here if product wants a
-      // separate margin alert before the hard stop.
-      alertAtUsdc6: encodeFirestoreInteger(abortLimitUsdc6),
-      plannedParts: encodeFirestoreInteger(input.plannedParts),
-      freeRunMonth: input.freeRunMonth
-        ? encodeFirestoreString(input.freeRunMonth)
-        : encodeFirestoreNull(),
-
-      // ── Settlement clock ──
-      pinnedAt: encodeFirestoreInteger(input.quoteCreatedAtMs),
-      quoteCreatedAtMs: encodeFirestoreInteger(input.quoteCreatedAtMs),
-      settleByMs: encodeFirestoreInteger(input.settleByMs),
-      retryClock: encodeFirestoreMap({
-        quoteCreatedAtMs: encodeFirestoreInteger(input.quoteCreatedAtMs),
-        settleByMs: encodeFirestoreInteger(input.settleByMs),
-        maxOperationRoundMs: encodeFirestoreInteger(MAX_OPERATION_ROUND_MS),
-        settleBufferMs: encodeFirestoreInteger(SETTLE_BUFFER_MS),
-      }),
-
-      // ── Retry budget, untouched until the submit path starts spending ──
-      retrySpendUsdc6: encodeFirestoreInteger(0),
-      retryingAt: encodeFirestoreNull(),
-      retryingPartIndex: encodeFirestoreNull(),
-
-      // ── Status ──
-      status: encodeFirestoreString('quoted'),
-      reconcileVerdict: encodeFirestoreNull(),
-      releasedAt: encodeFirestoreNull(),
-      createdAt: encodeFirestoreInteger(input.quoteCreatedAtMs),
-      completedAt: encodeFirestoreNull(),
-    },
+    fields: quotedJobFields(input),
   })
 }
 

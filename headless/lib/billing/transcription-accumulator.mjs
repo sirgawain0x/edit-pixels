@@ -20,17 +20,18 @@ import { createHash } from 'node:crypto'
 /** Prime Intellect's list rate for nvidia/nemotron-3.5-transcribe: $0.000017/sec. */
 export const TRANSCRIPTION_RATE_USDC6_PER_SEC = 17
 
-/** Google Chirp 3, dynamic batch: $0.003/min = $0.18/audio-hour = 50 usdc6/sec. */
+/**
+ * Google Chirp 3, dynamic batch: $0.003/min = $0.18/audio-hour = 50 usdc6/sec.
+ * The synchronous rate ($0.016/min = 267 usdc6/sec) is ~5x this, which is why the
+ * cloud tier submits batch jobs instead of live ones.
+ */
 export const CHIRP3_BATCH_RATE_USDC6_PER_SEC = 50
-
-/** Google Chirp 3, standard (synchronous): $0.016/min = $0.96/audio-hour = 267 usdc6/sec. */
-export const CHIRP3_STANDARD_RATE_USDC6_PER_SEC = 267
 
 /**
  * BatchRecognize rejects any single audio file over 20 minutes, so a sub-file is
  * at most this long. Used for retry accounting: one rebuild costs one sub-file.
  */
-export const CHIRP3_MAX_SUBFILE_SECONDS = 1200
+const CHIRP3_MAX_SUBFILE_SECONDS = 1200
 
 /**
  * Summarize the audio a batch will actually submit, and enforce the per-file wall.
@@ -137,13 +138,6 @@ export function transcriptionAbortHeadroom(parts) {
   const extraChunks = Math.ceil(0.05 * n + 0.75 * Math.sqrt(n))
   return 1 + extraChunks / n
 }
-
-/**
- * Headroom used when the chunk plan isn't known yet. Assumes the shortest
- * realistic plan (8 parts, ~1.375); a real caller must pass `parts` so the
- * buffer tracks the plan instead of a guess.
- */
-export const TRANSCRIPTION_ABORT_BUFFER = transcriptionAbortHeadroom(8)
 
 /** Billing grid sizes the probe in `scripts/probe-transcription-billing.mjs` can return. */
 export const BILLING_GRANULARITY_SECONDS = Object.freeze({

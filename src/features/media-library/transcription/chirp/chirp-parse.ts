@@ -362,7 +362,124 @@ export function stitchParts({
  *   - span coverage alone: a truncated transcript gets its timestamps stretched across the
  *     whole file, so coverage reads 0.9+ and passes. Coverage cannot catch truncation.
  *   - median inter-word gap: measured 0.00s everywhere (words tile contiguously); useless.
+ *
+ * Band edges and floors live in the constants below; the gate is `speechSpanCoverage`.
  */
+const HEALTHY_TOKENS_PER_SPEECH_SEC = 1.8
+const SUSPECT_TOKENS_PER_SPEECH_SEC = 1.4
+/** Sustained speech cannot really produce more than this; past it the denominator is broken. */
+const IMPOSSIBLE_TOKENS_PER_SPEECH_SEC = 4.5
+/** Measured max speech ratio in real recordings; above this the VAD is over-reporting. */
+const NO_SILENCE_RATIO = 0.98
+/**
+ * Minimum sample size. Token count is Poisson-ish: at ~2.5 tokens/s a 10s part holds ~25
+ * tokens, so its ratio has a 1-sigma spread of ~0.5 — wider than the whole 1.4-1.8 band.
+ * 120s of speech gives ~300 tokens and a spread of ~0.14, which fits inside the band.
+ */
+const MIN_GATE_SPEECH_SECONDS = 120
+
+function speechRatioOf(vadSpeechSeconds: number, partDurationSec: number | null): number | null {
+  return partDurationSec && partDurationSec > 0 ? vadSpeechSeconds / partDurationSec : null
+}
+
+/** Verdict implied by token rate alone, before the VAD sanity checks. */
+function rateVerdict(tokensPerSpeechSecond: number): QualityVerdict {
+  if (tokensPerSpeechSecond >= HEALTHY_TOKENS_PER_SPEECH_SEC) return 'healthy'
+  if (tokensPerSpeechSecond >= SUSPECT_TOKENS_PER_SPEECH_SEC) return 'suspect'
+  return 'truncated'
+}
+
+/**
+ * Union of the word spans, so two words that overlap are not counted twice.
+ * Sorted by start and walked once with a cursor, which is what makes it linear.
+ */
+function coveredSpeechSeconds(words: ParsedWord[]): number {
+  const spans = words.map((word) => [word.start, word.end] as const).sort((a, b) => a[0] - b[0])
+  let covered = 0
+  let cursor = -Infinity
+  for (const [start, end] of spans) {
+    const from = Math.max(start, cursor)
+    if (end > from) {
+      covered += end - from
+      cursor = end
+    }
+  }
+  return covered
+}
+
+interface GateInput {
+  tokensPerSpeechSecond: number
+  coverage: number | null
+  speechRatio: number | null
+}
+
+function evaluatedResult(
+  input: GateInput & { verdict: QualityVerdict; flag: QualityFlag; suppressedFlag?: QualityFlag },
+): CoverageResult {
+  return {
+    evaluated: true,
+    tokensPerSpeechSecond: input.tokensPerSpeechSecond,
+    coverage: input.coverage,
+    speechRatio: input.speechRatio,
+    verdict: input.verdict,
+    flag: input.flag,
+    ...(input.suppressedFlag ? { suppressedFlag: input.suppressedFlag } : {}),
+  }
+}
+
+function notEvaluatedResult(
+  input: { tokensPerSpeechSecond: number; speechRatio: number | null } & { reason?: string },
+): CoverageResult {
+  return {
+    evaluated: false,
+    ...(input.reason ? { reason: input.reason } : {}),
+    tokensPerSpeechSecond: input.tokensPerSpeechSecond,
+    coverage: null,
+    speechRatio: input.speechRatio,
+    verdict: 'not-evaluated',
+    flag: null,
+  }
+}
+
+/**
+ * The ~100% speech branch.
+ *
+ * No real recording is ~100% speech (measured max 0.896 long-form, 0.944 on a 6s clip).
+ * With a healthy token rate that is a broken VAD -> undecidable; with a low rate it is a
+ * GENUINE truncation, because an over-detecting denominator cannot explain the shortfall.
+ *
+ * A part the planner forced a mid-speech cut on has no silence by construction, so
+ * "no-silence" is expected there and is not evidence of a broken VAD. Suppress the flag
+ * but RECORD it: the verdict still comes from the token rate, and the audit trail keeps
+ * the fact that this part was 100% speech.
+ */
+function noSilenceResult(input: GateInput & { forcedCut: boolean }): CoverageResult {
+  const verdict = rateVerdict(input.tokensPerSpeechSecond)
+  if (input.forcedCut) {
+    return evaluatedResult({ ...input, verdict, flag: null, suppressedFlag: 'no-silence' })
+  }
+  return evaluatedResult({
+    ...input,
+    verdict: verdict === 'truncated' ? 'truncated' : 'vad-uncertain',
+    flag: 'no-silence',
+  })
+}
+
+function applyVadChecks(input: GateInput & { forcedCut: boolean }): CoverageResult {
+  // Runs FIRST: a broken denominator outranks a forced-cut heuristic.
+  if (input.tokensPerSpeechSecond > IMPOSSIBLE_TOKENS_PER_SPEECH_SEC) {
+    return evaluatedResult({ ...input, verdict: 'vad-uncertain', flag: 'under-detected' })
+  }
+  if (input.speechRatio !== null && input.speechRatio > NO_SILENCE_RATIO) {
+    return noSilenceResult(input)
+  }
+  return evaluatedResult({
+    ...input,
+    verdict: rateVerdict(input.tokensPerSpeechSecond),
+    flag: null,
+  })
+}
+
 export function speechSpanCoverage({
   words,
   vadSpeechSeconds,
@@ -374,120 +491,23 @@ export function speechSpanCoverage({
   partDurationSec?: number | null
   forcedCut?: boolean
 }): CoverageResult {
+  const speechRatio = speechRatioOf(vadSpeechSeconds, partDurationSec)
+
   if (!words?.length || !(vadSpeechSeconds > 0)) {
-    return {
-      evaluated: false,
-      tokensPerSpeechSecond: 0,
-      coverage: null,
-      speechRatio:
-        partDurationSec && partDurationSec > 0 ? vadSpeechSeconds / partDurationSec : null,
-      verdict: 'not-evaluated',
-      flag: null,
-    }
-  }
-
-  const spans = words.map((word) => [word.start, word.end] as const).sort((a, b) => a[0] - b[0])
-
-  let covered = 0
-  let cursor = -Infinity
-  for (const [start, end] of spans) {
-    const from = Math.max(start, cursor)
-    if (end > from) {
-      covered += end - from
-      cursor = end
-    }
-  }
-
-  // Minimum sample size. Token count is Poisson-ish: at ~2.5 tokens/s a 10s part holds ~25
-  // tokens, so its ratio has a 1-sigma spread of ~0.5 — wider than the whole 1.4-1.8 band.
-  // 120s of speech gives ~300 tokens and a spread of ~0.14, which fits inside the band.
-  const minGateSpeechSeconds = 120
-  if (vadSpeechSeconds < minGateSpeechSeconds) {
-    return {
-      evaluated: false,
-      reason: 'sample-too-small',
-      tokensPerSpeechSecond: words.length / vadSpeechSeconds,
-      coverage: null,
-      speechRatio:
-        partDurationSec && partDurationSec > 0 ? vadSpeechSeconds / partDurationSec : null,
-      verdict: 'not-evaluated',
-      flag: null,
-    }
+    return notEvaluatedResult({ tokensPerSpeechSecond: 0, speechRatio })
   }
 
   const tokensPerSpeechSecond = words.length / vadSpeechSeconds
-  const coverage = covered / vadSpeechSeconds
-  const speechRatio =
-    partDurationSec && partDurationSec > 0 ? vadSpeechSeconds / partDurationSec : null
-
-  const baseVerdict: QualityVerdict =
-    tokensPerSpeechSecond >= 1.8
-      ? 'healthy'
-      : tokensPerSpeechSecond >= 1.4
-        ? 'suspect'
-        : 'truncated'
-
-  // Impossible for a real recording to sustain more than ~4.5 tokens/second of detected speech:
-  // the denominator missed speech, so the output may well be complete. This check runs FIRST,
-  // before the no-silence branch, because a broken denominator outranks a forced-cut heuristic.
-  if (tokensPerSpeechSecond > 4.5) {
-    return {
-      evaluated: true,
-      tokensPerSpeechSecond,
-      coverage,
-      speechRatio,
-      verdict: 'vad-uncertain',
-      flag: 'under-detected',
-    }
+  if (vadSpeechSeconds < MIN_GATE_SPEECH_SECONDS) {
+    return notEvaluatedResult({ tokensPerSpeechSecond, speechRatio, reason: 'sample-too-small' })
   }
 
-  // No real recording is ~100% speech (measured max 0.896 long-form, 0.944 on a 6s clip).
-  // With a healthy token rate that is a broken VAD -> undecidable; with a low rate it is a
-  // GENUINE truncation, because an over-detecting denominator cannot explain the shortfall.
-  if (speechRatio !== null && speechRatio > 0.98) {
-    // A part the planner forced a mid-speech cut on has no silence by construction, so
-    // "no-silence" is expected there and is not evidence of a broken VAD. Suppress the flag
-    // but RECORD it: the verdict still comes from the token rate, and the audit trail keeps
-    // the fact that this part was 100% speech.
-    if (forcedCut) {
-      return {
-        evaluated: true,
-        tokensPerSpeechSecond,
-        coverage,
-        speechRatio,
-        suppressedFlag: 'no-silence',
-        verdict: tokensPerSpeechSecond < 1.4 ? 'truncated' : baseVerdict,
-        flag: null,
-      }
-    }
-    if (tokensPerSpeechSecond < 1.4) {
-      return {
-        evaluated: true,
-        tokensPerSpeechSecond,
-        coverage,
-        speechRatio,
-        verdict: 'truncated',
-        flag: 'no-silence',
-      }
-    }
-    return {
-      evaluated: true,
-      tokensPerSpeechSecond,
-      coverage,
-      speechRatio,
-      verdict: 'vad-uncertain',
-      flag: 'no-silence',
-    }
-  }
-
-  return {
-    evaluated: true,
+  return applyVadChecks({
     tokensPerSpeechSecond,
-    coverage,
+    coverage: coveredSpeechSeconds(words) / vadSpeechSeconds,
     speechRatio,
-    verdict: baseVerdict,
-    flag: null,
-  }
+    forcedCut,
+  })
 }
 
 /**

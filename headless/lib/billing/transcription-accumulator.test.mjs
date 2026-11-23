@@ -4,7 +4,6 @@ import { describe, it } from 'node:test'
 import {
   BILLING_GRANULARITY_SECONDS,
   CHIRP3_BATCH_RATE_USDC6_PER_SEC,
-  TRANSCRIPTION_ABORT_BUFFER,
   TRANSCRIPTION_RATE_USDC6_PER_SEC,
   billedSeconds,
   chunkCostUsdc6,
