@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { isOwnedInputUri, transcribeBucket } from './_transcribe-uris.js'
+import {
+  isOwnedInputUri,
+  isSafePartName,
+  isUploadContentType,
+  transcribeBucket,
+} from './_transcribe-uris.js'
 
 const ACCOUNT = '0x04f5c5691e2f3e79246b08b98e912b3d2a786696'
 const JOB = 'job-1'
@@ -61,5 +66,37 @@ describe('transcribeBucket', () => {
       if (original === undefined) delete process.env.TRANSCRIBE_GCS_BUCKET
       else process.env.TRANSCRIBE_GCS_BUCKET = original
     }
+  })
+})
+
+describe('isSafePartName', () => {
+  it.each(['part-0.webm', 'part-23.opus', 'p.flac', 'A_b-1.wav'])('accepts %s', (name) => {
+    expect(isSafePartName(name)).toBe(true)
+  })
+
+  it.each([
+    ['a path segment', 'a/b.webm'],
+    ['a traversal', '../part-0.webm'],
+    ['a dotfile', '.hidden'],
+    ['empty', ''],
+    ['a space', 'part 0.webm'],
+    ['too long', 'a'.repeat(65)],
+    ['not a string', 42],
+  ])('rejects %s', (_label, name) => {
+    expect(isSafePartName(name)).toBe(false)
+  })
+})
+
+describe('isUploadContentType', () => {
+  it.each(['audio/webm', 'audio/ogg', 'audio/flac', 'audio/wav'])('accepts %s', (value) => {
+    expect(isUploadContentType(value)).toBe(true)
+  })
+
+  it.each([
+    ['video/mp4', 'video/mp4'],
+    ['a bare audio type', 'audio'],
+    ['not a string', 7],
+  ])('rejects %s', (_label, value) => {
+    expect(isUploadContentType(value)).toBe(false)
   })
 })

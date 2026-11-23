@@ -19,6 +19,10 @@ vi.mock('./_transcribe-batch.js', () => ({
   submitTranscriptionBatch: vi.fn(),
 }))
 
+vi.mock('./_transcribe-gcs.js', () => ({
+  statParts: vi.fn(),
+}))
+
 vi.mock('./_transcription-jobs.js', () => ({
   readTranscriptionJob: vi.fn(),
   recordBatchSubmission: vi.fn(),
@@ -35,6 +39,7 @@ import {
   verifyGenerativeCrtvaiPayment,
 } from './_pixels-generate-route-auth.js'
 import { submitTranscriptionBatch } from './_transcribe-batch.js'
+import { statParts } from './_transcribe-gcs.js'
 import {
   readTranscriptionJob,
   recordBatchSubmission,
@@ -90,6 +95,11 @@ beforeEach(() => {
 
   vi.mocked(refundFreeRun).mockReset()
   vi.mocked(refundFreeRun).mockResolvedValue(true)
+
+  vi.mocked(statParts).mockReset()
+  vi.mocked(statParts).mockImplementation(async (uris: string[]) =>
+    uris.map((uri) => ({ uri, exists: true, sizeBytes: 4096 })),
+  )
 })
 
 describe('POST /api/transcribe-submit', () => {
@@ -254,6 +264,38 @@ describe('POST /api/transcribe-submit', () => {
     // The tx was consumed before the call, so a failed submit must release it.
     expect(vi.mocked(releaseFlowPayment)).toHaveBeenCalledWith('0xabc', 7)
     expect(vi.mocked(recordBatchSubmission)).not.toHaveBeenCalled()
+  })
+
+  it('refuses to submit when a part never landed in the bucket', async () => {
+    vi.mocked(statParts).mockImplementation(async (uris: string[]) =>
+      uris.map((uri, index) => ({ uri, exists: index !== 1, sizeBytes: index === 1 ? 0 : 4096 })),
+    )
+
+    const response = await POST(
+      post({
+        jobId: JOB,
+        paymentTxHash: '0xabc',
+        files: [{ uri: OWN_URI }, { uri: `${OWN_URI}.part1` }],
+      }),
+    )
+
+    expect(response.status).toBe(400)
+    expect(await response.json()).toMatchObject({ error: 'files_missing' })
+    // No tx is consumed and Google is never called for a batch with a hole in it.
+    expect(vi.mocked(verifyGenerativeCrtvaiPayment)).not.toHaveBeenCalled()
+    expect(vi.mocked(submitTranscriptionBatch)).not.toHaveBeenCalled()
+  })
+
+  it('refuses to submit when the bucket cannot be checked at all', async () => {
+    vi.mocked(statParts).mockRejectedValue(new Error('GCS object stat failed (500)'))
+
+    const response = await POST(
+      post({ jobId: JOB, paymentTxHash: '0xabc', files: [{ uri: OWN_URI }] }),
+    )
+
+    expect(response.status).toBe(502)
+    expect(await response.json()).toEqual({ error: 'storage_unavailable' })
+    expect(vi.mocked(verifyGenerativeCrtvaiPayment)).not.toHaveBeenCalled()
   })
 
   it('submits a free run without a payment, since the allowance is the payment', async () => {

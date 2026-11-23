@@ -71,6 +71,9 @@
     },
     "api/transcribe-submit.ts": {
       "maxDuration": 30
+    },
+    "api/transcribe-upload-session.ts": {
+      "maxDuration": 30
     }
   },
   "rewrites": [
