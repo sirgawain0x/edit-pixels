@@ -10,11 +10,11 @@
  * from the ceiling minutes.
  */
 
-/** $0.0075 USDC per minute of submitted audio. */
-export const TRANSCRIPTION_USDC6_PER_AUDIO_MINUTE = 7_500
+/** $0.0099 USDC per minute of submitted audio. */
+export const TRANSCRIPTION_USDC6_PER_AUDIO_MINUTE = 9_900
 
-/** $3.60 USDC ceiling for a single transcription run. */
-export const TRANSCRIPTION_RUN_CAP_USDC6 = 3_600_000
+/** $4.752 USDC ceiling for a single transcription run (480 × 9,900 usdc6). */
+export const TRANSCRIPTION_RUN_CAP_USDC6 = 4_752_000
 
 /** Hard ceiling on source audio for one run; longer jobs must be split. */
 export const TRANSCRIPTION_MAX_AUDIO_MINUTES = 480

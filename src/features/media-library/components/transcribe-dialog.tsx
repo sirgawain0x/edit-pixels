@@ -50,8 +50,8 @@ interface TranscribeDialogProps {
   onCancel: () => void
 }
 
-const PRECISION_RATE_PER_MIN = 0.0075
-const PRECISION_CAP_USD = 3.6
+const PRECISION_RATE_PER_MIN = 0.0099
+const PRECISION_CAP_USD = 4.752
 const HARD_CAP_MIN = 480
 const FREE_PRECISION_RUNS_MONTHLY = 5
 /** Source length that still counts as a "short run" and can use a free allowance. */
@@ -98,7 +98,11 @@ function buildModelRows(t: TFunction): ModelRow[] {
           'Cloud batch transcription. Cut-ready word timings, speech adaptation, 14 locales. Ready in a few minutes.',
       }),
       meta: t('media.transcribe.precisionMeta', { defaultValue: 'No download · ~2 min' }),
-      badge: t('media.transcribe.paidBadge', { defaultValue: '$0.0075/min · max $3.60' }),
+      badge: t('media.transcribe.paidBadge', {
+        // Interpolated from the constants: hardcoding the rate here is how the
+        // dialog ends up advertising a price the route does not charge.
+        defaultValue: `$${PRECISION_RATE_PER_MIN}/min · max $${PRECISION_CAP_USD.toFixed(2)}`,
+      }),
       badgeVariant: 'paid',
     },
   ]
@@ -128,7 +132,9 @@ function estimatePrecisionCost(input: {
     const raw = sourceMinutes * PRECISION_RATE_PER_MIN
     return {
       priceUsd: Math.min(raw, PRECISION_CAP_USD),
-      label: t('media.transcribe.precisionEstimate', { defaultValue: `$0.00 — up to $3.60 max` }),
+      label: t('media.transcribe.precisionEstimate', {
+        defaultValue: `$0.00 — up to $${PRECISION_CAP_USD.toFixed(2)} max`,
+      }),
     }
   }
 

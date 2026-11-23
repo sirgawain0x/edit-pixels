@@ -15,15 +15,15 @@ const quote = (minutes) => estimateTranscriptionCostUsdc6({ audioDurationSeconds
 describe('billing/pricing/transcription', () => {
   it('quotes the documented points', () => {
     assert.strictEqual(quote(0), 0)
-    assert.strictEqual(quote(10), 75_000) // $0.075
-    assert.strictEqual(quote(60), 450_000) // $0.45
-    assert.strictEqual(quote(240), 1_800_000) // $1.80
-    assert.strictEqual(formatUsdc6(quote(240)), '$1.8000')
+    assert.strictEqual(quote(10), 99_000) // $0.099
+    assert.strictEqual(quote(60), 594_000) // $0.594
+    assert.strictEqual(quote(240), 2_376_000) // $2.376
+    assert.strictEqual(formatUsdc6(quote(240)), '$2.3760')
   })
 
   it('binds the cap exactly at the 480-minute ceiling, never on a valid run', () => {
     // The cap is derived from the ceiling price, not chosen independently:
-    // 480 min × 7,500 usdc6 == 3,600,000. Below the ceiling it must not bind.
+    // 480 min × 9,900 usdc6 == 4,752,000. Below the ceiling it must not bind.
     assert.strictEqual(
       TRANSCRIPTION_RUN_CAP_USDC6,
       TRANSCRIPTION_MAX_AUDIO_MINUTES * TRANSCRIPTION_USDC6_PER_AUDIO_MINUTE,
@@ -34,13 +34,16 @@ describe('billing/pricing/transcription', () => {
     assert.strictEqual(quote(600), TRANSCRIPTION_RUN_CAP_USDC6)
   })
 
-  it('holds at least 52% margin against measured Chirp batch COGS across the whole range', () => {
-    const chirpBatchUsdc6PerMinute = 3_000 // $0.003/min
+  it('holds at least 35% margin against measured gemini token COGS across the whole range', () => {
+    // gemini-3.5-transcribe bills tokens, not seconds. Live measurements:
+    // 7s clip -> $0.00616/min, 296s clip -> $0.00560/min (per-request prompt
+    // overhead amortises on longer audio). Take the worse one.
+    const geminiUsdc6PerMinute = 6_160
     for (const minutes of [1, 10, 60, 120, 240, 400, 480]) {
       const price = quote(minutes)
-      const cogs = minutes * chirpBatchUsdc6PerMinute
+      const cogs = minutes * geminiUsdc6PerMinute
       const margin = 1 - cogs / price
-      assert.ok(margin >= 0.52, `${minutes} min margin ${(margin * 100).toFixed(1)}% below floor`)
+      assert.ok(margin >= 0.35, `${minutes} min margin ${(margin * 100).toFixed(1)}% below floor`)
     }
   })
 

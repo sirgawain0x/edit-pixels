@@ -9,7 +9,9 @@
     "headless/smoke.mjs",
     "headless/media-smoke.mjs",
     // Cost-model probe run by hand against a real BatchRecognize job; never imported.
-    "scripts/probe-transcription-billing.mjs"
+    "scripts/probe-transcription-billing.mjs",
+    // Live probe for the gemini-3.5-transcribe wire layer; run by hand with tsx.
+    "scripts/probe-transcribe-gemini.mts"
   ],
   "ignorePatterns": [
     // Static reachability cannot see URL-loaded assets such as /sw.js
