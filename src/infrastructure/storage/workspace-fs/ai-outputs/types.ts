@@ -138,12 +138,25 @@ export interface ScenesPayload {
  * record shape. Keeps callers that already construct `MediaTranscript` working
  * unchanged during the migration.
  */
+/**
+ * Which recognizer service produced a transcript.
+ *
+ * Cloud models are not Whisper and not Parakeet, and labelling them as either makes the
+ * envelope misreport provenance — which is the field a later "did the model change?"
+ * decision reads.
+ */
+function transcriptServiceOf(model: MediaTranscriptModel): string {
+  if (model === 'parakeet-tdt-v3') return 'parakeet'
+  if (model === 'chirp-3' || model === 'gemini-3.5-transcribe') return 'cloud'
+  return 'whisper'
+}
+
 export function transcriptFromLegacy(record: MediaTranscript): AiOutput<'transcript'> {
   return {
     schemaVersion: AI_OUTPUT_SCHEMA_VERSION,
     kind: 'transcript',
     mediaId: record.mediaId,
-    service: record.model === 'parakeet-tdt-v3' ? 'parakeet' : 'whisper',
+    service: transcriptServiceOf(record.model),
     model: record.model,
     params: { quantization: record.quantization, language: record.language },
     createdAt: record.createdAt,

@@ -18,88 +18,25 @@
  * Diarization is deliberately NOT requested: on chirp_3 it silently truncates
  * words, which is worse than not knowing who spoke.
  */
-import { transcribeBucket } from './_transcribe-uris.js'
-import { getVertexAccessToken, getVertexProject } from './_vertex-auth.js'
+import { getVertexAccessToken } from './_vertex-auth.js'
 
 /**
  * Speech v2 is only served from multi-region `us` in this project; the captured
  * resources are `projects/<n>/locations/us/recognizers/_`.
  */
 const DEFAULT_SPEECH_LOCATION = 'us'
-const DEFAULT_MODEL = 'chirp_3'
-const DEFAULT_LANGUAGE = 'en-US'
 const REQUEST_TIMEOUT_MS = 30_000
 
 function speechLocation(): string {
   return process.env.TRANSCRIBE_SPEECH_LOCATION?.trim() || DEFAULT_SPEECH_LOCATION
 }
 
-export interface BatchInputFile {
-  uri: string
-  /** Per-file override; the whole batch otherwise uses the request-level language. */
-  languageCode?: string
-}
-
-export interface BatchFileResult {
-  inputUri: string
-  outputUri: string | null
-  billedSeconds: number | null
-  errorMessage: string | null
-}
-
-export type BatchOperationStatus = 'running' | 'completed' | 'failed'
-
-export interface BatchOperationSummary {
-  status: BatchOperationStatus
-  progressPercent: number
-  files: BatchFileResult[]
-  /** Sum across files as reported by the operation; null when it never reported one. */
-  totalBilledSeconds: number | null
-  errorMessage: string | null
-}
-
-function secondsFromProtoDuration(value: unknown): number | null {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null
-  if (typeof value !== 'string') return null
-  const match = /^(-?\d+(?:\.\d+)?)s$/.exec(value.trim())
-  if (!match) return null
-  const seconds = Number(match[1])
-  return Number.isFinite(seconds) ? seconds : null
-}
-
-/** The request body Google echoes back in `metadata.batchRecognizeRequest`. */
-function buildBatchRecognizeRequest(input: {
-  files: BatchInputFile[]
-  languageCode?: string
-}): Record<string, unknown> {
-  const project = getVertexProject()
-  const location = speechLocation()
-  return {
-    recognizer: `projects/${project}/locations/${location}/recognizers/_`,
-    files: input.files.map((file) => ({
-      uri: file.uri,
-      ...(file.languageCode ? { config: { languageCodes: [file.languageCode] } } : {}),
-    })),
-    config: {
-      autoDecodingConfig: {},
-      model: DEFAULT_MODEL,
-      languageCodes: [input.languageCode ?? DEFAULT_LANGUAGE],
-      features: {
-        enableWordTimeOffsets: true,
-        enableAutomaticPunctuation: true,
-      },
-    },
-    recognitionOutputConfig: {
-      gcsOutputConfig: { uri: `gs://${transcribeBucket()}/output/` },
-    },
-  }
-}
-
-function speechBaseUrl(): string {
-  const location = speechLocation()
-  return `https://${location}-speech.googleapis.com/v2`
-}
-
+/**
+ * Authenticated JSON fetch against Speech v2.
+ *
+ * Only the poll reader uses this now: submission moved to the unary model, so this exists
+ * for jobs that were already submitted as batches before that change.
+ */
 async function speechFetch<T>(url: string, init: RequestInit): Promise<T> {
   const token = await getVertexAccessToken()
   const response = await fetch(url, {
@@ -119,26 +56,40 @@ async function speechFetch<T>(url: string, init: RequestInit): Promise<T> {
 }
 
 /**
- * Start a batch. Returns the long-running operation name, which is the only
- * handle to the job's progress and billing from that point on.
+ * One input file's outcome from a batch operation.
+ *
+ * `billedSeconds` is null when Google reported no duration: a rejected file reports `"0s"`,
+ * which must not be read as free. The reconciler maps these back by *input* uri.
  */
-export async function submitTranscriptionBatch(input: {
-  files: BatchInputFile[]
-  languageCode?: string
-}): Promise<{ operationName: string }> {
-  if (input.files.length === 0) throw new Error('batch needs at least one file')
-
-  const project = getVertexProject()
-  const location = speechLocation()
-  const url = `${speechBaseUrl()}/projects/${project}/locations/${location}/recognizers/_:batchRecognize`
-
-  const operation = await speechFetch<{ name?: string }>(url, {
-    method: 'POST',
-    body: JSON.stringify(buildBatchRecognizeRequest(input)),
-  })
-  if (!operation.name) throw new Error('Speech returned no operation name')
-  return { operationName: operation.name }
+interface BatchFileResult {
+  inputUri: string
+  outputUri: string | null
+  billedSeconds: number | null
+  errorMessage: string | null
 }
+
+interface BatchOperationSummary {
+  status: 'running' | 'completed' | 'failed'
+  progressPercent: number
+  files: BatchFileResult[]
+  totalBilledSeconds: number | null
+  errorMessage: string | null
+}
+
+/**
+ * Protobuf duration (`"1140s"`) to seconds. A rejected batch reports `"0s"`, which reads
+ * exactly like a free job, so callers must not treat a missing value as zero.
+ */
+function secondsFromProtoDuration(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  if (typeof value !== 'string') return null
+  const match = /^(-?\d+(?:\.\d+)?)s$/.exec(value.trim())
+  if (!match) return null
+  const seconds = Number(match[1])
+  return Number.isFinite(seconds) ? seconds : null
+}
+
+export type { BatchFileResult, BatchOperationSummary }
 
 function fileResultsFromResponse(response: unknown): BatchFileResult[] {
   const results = (response as { results?: Record<string, unknown> } | null)?.results

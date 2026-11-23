@@ -245,6 +245,7 @@ describe('readTranscriptionJob', () => {
       estimatedUsdc6: null,
       submittedSecondsCeil: null,
       operationName: null,
+      glossary: null,
       txHash: null,
       freeRunMonth: null,
     })
@@ -272,6 +273,7 @@ describe('readTranscriptionJob', () => {
       estimatedUsdc6: 150_000,
       submittedSecondsCeil: 1_200,
       operationName: 'projects/1/locations/us/operations/abc',
+      glossary: null,
       txHash: '0xfeed',
     })
   })
@@ -314,6 +316,7 @@ describe('readTranscriptionJob', () => {
       estimatedUsdc6: null,
       submittedSecondsCeil: null,
       operationName: null,
+      glossary: null,
       txHash: null,
       freeRunMonth: null,
     })

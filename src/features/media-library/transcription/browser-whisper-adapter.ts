@@ -16,10 +16,10 @@ export const browserWhisperTranscriptionAdapter: MediaTranscriptionAdapter = {
   defaultModel: DEFAULT_BROWSER_WHISPER_MODEL,
   modelOptions: [
     ...BROWSER_WHISPER_MODEL_OPTIONS,
-    { value: 'chirp-3', label: 'Precision (Google Chirp 3)' },
+    { value: 'gemini-3.5-transcribe', label: 'Precision (Gemini 3.5 Transcribe)' },
   ] as const,
   getModelLabel(model: MediaTranscriptModel): string {
-    if (model === 'chirp-3') return 'Precision (Google Chirp 3)'
+    if (model === 'chirp-3' || model === 'gemini-3.5-transcribe') return 'Precision (cloud)'
     return BROWSER_WHISPER_MODEL_LABELS[model] ?? model
   },
   createTranscriber(options?: TranscribeOptions): MediaTranscriber {

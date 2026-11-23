@@ -35,6 +35,7 @@ const quotedJob = {
   estimatedUsdc6: 150_000,
   submittedSecondsCeil: 1200,
   operationName: null,
+  glossary: null,
   txHash: null,
   freeRunMonth: null,
 }

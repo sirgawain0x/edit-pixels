@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { BatchFileResult } from './_transcribe-batch.js'
 
 /**
  * The fixtures are real captured operations from this project's own bucket, so
@@ -19,9 +20,6 @@ vi.mock('./_vertex-auth.js', () => ({
   getVertexAccessToken: async () => 'test-token',
 }))
 
-const ACCOUNT = '0x04f5c5691e2f3e79246b08b98e912b3d2a786696'
-const JOB = 'job-1'
-const OWN_URI = `gs://creative-pixels-transcribe-batch/input/${ACCOUNT}/${JOB}/part-0.flac`
 const OPERATION = 'projects/1037240986506/locations/us/operations/v2-abc'
 
 async function batch() {
@@ -53,13 +51,17 @@ describe('pollTranscriptionOperation', () => {
     expect(summary.files).toHaveLength(4)
     expect(summary.totalBilledSeconds).toBe(4560)
     // Every file billed exactly 19 minutes, and the total is the sum of the parts.
-    expect(summary.files.map((file) => file.billedSeconds)).toEqual([1140, 1140, 1140, 1140])
-    expect(summary.files.every((file) => file.errorMessage === null)).toBe(true)
+    expect(summary.files.map((file: BatchFileResult) => file.billedSeconds)).toEqual([
+      1140, 1140, 1140, 1140,
+    ])
+    expect(summary.files.every((file: BatchFileResult) => file.errorMessage === null)).toBe(true)
     expect(summary.files[0]?.outputUri).toMatch(
       /^gs:\/\/creative-pixels-transcribe-batch\/output\//,
     )
     // Results are keyed by *input* uri, which is how the reconciler maps them back.
-    expect(summary.files.every((file) => file.inputUri.startsWith('gs://'))).toBe(true)
+    expect(summary.files.every((file: BatchFileResult) => file.inputUri.startsWith('gs://'))).toBe(
+      true,
+    )
   })
 
   it('reads a rejected file as an error with no billed seconds', async () => {
@@ -126,80 +128,5 @@ describe('pollTranscriptionOperation', () => {
       'invalid operation name',
     )
     expect(vi.mocked(globalThis.fetch)).not.toHaveBeenCalled()
-  })
-})
-
-describe('submitTranscriptionBatch', () => {
-  const originalFetch = globalThis.fetch
-
-  beforeEach(() => {
-    globalThis.fetch = vi.fn(async () =>
-      Response.json({ name: OPERATION }),
-    ) as unknown as typeof fetch
-  })
-
-  afterEach(() => {
-    globalThis.fetch = originalFetch
-  })
-
-  function sentBody(): {
-    recognizer: string
-    config: Record<string, unknown>
-    recognitionOutputConfig: { gcsOutputConfig: { uri: string } }
-    files: Array<{ uri: string; config?: { languageCodes?: string[] } }>
-  } {
-    const call = vi.mocked(globalThis.fetch).mock.calls[0]
-    return JSON.parse(String((call?.[1] as RequestInit).body))
-  }
-
-  it('POSTs to the regional batchRecognize endpoint with chirp_3 and no diarization', async () => {
-    const { submitTranscriptionBatch } = await batch()
-    const result = await submitTranscriptionBatch({ files: [{ uri: OWN_URI }] })
-
-    expect(result.operationName).toBe(OPERATION)
-    // Speech v2 is served from multi-region `us` for this project, not us-central1.
-    expect(vi.mocked(globalThis.fetch).mock.calls[0]?.[0]).toBe(
-      'https://us-speech.googleapis.com/v2/projects/creative-ai-491118/locations/us/recognizers/_:batchRecognize',
-    )
-    expect((vi.mocked(globalThis.fetch).mock.calls[0]?.[1] as RequestInit).method).toBe('POST')
-
-    const body = sentBody()
-    expect(body.recognizer).toBe('projects/creative-ai-491118/locations/us/recognizers/_')
-    expect(body.config.model).toBe('chirp_3')
-    expect(body.config.languageCodes).toEqual(['en-US'])
-    // Diarization silently truncates words on chirp_3, so it must not be requested.
-    expect(JSON.stringify(body)).not.toContain('diarization')
-    expect((body.config.features as { enableWordTimeOffsets: boolean }).enableWordTimeOffsets).toBe(
-      true,
-    )
-    expect(body.recognitionOutputConfig.gcsOutputConfig.uri).toBe(
-      'gs://creative-pixels-transcribe-batch/output/',
-    )
-    // A file with no language override carries no per-file config at all.
-    expect(body.files[0]?.config).toBeUndefined()
-  })
-
-  it('passes a per-file language override through', async () => {
-    const { submitTranscriptionBatch } = await batch()
-    await submitTranscriptionBatch({
-      files: [{ uri: OWN_URI, languageCode: 'ja-JP' }],
-      languageCode: 'en-US',
-    })
-
-    expect(sentBody().files[0]?.config?.languageCodes).toEqual(['ja-JP'])
-  })
-
-  it('refuses an empty batch without calling Google', async () => {
-    const { submitTranscriptionBatch } = await batch()
-    await expect(submitTranscriptionBatch({ files: [] })).rejects.toThrow('at least one file')
-    expect(vi.mocked(globalThis.fetch)).not.toHaveBeenCalled()
-  })
-
-  it('fails loudly when Google returns no operation name', async () => {
-    vi.mocked(globalThis.fetch).mockResolvedValue(Response.json({}))
-    const { submitTranscriptionBatch } = await batch()
-    await expect(submitTranscriptionBatch({ files: [{ uri: OWN_URI }] })).rejects.toThrow(
-      'no operation name',
-    )
   })
 })

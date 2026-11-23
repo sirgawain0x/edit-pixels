@@ -41,8 +41,14 @@ export function isParakeetModel(model: MediaTranscriptModel | undefined): boolea
   return model === PARAKEET_MODEL
 }
 
+/** Cloud models run server-side; `chirp-3` is the legacy id for transcripts written before the swap. */
+const CLOUD_TRANSCRIPTION_MODELS = new Set<MediaTranscriptModel>([
+  'chirp-3',
+  'gemini-3.5-transcribe',
+])
+
 export function isCloudTranscriptionModel(model: MediaTranscriptModel | undefined): boolean {
-  return model === 'chirp-3'
+  return model !== undefined && CLOUD_TRANSCRIPTION_MODELS.has(model)
 }
 
 function detectWebGpu(): boolean {

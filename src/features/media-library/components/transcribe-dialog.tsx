@@ -91,11 +91,15 @@ function buildModelRows(t: TFunction): ModelRow[] {
       badgeVariant: 'free',
     },
     {
-      id: 'chirp-3',
-      title: t('media.transcribe.precisionTitle', { defaultValue: 'Precision (Google Chirp 3)' }),
+      // The model the server actually runs. Sending `chirp-3` here would tag a Gemini
+      // transcript with the old model id, which is the field cache invalidation reads.
+      id: 'gemini-3.5-transcribe',
+      title: t('media.transcribe.precisionTitle', {
+        defaultValue: 'Precision (Gemini 3.5 Transcribe)',
+      }),
       desc: t('media.transcribe.precisionDesc', {
         defaultValue:
-          'Cloud batch transcription. Cut-ready word timings, speech adaptation, 14 locales. Ready in a few minutes.',
+          'Cloud transcription. Word timings, speaker labels, custom vocabulary, 85+ locales. Ready in a few minutes.',
       }),
       meta: t('media.transcribe.precisionMeta', { defaultValue: 'No download · ~2 min' }),
       badge: t('media.transcribe.paidBadge', {

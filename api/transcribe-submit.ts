@@ -16,18 +16,23 @@ import {
   authenticateGenerativePost,
   verifyGenerativeCrtvaiPayment,
 } from './_pixels-generate-route-auth.js'
-import { submitTranscriptionBatch, type BatchInputFile } from './_transcribe-batch.js'
 import { statParts } from './_transcribe-gcs.js'
 import { isOwnedInputUri } from './_transcribe-uris.js'
 import {
   readTranscriptionJob,
-  recordBatchSubmission,
+  recordPartsSubmission,
   refundFreeRun,
   type TranscriptionJobSummary,
 } from './_transcription-jobs.js'
 
 /** 480 source minutes at the 20-minute sub-file wall is 24 files; anything past that is a lie. */
 const MAX_BATCH_FILES = 32
+
+/** One uploaded part: where it lives, and the language the client asked for. */
+interface BatchInputFile {
+  uri: string
+  languageCode?: string
+}
 
 interface SubmitRequest {
   jobId: string
@@ -236,28 +241,29 @@ export async function POST(request: Request): Promise<Response> {
   if (!payment.ok) return payment.response
 
   try {
-    const { operationName } = await submitTranscriptionBatch({
-      files: req.files,
-      languageCode: req.languageCode,
-    })
-    const recorded = await recordBatchSubmission({
+    // No call to Google here: the model is unary and the client drives one request per part,
+    // so submitting only pins that this job is paid and may now spend. If the pin fails the
+    // client cannot transcribe at all (the part route refuses an unpaid job), so the money
+    // goes back rather than leaving a paid job that cannot run.
+    const recorded = await recordPartsSubmission({
       jobId: req.jobId,
-      operationName,
       txHash: payment.txHash,
       logIndex: payment.logIndex,
       submittedAt: Date.now(),
     })
     if (!recorded) {
-      // The batch is running at Google with no local handle to it: reconcile by the
-      // operation name in the response, not by the record.
-      console.error('transcription_jobs submit record write failed', {
+      console.error('transcription_jobs submit record write failed', { jobId: req.jobId })
+      await refundOnFailure({
+        freeRun,
         jobId: req.jobId,
-        operationName,
+        txHash: payment.txHash,
+        logIndex: payment.logIndex,
       })
+      return Response.json({ error: 'submit_failed' }, { status: 502 })
     }
-    return Response.json({ jobId: req.jobId, operationName, free: freeRun })
+    return Response.json({ jobId: req.jobId, free: freeRun, parts: req.files.length })
   } catch (error) {
-    console.error('transcription batch submit failed', error)
+    console.error('transcription submit failed', error)
     await refundOnFailure({
       freeRun,
       jobId: req.jobId,
