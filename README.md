@@ -312,4 +312,4 @@ Pixels is open source but not open contribution. Pull requests are not accepted 
 
 ## License
 
-[Proprietary (All Rights Reserved)](https://github.com/sirgawain0x/edit-pixels/edit/prod/LICENSE)
+[Proprietary (All Rights Reserved)](https://github.com/sirgawain0x/edit-pixels/prod/LICENSE)
