@@ -56,6 +56,36 @@ export function addObjectUrlSyncTarget(target: MessagePort | Worker): void {
   syncTargets.add(target)
 }
 
+/**
+ * Make a worker a registry sync target and keep it one only while it lives.
+ *
+ * `syncTargets` holds strong references, so a worker that is terminated without unregistering stays
+ * in the set: the object is retained and every later `registerObjectUrl` broadcasts to a dead
+ * recipient. Wrapping `terminate` is the only hook a raw `Worker` gives us, and it is why this is a
+ * helper rather than something each creation site re-implements — the adaptive scene-detection
+ * worker created its own and leaked for exactly that reason.
+ */
+export function attachObjectUrlRegistrySync<T extends Worker>(worker: T): T {
+  if (!isMainThread()) return worker
+  addObjectUrlSyncTarget(worker)
+
+  const snapshot = getObjectUrlRegistrySnapshot()
+  if (snapshot) {
+    try {
+      worker.postMessage({ type: SYNC_OBJECT_URL_REGISTRY, entries: snapshot.entries })
+    } catch {
+      // Worker may be terminating; ignore.
+    }
+  }
+
+  const terminate = worker.terminate.bind(worker)
+  worker.terminate = () => {
+    removeObjectUrlSyncTarget(worker)
+    terminate()
+  }
+  return worker
+}
+
 export function removeObjectUrlSyncTarget(target: MessagePort | Worker): void {
   if (!isMainThread()) return
   syncTargets.delete(target)

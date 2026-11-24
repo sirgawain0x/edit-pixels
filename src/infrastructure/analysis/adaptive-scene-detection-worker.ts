@@ -12,6 +12,7 @@ import type {
   AdaptiveSceneWorkerRequest,
   AdaptiveSceneWorkerResponse,
 } from './adaptive-scene-detection-worker.types'
+import { isAnalysisRequest } from './adaptive-scene-request-guard'
 
 interface ActiveAnalysis {
   requestId: string
@@ -187,6 +188,12 @@ async function analyze(
 
 self.onmessage = (event: MessageEvent<AdaptiveSceneWorkerRequest>) => {
   const request = event.data
+
+  // This worker shares `self` with the object-URL registry listener, which also receives messages.
+  // A registry sync (or any other non-analysis message) must not be mistaken for work: it has no
+  // requestId, and treating it as an analysis request made the worker answer "already busy" to the
+  // run that followed.
+  if (!isAnalysisRequest(request)) return
 
   if (request.type === 'abort') {
     if (activeAnalysis?.requestId === request.requestId) activeAnalysis.aborted = true

@@ -5,6 +5,7 @@ import {
   ADD_OBJECT_URL,
   REMOVE_OBJECT_URL,
   SYNC_OBJECT_URL_REGISTRY,
+  attachObjectUrlRegistrySync,
   clearObjectUrlRegistry,
   registerObjectUrl,
   removeObjectUrlSyncTarget,
@@ -27,14 +28,19 @@ import { createManagedWorkerPool } from './managed-worker-pool'
  */
 
 type MockWorker = {
-  terminate: ReturnType<typeof vi.fn>
-  postMessage: ReturnType<typeof vi.fn>
+  terminate: ReturnType<typeof vi.fn<() => void>>
+  postMessage: ReturnType<typeof vi.fn<(message: unknown) => void>>
   onmessage: ((event: MessageEvent<unknown>) => void) | null
   onerror: ((event: ErrorEvent) => void) | null
 }
 
 function createMockWorker(): MockWorker {
-  return { terminate: vi.fn(), postMessage: vi.fn(), onmessage: null, onerror: null }
+  return {
+    terminate: vi.fn<() => void>(),
+    postMessage: vi.fn<(message: unknown) => void>(),
+    onmessage: null,
+    onerror: null,
+  }
 }
 
 function messagesOf(worker: MockWorker): Array<Record<string, unknown>> {
@@ -111,6 +117,28 @@ describe('managed worker object-URL sync', () => {
     registerObjectUrl('blob:after-terminate', new Blob(['x']), { mediaId: 'media-after' })
 
     expect(messagesOf(worker)).toEqual([])
+  })
+
+  it('unregisters a raw worker that only wraps terminate', () => {
+    // The adaptive scene-detection worker is created directly, not through a managed wrapper: its
+    // registration used to outlive termination, retaining the worker and broadcasting to a dead
+    // recipient for the rest of the session.
+    const worker = createMockWorker()
+    // `attachObjectUrlRegistrySync` wraps `terminate`, so the original spy is what proves the real
+    // worker was torn down after the bookkeeping ran.
+    const terminateOriginal = worker.terminate as ReturnType<typeof vi.fn>
+    attachObjectUrlRegistrySync(worker as unknown as Worker)
+
+    registerObjectUrl('blob:before-terminate', new Blob(['a']), { mediaId: 'media-before' })
+    expect(messagesOf(worker).some((m) => m.type === ADD_OBJECT_URL)).toBe(true)
+
+    worker.terminate()
+    worker.postMessage.mockClear()
+
+    registerObjectUrl('blob:after-terminate', new Blob(['b']), { mediaId: 'media-after' })
+
+    expect(messagesOf(worker)).toEqual([])
+    expect(terminateOriginal).toHaveBeenCalledTimes(1)
   })
 
   it('drops a sync target on explicit removal', () => {
