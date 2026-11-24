@@ -35,6 +35,9 @@
         },
         {
           "title": "Precision transcription sends your sign-in token so the cloud service no longer fails with a sign-in error"
+        },
+        {
+          "title": "Exports and playback no longer show blank images or play music silently"
         }
       ],
       "improved": [

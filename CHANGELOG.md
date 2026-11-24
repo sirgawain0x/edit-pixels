@@ -6,7 +6,7 @@ All notable changes to Creative Pixels. Weekly CalVer: `YYYY.MM.DD` = the Monday
 
 ## [Current] — week of 2026-11-24
 
-Edit transcript words with synced captions, rerun transcription without losing fixes, and approve agent device sign-ins on the web — plus exports start reliably even when content credentials load slowly, transitions on short clips keep a valid length, exports finish instead of stalling on missing media, centered transitions stay when you drop them on a cut, Director packs show minutes per top-up, export progress shows elapsed time (including sub-second runs), Precision transcription authenticates with your wallet session, background workers ignore blob-registry sync so previews and exports keep working, past briefs load only when you're signed in, Flow checkout states are clearer, and Director automation uses your signed-in wallet.
+Edit transcript words with synced captions, rerun transcription without losing fixes, and approve agent device sign-ins on the web — plus exports start reliably even when content credentials load slowly, transitions on short clips keep a valid length, exports finish instead of stalling on missing media, centered transitions stay when you drop them on a cut, Director packs show minutes per top-up, export progress shows elapsed time (including sub-second runs), Precision transcription authenticates with your wallet session, exports and playback show images and play music instead of going blank or silent, background workers ignore blob-registry sync so previews and exports keep working, past briefs load only when you're signed in, Flow checkout states are clearer, and Director automation uses your signed-in wallet.
 
 ### Added
 - Fix transcript typos word by word — corrections update linked captions and stay saved when you transcribe again
@@ -21,6 +21,7 @@ Edit transcript words with synced captions, rerun transcription without losing f
 - Director session packs show estimated minutes instead of outdated credit counts
 - Export progress shows elapsed time correctly, including a "<1s" label when an export finishes in under a second
 - Precision transcription sends your sign-in token so the cloud service no longer fails with a sign-in error
+- Exports and playback no longer show blank images or play music silently
 
 ### Improved
 - Past Director briefs load only when you're signed in to your account
