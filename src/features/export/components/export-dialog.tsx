@@ -68,6 +68,7 @@ import {
   type ExportableSequence,
 } from '@/features/export/deps/timeline-compositions'
 import { formatTimecode, framesToSeconds } from '@/shared/utils/time-utils'
+import { useExportElapsedSeconds } from '../hooks/use-export-elapsed'
 import type { ExportPreflightResult } from '../utils/export-preflight'
 import { assessExportPreflight, summarizePreflightSeverity } from '../utils/export-preflight'
 import {
@@ -357,8 +358,11 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
   const [videoContainer, setVideoContainer] = useState<ClientVideoContainer>('mp4')
   const [audioContainer, setAudioContainer] = useState<ClientAudioContainer>('mp3')
   const [view, setView] = useState<DialogView>('settings')
-  const [startTime, setStartTime] = useState<number | null>(null)
-  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  // Wall-clock export duration. Both ends are timestamps: the start is taken synchronously on
+  // click (not in an effect that a blocking prep phase can outrun) and the end when the run
+  // settles, so the finished dialog reports the measured time rather than the last tick.
+  const [exportStartedAt, setExportStartedAt] = useState<number | null>(null)
+  const [exportEndedAt, setExportEndedAt] = useState<number | null>(null)
   const [subtitleMode, setSubtitleMode] = useState<SubtitleExportMode>('burn')
   const [renderWholeProject, setRenderWholeProject] = useState(false)
   const wasOpenRef = useRef(false)
@@ -631,26 +635,26 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
   const [videoSupportError, setVideoSupportError] = useState<string | null>(null)
   const [preflight, setPreflight] = useState<ExportPreflightResult | null>(null)
 
-  // Track elapsed time
+  // Track elapsed time. The start is stamped by the click handler; this only records the end, and
+  // clears both when the dialog returns to settings so a second export cannot inherit the first
+  // run's clock.
   useEffect(() => {
-    if (view === 'progress' && !startTime) {
-      setStartTime(Date.now())
-    }
     if (view === 'settings') {
-      setStartTime(null)
-      setElapsedSeconds(0)
+      setExportStartedAt(null)
+      setExportEndedAt(null)
+      return
     }
-  }, [view, startTime])
+    if (view === 'progress' || view === 'complete' || view === 'error' || view === 'cancelled') {
+      if (view !== 'progress') {
+        setExportEndedAt((previous) => previous ?? Date.now())
+      }
+    }
+  }, [view])
 
-  useEffect(() => {
-    if (!startTime || view !== 'progress') return
-
-    const interval = setInterval(() => {
-      setElapsedSeconds(Math.floor((Date.now() - startTime) / 1000))
-    }, 1000)
-
-    return () => clearInterval(interval)
-  }, [startTime, view])
+  const elapsedSeconds = useExportElapsedSeconds({
+    startedAt: exportStartedAt,
+    endedAt: exportEndedAt,
+  })
 
   // Watch status changes to update view
   useEffect(() => {
@@ -677,6 +681,10 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
 
   // Start export
   const handleStartExport = async () => {
+    // Stamp the clock here, before any await: a blocking preparation phase would otherwise run
+    // before React flushes the progress view, and the time it consumed would be missing.
+    setExportStartedAt(Date.now())
+    setExportEndedAt(null)
     setView('progress')
     await startExport(buildExtendedSettings())
   }
@@ -807,16 +815,16 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
       })
       resetState()
       setPreflight(null)
-      setStartTime(null)
-      setElapsedSeconds(0)
+      setExportStartedAt(null)
+      setExportEndedAt(null)
     }
 
     if (!open && wasOpenRef.current) {
       setView('settings')
       resetState()
       setPreflight(null)
-      setStartTime(null)
-      setElapsedSeconds(0)
+      setExportStartedAt(null)
+      setExportEndedAt(null)
     }
 
     wasOpenRef.current = open
