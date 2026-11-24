@@ -715,7 +715,12 @@ function getAudioDecodeWorker(): Worker {
 /** Foreground lane for latency-sensitive playback-window decodes. */
 function getAudioWindowWorker(): Worker {
   if (!audioWindowWorkerManager) {
-    audioWindowWorkerManager = createManagedWorker({ createWorker: createAudioDecodeWorker })
+    audioWindowWorkerManager = createManagedWorker({
+      createWorker: createAudioDecodeWorker,
+      // Same worker script as the full-decode lane, and this is the lane that serves playback
+      // windows. Omitting this is what silenced music playback while video clip audio kept working.
+      syncObjectUrlRegistry: true,
+    })
   }
   return audioWindowWorkerManager.getWorker()
 }

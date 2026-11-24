@@ -17,6 +17,7 @@
 
 import { createLogger } from '@/shared/logging/logger'
 import {
+  attachObjectUrlRegistrySync,
   getObjectUrlBlob,
   getObjectUrlDirectFileMetadata,
 } from '@/infrastructure/browser/object-url-registry'
@@ -277,9 +278,14 @@ function closeUnclaimedBitmap(bitmap: unknown): void {
 
 function createPoolWorker(): PoolWorker | null {
   try {
-    const w = new Worker(new URL('../workers/decoder-prewarm-worker.ts', import.meta.url), {
-      type: 'module',
-    })
+    // Raw spawn, so it never went through the managed helpers and never received the registry:
+    // its worker calls `createMediabunnyInputSource` with a `blob:` src and threw
+    // "Blob URL source is not registered in this worker" on every prewarm.
+    const w = attachObjectUrlRegistrySync(
+      new Worker(new URL('../workers/decoder-prewarm-worker.ts', import.meta.url), {
+        type: 'module',
+      }),
+    )
     w.onmessage = handleWorkerMessage
     w.onerror = (error) => {
       log.warn('Decoder prewarm worker error', {
