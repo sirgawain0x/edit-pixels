@@ -1,3 +1,10 @@
+import {
+  addObjectUrlSyncTarget,
+  getObjectUrlRegistrySnapshot,
+  removeObjectUrlSyncTarget,
+  SYNC_OBJECT_URL_REGISTRY,
+} from '@/infrastructure/browser/object-url-registry'
+
 export interface ManagedWorker<TWorker extends Worker = Worker> {
   getWorker(): TWorker
   peekWorker(): TWorker | null
@@ -29,8 +36,20 @@ export function createManagedWorker<TWorker extends Worker = Worker>(
   let worker: TWorker | null = null
   let cleanup: (() => void) | null = null
 
+  function syncObjectUrlRegistry(targetWorker: TWorker): void {
+    const snapshot = getObjectUrlRegistrySnapshot()
+    if (!snapshot) return
+    try {
+      targetWorker.postMessage({ type: SYNC_OBJECT_URL_REGISTRY, entries: snapshot.entries })
+    } catch {
+      // Worker may be terminating; ignore.
+    }
+  }
+
   function instantiateWorker(): TWorker {
     const nextWorker = options.createWorker()
+    addObjectUrlSyncTarget(nextWorker)
+    syncObjectUrlRegistry(nextWorker)
     cleanup = options.setupWorker?.(nextWorker) ?? null
     worker = nextWorker
     return nextWorker
@@ -56,6 +75,7 @@ export function createManagedWorker<TWorker extends Worker = Worker>(
       cleanup?.()
     } finally {
       cleanup = null
+      removeObjectUrlSyncTarget(activeWorker)
       activeWorker.terminate()
     }
   }
