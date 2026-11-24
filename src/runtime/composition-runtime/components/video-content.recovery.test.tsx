@@ -1,5 +1,6 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { blobUrlManager } from '@/infrastructure/browser/blob-url-manager'
 import { VideoContent } from './video-content'
 
 /**
@@ -196,5 +197,75 @@ describe('VideoContent recovery', () => {
 
     // The source did not change, so the fallback stands: no endless error → retry churn.
     expect(screen.getByTestId('live-decode')).toBeInTheDocument()
+  })
+
+  it('stops refreshing once a refreshed URL also fails, instead of looping forever', async () => {
+    const element = createMockVideoElement()
+    acquireForClipMock.mockReturnValue(element)
+    const invalidateSpy = vi.spyOn(blobUrlManager, 'invalidate')
+
+    const { rerender } = render(clip('blob:a'))
+
+    // First failure: one refresh is allowed.
+    await act(async () => {
+      element.dispatchEvent(new Event('error'))
+      await Promise.resolve()
+    })
+    expect(invalidateSpy).toHaveBeenCalledTimes(1)
+
+    // The resolver hands down a fresh URL, which also fails. Without a per-clip budget this
+    // invalidated again and the cycle never ended — every lap re-reading the file.
+    rerender(clip('blob:b'))
+    await act(async () => {
+      element.dispatchEvent(new Event('error'))
+      await Promise.resolve()
+    })
+
+    expect(invalidateSpy).toHaveBeenCalledTimes(1)
+    // Budget spent, so the clip falls back rather than refreshing a third time.
+    await waitFor(() => {
+      expect(screen.getByTestId('live-decode')).toBeInTheDocument()
+    })
+  })
+
+  it('gives a different clip a fresh refresh budget', async () => {
+    const element = createMockVideoElement()
+    acquireForClipMock.mockReturnValue(element)
+    const invalidateSpy = vi.spyOn(blobUrlManager, 'invalidate')
+
+    const { rerender } = render(clip('blob:a'))
+    await act(async () => {
+      element.dispatchEvent(new Event('error'))
+      await Promise.resolve()
+    })
+    expect(invalidateSpy).toHaveBeenCalledTimes(1)
+
+    // A pooled handoff to another clip is a different media, so it may refresh once too.
+    rerender(
+      <VideoContent
+        item={{
+          id: 'clip-b',
+          type: 'video',
+          trackId: 'track-1',
+          from: 0,
+          durationInFrames: 90,
+          label: 'Clip B',
+          src: 'blob:other',
+          mediaId: 'media-2',
+          _poolClipId: 'group-origin-1',
+        }}
+        muted={false}
+        safeTrimBefore={0}
+        playbackRate={1}
+        sourceFps={30}
+        audioEqStages={[]}
+      />,
+    )
+
+    await act(async () => {
+      element.dispatchEvent(new Event('error'))
+      await Promise.resolve()
+    })
+    expect(invalidateSpy).toHaveBeenCalledTimes(2)
   })
 })

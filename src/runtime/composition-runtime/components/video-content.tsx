@@ -1163,8 +1163,15 @@ export const VideoContent: React.FC<{
   const audioVolume = item._sharedTransitionSync ? 0 : baseAudioVolume
   // Decode/error state is keyed to the clip identity and its resolved URL, so a pooled handoff
   // or a re-resolved blob URL starts a fresh attempt instead of inheriting a dead one.
-  const { hasError, setHasError, useLiveDecode, setUseLiveDecode, liveDecodeTriedRef, retriedRef } =
-    useClipAttemptState(item)
+  const {
+    hasError,
+    setHasError,
+    useLiveDecode,
+    setUseLiveDecode,
+    liveDecodeTriedRef,
+    retriedRef,
+    refreshesLeftRef,
+  } = useClipAttemptState(item)
 
   // NativePreviewVideo mounts pooled <video> into this container.
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -1181,9 +1188,13 @@ export const VideoContent: React.FC<{
         !knownLiveDecode &&
         isRecoverableVideoLoadError(error.message) &&
         !retriedRef.current &&
+        // The budget is per clip, so a refreshed URL that also fails falls through to live
+        // decode instead of refreshing again (and re-reading the file) forever.
+        refreshesLeftRef.current > 0 &&
         item.mediaId
       ) {
         retriedRef.current = true
+        refreshesLeftRef.current -= 1
         contentLog.info(`Retrying item ${item.id} with fresh blob URL for media ${item.mediaId}`)
         blobUrlManager.invalidate(item.mediaId)
         return
@@ -1293,20 +1304,41 @@ function useClipAttemptState(item: { mediaId?: string; src?: string }) {
   const [useLiveDecode, setUseLiveDecode] = useState(() =>
     shouldUseLiveDecodeForMedia(item.mediaId),
   )
-  // One-shot per attempt: on first failure the component invalidates the blob URL so the
-  // upstream resolver (driven by `useBlobUrlVersion`) hands down a fresh one.
+  // Per attempt: a duplicate error event for the same URL must not invalidate twice.
   const liveDecodeTriedRef = useRef(false)
   const retriedRef = useRef(false)
+  /**
+   * Refreshes allowed for this clip *instance*, not this URL.
+   *
+   * A recovered URL resets `retriedRef` (that is the point of the attempt key), but if the
+   * refreshed URL is also broken every lap would refresh again, re-read the file and never
+   * reach the live-decode fallback. One refresh per clip, then fall back.
+   */
+  const refreshesLeftRef = useRef(1)
 
   const attemptKey = `${item.mediaId ?? ''}|${item.src ?? ''}`
   const [activeAttemptKey, setActiveAttemptKey] = useState(attemptKey)
+  const [activeMediaId, setActiveMediaId] = useState(item.mediaId)
   if (activeAttemptKey !== attemptKey) {
     setActiveAttemptKey(attemptKey)
     setHasError(false)
     setUseLiveDecode(shouldUseLiveDecodeForMedia(item.mediaId))
     liveDecodeTriedRef.current = false
     retriedRef.current = false
+    // Only a different clip gets a fresh budget; a new URL for the same clip does not.
+    if (activeMediaId !== item.mediaId) {
+      setActiveMediaId(item.mediaId)
+      refreshesLeftRef.current = 1
+    }
   }
 
-  return { hasError, setHasError, useLiveDecode, setUseLiveDecode, liveDecodeTriedRef, retriedRef }
+  return {
+    hasError,
+    setHasError,
+    useLiveDecode,
+    setUseLiveDecode,
+    liveDecodeTriedRef,
+    retriedRef,
+    refreshesLeftRef,
+  }
 }
