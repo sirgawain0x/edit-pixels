@@ -1,3 +1,8 @@
+import {
+  attachObjectUrlRegistrySync,
+  removeObjectUrlSyncTarget,
+} from '@/infrastructure/browser/object-url-registry'
+
 export interface ManagedWorkerPool<TWorker extends Worker = Worker> {
   acquireWorker(): TWorker
   releaseWorker(worker: TWorker, options?: { maxIdleWorkers?: number }): void
@@ -19,6 +24,7 @@ export function createManagedWorkerPool<TWorker extends Worker = Worker>(
   function createWorker(): TWorker {
     const worker = options.createWorker()
     allWorkers.add(worker)
+    attachObjectUrlRegistrySync(worker)
     return worker
   }
 
@@ -41,6 +47,7 @@ export function createManagedWorkerPool<TWorker extends Worker = Worker>(
     removeIdleWorker(worker)
     options.resetWorker?.(worker)
     allWorkers.delete(worker)
+    removeObjectUrlSyncTarget(worker)
     worker.terminate()
   }
 

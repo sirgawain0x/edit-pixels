@@ -5,6 +5,7 @@ import { createManagedWorker, rejectAndDeletePendingRequests } from './managed-w
 
 type MockWorker = {
   terminate: ReturnType<typeof vi.fn>
+  postMessage: ReturnType<typeof vi.fn>
   onmessage: ((event: MessageEvent<unknown>) => void) | null
   onerror: ((event: ErrorEvent) => void) | null
 }
@@ -12,6 +13,7 @@ type MockWorker = {
 function createMockWorker(): MockWorker {
   return {
     terminate: vi.fn(),
+    postMessage: vi.fn(),
     onmessage: null,
     onerror: null,
   }

@@ -1,3 +1,8 @@
+import {
+  attachObjectUrlRegistrySync,
+  removeObjectUrlSyncTarget,
+} from '@/infrastructure/browser/object-url-registry'
+
 export interface ManagedWorker<TWorker extends Worker = Worker> {
   getWorker(): TWorker
   peekWorker(): TWorker | null
@@ -31,6 +36,7 @@ export function createManagedWorker<TWorker extends Worker = Worker>(
 
   function instantiateWorker(): TWorker {
     const nextWorker = options.createWorker()
+    attachObjectUrlRegistrySync(nextWorker)
     cleanup = options.setupWorker?.(nextWorker) ?? null
     worker = nextWorker
     return nextWorker
@@ -56,6 +62,7 @@ export function createManagedWorker<TWorker extends Worker = Worker>(
       cleanup?.()
     } finally {
       cleanup = null
+      removeObjectUrlSyncTarget(activeWorker)
       activeWorker.terminate()
     }
   }
