@@ -506,13 +506,29 @@ export const TransitionItem = memo(function TransitionItem({
    * than the fade it stood for — dragging one wider moved a rectangle the renderer never
    * followed. Resolving here keeps the rectangle and the fade the same length, including while
    * a resize is in flight (`previewDuration`).
+   *
+   * These are *subscribed*, not sampled. Reading the stores through `getState()` inside the memo
+   * left a mounted bridge drawing its old pressured width after a neighbouring transition was
+   * retimed, added or deleted — the component re-rendered, the memo refused to recompute. Only a
+   * transition sharing one of this one's clips can pressure it, so everything else short-circuits
+   * to the default portions and pays nothing.
    */
+  const allTransitions = useTransitionsStore((state) => state.transitions)
+  const itemById = useItemsStore((state) => state.itemById)
+
   const bridgePortions = useMemo(() => {
-    if (!transition.trackId) return undefined
-    const allTransitions = useTransitionsStore.getState().transitions
     if (allTransitions.length < 2) return undefined
 
-    const itemById = useItemsStore.getState().itemById
+    const sharesClip = allTransitions.some(
+      (candidate) =>
+        candidate.id !== transition.id &&
+        (candidate.leftClipId === transition.leftClipId ||
+          candidate.rightClipId === transition.rightClipId ||
+          candidate.leftClipId === transition.rightClipId ||
+          candidate.rightClipId === transition.leftClipId),
+    )
+    if (!sharesClip) return undefined
+
     const clipsById = new Map<string, TimelineItem>()
     for (const candidate of allTransitions) {
       const left = itemById[candidate.leftClipId]
@@ -532,7 +548,14 @@ export const TransitionItem = memo(function TransitionItem({
     const own = windows.find((window) => window.transition.id === transition.id)
     if (!own) return undefined
     return { leftPortion: own.leftPortion, rightPortion: own.rightPortion }
-  }, [previewDuration, transition.id, transition.trackId])
+  }, [
+    allTransitions,
+    itemById,
+    previewDuration,
+    transition.id,
+    transition.leftClipId,
+    transition.rightClipId,
+  ])
 
   const positionInputs = useMemo<TransitionPositionInputs | null>(() => {
     if (!effectiveLeftClip || !effectiveRightClip) return null

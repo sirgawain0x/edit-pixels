@@ -5,6 +5,7 @@ import type { Transition } from '@/types/transition'
 import type { VideoItem } from '@/types/timeline'
 import { useSelectionStore } from '@/shared/state/selection'
 import { useItemsStore } from '../stores/items-store'
+import { useTransitionsStore } from '../stores/transitions-store'
 import { useTimelineSettingsStore } from '../stores/timeline-settings-store'
 import { useZoomStore } from '../stores/zoom-store'
 import { useRollingEditPreviewStore } from '../stores/rolling-edit-preview-store'
@@ -281,5 +282,79 @@ describe('TransitionItem preview bridge motion', () => {
     })
 
     expect(screen.queryByTitle('Fade (0.7s)')).toBeNull()
+  })
+
+  it('re-solves the bridge width when a neighbouring transition is retimed', () => {
+    // left 0..120, a 20-frame middle clip, right 140..260. Two 30-frame crossfades both want
+    // 15 frames of the middle clip, so the planner pressures them down to 25 frames each.
+    const left = makeVideoItem({ id: 'left', from: 0, durationInFrames: 120 })
+    const middle = makeVideoItem({ id: 'middle', from: 120, durationInFrames: 20, mediaId: 'm2' })
+    const right = makeVideoItem({ id: 'right', from: 140, durationInFrames: 120, mediaId: 'm3' })
+    useItemsStore.getState().setItems([left, middle, right])
+
+    const outgoing: Transition = {
+      id: 'tr-out',
+      type: 'crossfade',
+      presentation: 'fade',
+      timing: 'linear',
+      leftClipId: 'left',
+      rightClipId: 'middle',
+      trackId: 'track-1',
+      durationInFrames: 30,
+      alignment: 0.5,
+    }
+    const incoming: Transition = {
+      id: 'tr-in',
+      type: 'crossfade',
+      presentation: 'fade',
+      timing: 'linear',
+      leftClipId: 'middle',
+      rightClipId: 'right',
+      trackId: 'track-1',
+      durationInFrames: 30,
+      alignment: 0.5,
+    }
+    useTransitionsStore.getState().setTransitions([outgoing, incoming])
+
+    render(<TransitionItem transition={outgoing} />)
+
+    const pressuredWidth = Number.parseFloat(screen.getByTitle('Fade (1.0s)').style.width)
+
+    // Shrinking the neighbour releases the pressure: 15 + 5 frames now fit the 20-frame clip,
+    // so this bridge should widen back out to its full requested duration.
+    act(() => {
+      useTransitionsStore
+        .getState()
+        .setTransitions([outgoing, { ...incoming, durationInFrames: 10 }])
+    })
+
+    const relaxedWidth = Number.parseFloat(screen.getByTitle('Fade (1.0s)').style.width)
+
+    expect(relaxedWidth).toBeGreaterThan(pressuredWidth)
+    // 30 frames requested against 25 rendered: a fifth wider once the pressure clears.
+    expect(relaxedWidth / pressuredWidth).toBeCloseTo(30 / 25, 1)
+  })
+
+  it('ignores transitions that share no clip with this one', () => {
+    setTransitionClips()
+    useTransitionsStore.getState().setTransitions([
+      transition,
+      {
+        id: 'tr-elsewhere',
+        type: 'crossfade',
+        presentation: 'fade',
+        timing: 'linear',
+        leftClipId: 'some-other-left',
+        rightClipId: 'some-other-right',
+        trackId: 'track-2',
+        durationInFrames: 10,
+      },
+    ])
+
+    render(<TransitionItem transition={transition} />)
+
+    // 20 frames at 30fps, unpressured: the bridge covers the full requested duration.
+    const width = Number.parseFloat(screen.getByTitle('Fade (0.7s)').style.width)
+    expect(width).toBeGreaterThan(0)
   })
 })
