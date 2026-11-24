@@ -7,11 +7,14 @@
  */
 import { useEffect } from 'react'
 import { useSmartWalletOps } from '@/hooks/use-smart-wallet-ops'
+import { useWalletContext } from '@/context/wallet-context'
 import { buildCrtvaiTransferOp } from '@/shared/web3/build-metoken-payment-op'
 import { registerPrecisionPayment } from '../lib/precision-payment'
+import { registerPrecisionAccessToken } from '../lib/precision-auth'
 
 export function usePrecisionPaymentBridge(): void {
   const { sendOps, ready } = useSmartWalletOps()
+  const { getAccessToken } = useWalletContext()
 
   useEffect(() => {
     // Registering before the wallet can send would swap one failure (unregistered) for a
@@ -25,4 +28,12 @@ export function usePrecisionPaymentBridge(): void {
       return txHash
     })
   }, [ready, sendOps])
+
+  // The cloud route authenticates the caller with a Privy bearer token. The transcription service
+  // has no React scope, so the token comes through the same slot as payment rather than being
+  // threaded through four call sites.
+  useEffect(() => {
+    if (!getAccessToken) return undefined
+    return registerPrecisionAccessToken(() => getAccessToken())
+  }, [getAccessToken])
 }
