@@ -7,7 +7,7 @@ import {
 
 export type PostedMessage = { type: string; [key: string]: unknown }
 
-export function registryBroadcastPayloads(): Array<Record<string, unknown>> {
+function registryBroadcastPayloads(): Array<Record<string, unknown>> {
   return [
     {
       type: SYNC_OBJECT_URL_REGISTRY,
