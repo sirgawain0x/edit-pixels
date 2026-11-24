@@ -290,6 +290,10 @@ export async function runRender({
       new Worker(new URL('../workers/export-render.worker.ts', import.meta.url), {
         type: 'module',
       }),
+    // The render worker decodes `blob:` sources for every frame it draws (images and video frame
+    // extraction). Without the registry it cannot open them: `ClientRenderEngine: Failed to load
+    // image` and `VideoFrameExtractor: Failed to initialize`.
+    syncObjectUrlRegistry: true,
     setupWorker: (worker) => () => {
       worker.onmessage = null
       worker.onerror = null
