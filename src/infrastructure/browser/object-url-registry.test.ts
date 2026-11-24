@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 import {
   addObjectUrlSyncTarget,
   clearObjectUrlRegistry,
+  isObjectUrlRegistryMessage,
   getObjectUrlRegistrySnapshot,
   registerObjectUrl,
   removeObjectUrlSyncTarget,
@@ -136,5 +137,23 @@ describe('object-url-registry worker listener', () => {
       }),
     )
     expect(registry.getObjectUrlBlob('blob:worker-add')).toBeNull()
+  })
+})
+
+describe('isObjectUrlRegistryMessage', () => {
+  it('recognises the three sync messages', () => {
+    for (const type of [SYNC_OBJECT_URL_REGISTRY, ADD_OBJECT_URL, REMOVE_OBJECT_URL]) {
+      expect(isObjectUrlRegistryMessage({ type })).toBe(true)
+    }
+  })
+
+  it('leaves worker protocol messages alone', () => {
+    // Filmstrip/audio/waveform workers switch on `type` and throw on an unknown one, so only the
+    // registry's own messages may be filtered out.
+    expect(isObjectUrlRegistryMessage({ type: 'extract', requestId: 'r-1' })).toBe(false)
+    expect(isObjectUrlRegistryMessage({ type: 'decode', mediaId: 'm-1' })).toBe(false)
+    expect(isObjectUrlRegistryMessage({ type: 'abort', requestId: 'r-1' })).toBe(false)
+    expect(isObjectUrlRegistryMessage(null)).toBe(false)
+    expect(isObjectUrlRegistryMessage('nope')).toBe(false)
   })
 })

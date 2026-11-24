@@ -9,6 +9,7 @@
 import { createMediabunnyInputSource } from '@/infrastructure/browser/mediabunny-input-source'
 import type { ObjectUrlSourceMetadata } from '@/infrastructure/browser/object-url-registry'
 import { ensureAc3DecoderRegistered, isAc3AudioCodec } from '@/shared/utils/ac3-decoder'
+import { isObjectUrlRegistryMessage } from '@/infrastructure/browser/object-url-registry'
 
 interface WaveformRequest {
   type: 'generate'
@@ -76,6 +77,8 @@ async function getMediabunny() {
 
 self.onmessage = async (event: MessageEvent<WaveformWorkerMessage>) => {
   const { type } = event.data
+  // The object-URL registry shares `self` with this handler, so its sync messages arrive here too.
+  if (isObjectUrlRegistryMessage(event.data)) return
 
   if (type === 'abort') {
     const state = activeRequests.get(event.data.requestId)

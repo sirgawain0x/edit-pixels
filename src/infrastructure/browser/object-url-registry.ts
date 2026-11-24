@@ -51,6 +51,19 @@ function sanitizeMetadataForWorker(
 
 const syncTargets = new Set<MessagePort | Worker>()
 
+/**
+ * Whether a message is one of this registry's sync messages.
+ *
+ * A worker that opts into the sync shares `self` with the registry listener, so its own handler sees
+ * these too. Each such worker guards with this first — a handler that switches on `type` and throws
+ * on an unknown one aborts real work when a sync lands (filmstrip extraction was the first casualty).
+ */
+export function isObjectUrlRegistryMessage(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false
+  const type = (value as { type?: unknown }).type
+  return type === SYNC_OBJECT_URL_REGISTRY || type === ADD_OBJECT_URL || type === REMOVE_OBJECT_URL
+}
+
 export function addObjectUrlSyncTarget(target: MessagePort | Worker): void {
   if (!isMainThread()) return
   syncTargets.add(target)
@@ -203,7 +216,7 @@ function applyObjectUrlRemove(data: Record<string, unknown>): void {
   unregisterObjectUrl(data.url)
 }
 
-if (isDedicatedWorkerContext()) {
+if (isDedicatedWorkerContext() && typeof self.addEventListener === 'function') {
   self.addEventListener('message', (event: MessageEvent<unknown>) => {
     const data = event.data as Record<string, unknown> | undefined
     if (!data || typeof data !== 'object') return

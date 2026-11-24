@@ -154,6 +154,8 @@ class FilmstripCacheService {
       new Worker(new URL('../workers/filmstrip-extraction-worker.ts', import.meta.url), {
         type: 'module',
       }),
+    // Filmstrip extraction decodes `blob:` sources with mediabunny, so it needs the registry.
+    syncObjectUrlRegistry: true,
     resetWorker: (worker) => {
       worker.onmessage = null
       worker.onerror = null
