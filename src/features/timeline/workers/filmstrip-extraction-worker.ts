@@ -7,10 +7,7 @@
  */
 
 import { createMediabunnyInputSource } from '@/infrastructure/browser/mediabunny-input-source'
-import {
-  isObjectUrlRegistryMessage,
-  type ObjectUrlSourceMetadata,
-} from '@/infrastructure/browser/object-url-registry'
+import { type ObjectUrlSourceMetadata } from '@/infrastructure/browser/object-url-registry'
 import { ensureProResDecoderRegistered } from '@/infrastructure/browser/register-prores-decoder'
 import { fitFilmstripFrameSize } from '../utils/fit-filmstrip-frame-size'
 import { isObjectUrlRegistryMessage } from '@/infrastructure/browser/object-url-registry'
@@ -367,7 +364,6 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
 
   const { type } = event.data
   // The object-URL registry shares `self` with this handler, so its sync messages arrive here too.
-  if (isObjectUrlRegistryMessage(event.data)) return
 
   try {
     switch (type) {

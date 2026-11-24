@@ -10,7 +10,6 @@ import {
   unregisterObjectUrl,
   ADD_OBJECT_URL,
   REMOVE_OBJECT_URL,
-  isObjectUrlRegistryMessage,
 } from './object-url-registry'
 
 describe('isObjectUrlRegistryMessage', () => {
@@ -25,8 +24,14 @@ describe('isObjectUrlRegistryMessage', () => {
       isObjectUrlRegistryMessage({ type: ADD_OBJECT_URL, url: 'blob:x', blob: new Blob() }),
     ).toBe(true)
     expect(isObjectUrlRegistryMessage({ type: REMOVE_OBJECT_URL, url: 'blob:x' })).toBe(true)
+    // Worker protocol messages must pass through untouched: filmstrip/audio/waveform handlers
+    // switch on `type` and throw on an unknown one, so only the registry's own types may filter.
     expect(isObjectUrlRegistryMessage({ type: 'warm', requestId: 'r1' })).toBe(false)
+    expect(isObjectUrlRegistryMessage({ type: 'extract', requestId: 'r-1' })).toBe(false)
+    expect(isObjectUrlRegistryMessage({ type: 'decode', mediaId: 'm-1' })).toBe(false)
+    expect(isObjectUrlRegistryMessage({ type: 'abort', requestId: 'r-1' })).toBe(false)
     expect(isObjectUrlRegistryMessage(null)).toBe(false)
+    expect(isObjectUrlRegistryMessage('nope')).toBe(false)
   })
 })
 
@@ -155,23 +160,5 @@ describe('object-url-registry worker listener', () => {
       }),
     )
     expect(registry.getObjectUrlBlob('blob:worker-add')).toBeNull()
-  })
-})
-
-describe('isObjectUrlRegistryMessage', () => {
-  it('recognises the three sync messages', () => {
-    for (const type of [SYNC_OBJECT_URL_REGISTRY, ADD_OBJECT_URL, REMOVE_OBJECT_URL]) {
-      expect(isObjectUrlRegistryMessage({ type })).toBe(true)
-    }
-  })
-
-  it('leaves worker protocol messages alone', () => {
-    // Filmstrip/audio/waveform workers switch on `type` and throw on an unknown one, so only the
-    // registry's own messages may be filtered out.
-    expect(isObjectUrlRegistryMessage({ type: 'extract', requestId: 'r-1' })).toBe(false)
-    expect(isObjectUrlRegistryMessage({ type: 'decode', mediaId: 'm-1' })).toBe(false)
-    expect(isObjectUrlRegistryMessage({ type: 'abort', requestId: 'r-1' })).toBe(false)
-    expect(isObjectUrlRegistryMessage(null)).toBe(false)
-    expect(isObjectUrlRegistryMessage('nope')).toBe(false)
   })
 })
