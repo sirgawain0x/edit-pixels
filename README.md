@@ -4,7 +4,6 @@
 
 **Edit videos. In your browser.**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Discord](https://img.shields.io/badge/Discord-Join%20community-5865F2?logo=discord&logoColor=white)](https://discord.gg/PN9AmJK7D)
 
 ![Pixels editor workspace](./public/assets/landing/main.png)

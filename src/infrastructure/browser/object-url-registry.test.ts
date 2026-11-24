@@ -9,7 +9,25 @@ import {
   unregisterObjectUrl,
   ADD_OBJECT_URL,
   REMOVE_OBJECT_URL,
+  isObjectUrlRegistryMessage,
 } from './object-url-registry'
+
+describe('isObjectUrlRegistryMessage', () => {
+  it('matches registry broadcast types only', () => {
+    expect(
+      isObjectUrlRegistryMessage({
+        type: SYNC_OBJECT_URL_REGISTRY,
+        entries: [],
+      }),
+    ).toBe(true)
+    expect(
+      isObjectUrlRegistryMessage({ type: ADD_OBJECT_URL, url: 'blob:x', blob: new Blob() }),
+    ).toBe(true)
+    expect(isObjectUrlRegistryMessage({ type: REMOVE_OBJECT_URL, url: 'blob:x' })).toBe(true)
+    expect(isObjectUrlRegistryMessage({ type: 'warm', requestId: 'r1' })).toBe(false)
+    expect(isObjectUrlRegistryMessage(null)).toBe(false)
+  })
+})
 
 describe('object-url-registry main-thread snapshot', () => {
   beforeEach(() => {

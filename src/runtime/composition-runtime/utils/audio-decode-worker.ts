@@ -11,6 +11,7 @@
  */
 
 import { createMediabunnyInputSource } from '@/infrastructure/browser/mediabunny-input-source'
+import { isObjectUrlRegistryMessage } from '@/infrastructure/browser/object-url-registry'
 import { writeDecodedPreviewAudioToRoot } from '@/infrastructure/storage/workspace-fs/decoded-preview-audio'
 import { createLogger } from '@/shared/logging/logger'
 import { ensureAc3DecoderRegistered, isAc3AudioCodec } from '@/shared/utils/ac3-decoder'
@@ -393,6 +394,8 @@ function assembleBins(message: AudioAssembleBinsRequest): void {
 }
 
 self.onmessage = async (event: MessageEvent<AudioDecodeWorkerMessage>) => {
+  if (isObjectUrlRegistryMessage(event.data)) return
+
   const message = event.data
 
   try {

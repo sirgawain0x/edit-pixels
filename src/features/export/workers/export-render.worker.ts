@@ -1,3 +1,4 @@
+import { isObjectUrlRegistryMessage } from '@/infrastructure/browser/object-url-registry'
 import { isGifUrl, isWebpUrl } from '@/shared/utils/media-utils'
 import { createLogger } from '@/shared/logging/logger'
 import type { ImageItem } from '@/types/timeline'
@@ -214,6 +215,8 @@ async function handleStart(message: ExportRenderStartRequest): Promise<void> {
 }
 
 self.onmessage = (event: MessageEvent<ExportRenderWorkerRequest>) => {
+  if (isObjectUrlRegistryMessage(event.data)) return
+
   const message = event.data
 
   if (message.type === 'cancel') {

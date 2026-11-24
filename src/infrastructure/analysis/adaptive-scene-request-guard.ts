@@ -1,3 +1,4 @@
+import { isObjectUrlRegistryMessage } from '@/infrastructure/browser/object-url-registry'
 import type { AdaptiveSceneWorkerRequest } from './adaptive-scene-detection-worker.types'
 
 /**
@@ -9,6 +10,7 @@ import type { AdaptiveSceneWorkerRequest } from './adaptive-scene-detection-work
  * "Adaptive scene analysis worker is already busy".
  */
 export function isAnalysisRequest(value: unknown): value is AdaptiveSceneWorkerRequest {
+  if (isObjectUrlRegistryMessage(value)) return false
   if (!value || typeof value !== 'object') return false
   const candidate = value as { requestId?: unknown; type?: unknown }
   if (typeof candidate.requestId !== 'string') return false

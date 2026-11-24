@@ -11,6 +11,7 @@
  *     meta.json - { width, height, status, createdAt, version, sourceWidth, sourceHeight }
  */
 
+import { isObjectUrlRegistryMessage } from '@/infrastructure/browser/object-url-registry'
 import { ensureProResDecoderRegistered } from '@/infrastructure/browser/register-prores-decoder'
 import { PROXY_DIR, PROXY_SCHEMA_VERSION } from '../proxy-constants'
 
@@ -437,6 +438,8 @@ async function generateProxy(request: ProxyGenerateRequest): Promise<void> {
  * Message handler
  */
 self.onmessage = async (event: MessageEvent<ProxyWorkerRequest>) => {
+  if (isObjectUrlRegistryMessage(event.data)) return
+
   const { type } = event.data
 
   try {

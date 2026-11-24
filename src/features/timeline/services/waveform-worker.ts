@@ -7,7 +7,10 @@
  */
 
 import { createMediabunnyInputSource } from '@/infrastructure/browser/mediabunny-input-source'
-import type { ObjectUrlSourceMetadata } from '@/infrastructure/browser/object-url-registry'
+import {
+  isObjectUrlRegistryMessage,
+  type ObjectUrlSourceMetadata,
+} from '@/infrastructure/browser/object-url-registry'
 import { ensureAc3DecoderRegistered, isAc3AudioCodec } from '@/shared/utils/ac3-decoder'
 
 interface WaveformRequest {
@@ -75,6 +78,8 @@ async function getMediabunny() {
 }
 
 self.onmessage = async (event: MessageEvent<WaveformWorkerMessage>) => {
+  if (isObjectUrlRegistryMessage(event.data)) return
+
   const { type } = event.data
 
   if (type === 'abort') {
