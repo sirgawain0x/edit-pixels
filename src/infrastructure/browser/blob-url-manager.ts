@@ -30,6 +30,25 @@ class BlobUrlManager {
   private entries = new Map<string, BlobUrlEntry>()
   private version = 0
   private listeners = new Set<() => void>()
+  /**
+   * Number of mounted editor surfaces holding these URLs.
+   *
+   * `releaseAll()` is a project-cleanup call, but its only caller runs in a route
+   * `beforeLoad` — which also fires on **route preload**, so hovering a Projects link revokes the
+   * URLs a mounted editor is still rendering from. The elements then fail with
+   * `ERR_FILE_NOT_FOUND` and every decode that goes through the URL (audio included) fails until
+   * the project is reopened. While any editor is retained this call is a no-op; the editor's own
+   * teardown releases what it acquired.
+   */
+  private retainedEditors = 0
+  /**
+   * A `releaseAll()` arrived while an editor was still mounted.
+   *
+   * Navigation runs `beforeLoad` *before* unmounting the outgoing route, so the request always
+   * lands while the editor still holds its URLs. Remember it and honour it at teardown, or the
+   * cleanup is skipped for the session and those blobs stay in memory.
+   */
+  private pendingReleaseAll = false
 
   /** Notify React subscribers that blob URLs have changed */
   private notify(): void {
@@ -168,14 +187,48 @@ class BlobUrlManager {
 
   /**
    * Release all blob URLs (e.g., on project cleanup).
+   *
+   * Skipped while an editor is retained: this is called from a route `beforeLoad`, which also runs
+   * on preload, and revoking URLs under a mounted editor breaks every element still using them.
    */
   releaseAll(): void {
+    if (this.retainedEditors > 0) {
+      // Deferred to teardown — see `pendingReleaseAll`.
+      this.pendingReleaseAll = true
+      logger.debug(
+        `Deferred releaseAll: ${this.retainedEditors} editor surface(s) still hold media URLs`,
+      )
+      return
+    }
+    this.releaseAllNow()
+  }
+
+  private releaseAllNow(): void {
+    this.pendingReleaseAll = false
     for (const [mediaId, entry] of this.entries) {
       this.revokeEntry(entry)
       logger.debug(`Revoked blob URL for media ${mediaId}`)
     }
     this.entries.clear()
     this.notify()
+  }
+
+  /**
+   * Declare that an editor surface is mounted and rendering from these URLs.
+   * Returns an idempotent teardown to call when that surface unmounts.
+   */
+  retainEditor(): () => void {
+    this.retainedEditors += 1
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      this.retainedEditors = Math.max(0, this.retainedEditors - 1)
+      // Honour a cleanup that arrived while this surface was still rendering.
+      if (this.retainedEditors === 0 && this.pendingReleaseAll) {
+        this.releaseAllNow()
+      }
+    }
   }
 
   /**
