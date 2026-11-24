@@ -38,3 +38,30 @@ export async function getPrecisionAccessToken(): Promise<string | null> {
 export function bearerHeader(token: string): string {
   return ['Bearer', token].join(' ')
 }
+
+/**
+ * Merge the caller identity into a request init.
+ *
+ * Every request this pipeline makes to our own API has to carry it: the quote, the upload-session
+ * request, the per-part submit and the job poll all run through `authenticateGenerativePost`, and
+ * fixing them one at a time is how the upload session kept answering 401 after the quote was
+ * already authenticated. Call it through `authorizedPrecisionFetch` so a new endpoint cannot forget.
+ *
+ * Pre-signed GCS upload URLs must NOT go through this: their signature is the credential, and an
+ * unexpected `Authorization` header is rejected.
+ */
+async function precisionRequestInit(init: RequestInit = {}): Promise<RequestInit> {
+  const token = await getPrecisionAccessToken()
+  if (!token) return init
+  const existing = (init.headers ?? {}) as Record<string, string>
+  return { ...init, headers: { ...existing, authorization: bearerHeader(token) } }
+}
+
+/** `fetch` for this pipeline's own API calls, carrying the caller identity. */
+export async function authorizedPrecisionFetch(
+  fetchImpl: typeof fetch,
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+): Promise<Response> {
+  return fetchImpl(input, await precisionRequestInit(init))
+}

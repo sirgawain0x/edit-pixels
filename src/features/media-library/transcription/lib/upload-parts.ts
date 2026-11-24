@@ -12,6 +12,8 @@
  * how much work is left.
  */
 
+import { authorizedPrecisionFetch } from './precision-auth'
+
 export const UPLOAD_SESSION_PATH = '/api/transcribe-upload-session'
 
 export interface UploadPartInput {
@@ -63,19 +65,19 @@ async function requestSessions(input: {
   parts: readonly UploadPartInput[]
   signal?: AbortSignal
 }): Promise<UploadSessionFile[]> {
-  const response = await input
-    .fetchImpl(input.sessionUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jobId: input.jobId,
-        files: input.parts.map((part) => ({ name: part.name, contentType: part.contentType })),
-      }),
-      signal: input.signal,
-    })
-    .catch((error: unknown) => {
-      throw new Error(`upload session request failed: ${String(error)}`)
-    })
+  // Authenticated: `/api/transcribe-upload-session` runs the same identity check as the quote.
+  // The pre-signed PUTs below deliberately do not use this — their signature is the credential.
+  const response = await authorizedPrecisionFetch(input.fetchImpl, input.sessionUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jobId: input.jobId,
+      files: input.parts.map((part) => ({ name: part.name, contentType: part.contentType })),
+    }),
+    signal: input.signal,
+  }).catch((error: unknown) => {
+    throw new Error(`upload session request failed: ${String(error)}`)
+  })
 
   if (!response.ok) {
     const detail = await response.text().catch(() => '')
