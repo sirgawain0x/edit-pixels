@@ -1539,15 +1539,19 @@ describe('VideoPreview sync behavior', () => {
 
     await act(async () => {
       resolveStaleRenderer?.(staleRenderer)
-      await Promise.resolve()
     })
 
-    expect(staleRenderer.dispose).toHaveBeenCalledOnce()
+    await waitFor(() => {
+      expect(staleRenderer.dispose).toHaveBeenCalledOnce()
+    })
+
     act(() => {
       usePlaybackStore.getState().setPreviewFrame(24)
     })
-    await waitFor(() => expect(currentRenderer.renderFrame).toHaveBeenCalledWith(24))
-    expect(staleRenderer.renderFrame).not.toHaveBeenCalled()
+    await waitFor(() => {
+      expect(currentRenderer.renderFrame).toHaveBeenCalledWith(24)
+      expect(staleRenderer.renderFrame).not.toHaveBeenCalled()
+    })
   })
 
   it('rebuilds a reversed fast-scrub renderer with the selected proxy mode', async () => {
@@ -3197,6 +3201,7 @@ describe('VideoPreview sync behavior', () => {
     renderer.prewarmFrames.mockClear()
 
     let resolveWarm: (() => void) | null = null
+    let warmEnteredHeldState = false
     let activeRendererOperations = 0
     let maxActiveRendererOperations = 0
     let shouldHoldWarm = true
@@ -3206,6 +3211,7 @@ describe('VideoPreview sync behavior', () => {
       try {
         if (shouldHoldWarm) {
           shouldHoldWarm = false
+          warmEnteredHeldState = true
           await new Promise<void>((resolve) => {
             resolveWarm = resolve
           })
@@ -3226,26 +3232,32 @@ describe('VideoPreview sync behavior', () => {
     })
     await waitFor(() => {
       expect(renderer.prewarmFrames).toHaveBeenCalled()
+      expect(warmEnteredHeldState).toBe(true)
     })
 
     act(() => {
       usePlaybackStore.getState().setPreviewFrame(48)
     })
-    expect(getDisplayedFrame()).toBe(47)
-    expect(scrubCanvas.style.visibility).toBe('visible')
+
+    // The warm is actively holding the renderer, so the skim to 48 must be
+    // serialized behind it. Wait until React has flushed the state change and
+    // the renderer pump has had a chance to start, then assert the front buffer
+    // is still showing the committed frame.
+    await waitFor(() => {
+      expect(getDisplayedFrame()).toBe(47)
+      expect(scrubCanvas.style.visibility).toBe('visible')
+    })
 
     await act(async () => {
       resolveWarm?.()
-      await Promise.resolve()
-      await Promise.resolve()
     })
 
     await waitFor(() => {
       expect(renderer.renderFrame).toHaveBeenCalledWith(48)
       expect(getDisplayedFrame()).toBe(48)
       expect(scrubCanvas.style.visibility).toBe('visible')
+      expect(renderer.renderFrame).not.toHaveBeenCalledWith(47)
     })
-    expect(renderer.renderFrame).not.toHaveBeenCalledWith(47)
     expect(maxActiveRendererOperations).toBe(1)
   })
 
