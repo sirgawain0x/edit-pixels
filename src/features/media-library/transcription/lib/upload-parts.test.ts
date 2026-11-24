@@ -26,6 +26,45 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 describe('uploadParts', () => {
+  it('authenticates the session request but not the pre-signed PUTs', async () => {
+    // `/api/transcribe-upload-session` runs the same identity check as the quote. The PUT below it
+    // must stay bare: the GCS signature *is* the credential, and an unexpected Authorization header
+    // is rejected.
+    const { registerPrecisionAccessToken } = await import('./precision-auth')
+    const unregister = registerPrecisionAccessToken(async () => 'privy-token')
+    try {
+      const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === UPLOAD_SESSION_PATH) {
+          return jsonResponse(
+            sessionBody([{ name: 'part-0.wav', sessionUri: 'https://storage.googleapis.com/s/0' }]),
+          )
+        }
+        expect(init?.method).toBe('PUT')
+        return new Response(null, { status: 200 })
+      })
+
+      await uploadParts({
+        jobId: JOB,
+        parts: [part('part-0.wav')],
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      })
+
+      const sessionHeaders = (fetchImpl.mock.calls[0]?.[1] as RequestInit).headers as Record<
+        string,
+        string
+      >
+      expect(sessionHeaders.authorization).toBe('Bearer privy-token')
+
+      const putHeaders = (fetchImpl.mock.calls[1]?.[1] as RequestInit).headers as Record<
+        string,
+        string
+      >
+      expect(putHeaders.authorization).toBeUndefined()
+    } finally {
+      unregister()
+    }
+  })
+
   it('asks for sessions, then PUTs each part to its own session URL', async () => {
     const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
       if (url === UPLOAD_SESSION_PATH) {

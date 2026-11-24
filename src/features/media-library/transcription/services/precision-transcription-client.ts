@@ -10,6 +10,7 @@ import type {
   StartTranscriptionPrecisionResponse,
 } from '../jobs/types'
 import type { CloudPart } from '../lib/plan-cloud-parts'
+import { bearerHeader, getPrecisionAccessToken } from '../lib/precision-auth'
 import type { PartResult, PrecisionQuote, LandedPart } from '../lib/run-precision-job'
 import {
   uploadParts,
@@ -42,9 +43,16 @@ async function postJson<T>(
   fetchImpl: typeof fetch,
   signal?: AbortSignal,
 ): Promise<T> {
+  // `resolvePixelsIdentity` on the route wants a Privy bearer token; without it every run answers
+  // `401 missing authorization`. The token is resolved per request so a refreshed session is picked
+  // up without re-creating the client.
+  const token = await getPrecisionAccessToken()
   const response = await fetchImpl(path, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      ...(token ? { authorization: bearerHeader(token) } : {}),
+    },
     body: JSON.stringify(body),
     ...(signal ? { signal } : {}),
   })
