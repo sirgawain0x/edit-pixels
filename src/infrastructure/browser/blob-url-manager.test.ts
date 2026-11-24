@@ -153,5 +153,62 @@ describe('BlobUrlManager', () => {
       expect(revokedUrls.has(url1)).toBe(true)
       expect(revokedUrls.has(url2)).toBe(true)
     })
+
+    it('is a no-op while an editor is mounted', () => {
+      // The only caller is a route `beforeLoad`, which also fires on preload: hovering a Projects
+      // link must not revoke URLs the open editor is still rendering from.
+      const url = blobUrlManager.acquire('media-1', new Blob(['a']))
+      const teardown = blobUrlManager.retainEditor()
+
+      blobUrlManager.releaseAll()
+
+      expect(blobUrlManager.size).toBe(1)
+      expect(blobUrlManager.get('media-1')).toBe(url)
+      expect(revokedUrls.has(url)).toBe(false)
+
+      // Once the editor goes away, the request it arrived with is honoured.
+      teardown()
+      blobUrlManager.releaseAll()
+
+      expect(blobUrlManager.size).toBe(0)
+      expect(revokedUrls.has(url)).toBe(true)
+    })
+
+    it('runs a deferred cleanup at teardown, so navigating away does not leak the blobs', () => {
+      // Navigation runs `beforeLoad` before unmounting the outgoing route, so the request always
+      // lands while the editor is still mounted. Dropping it there leaks every media blob for the
+      // rest of the session.
+      const url = blobUrlManager.acquire('media-1', new Blob(['a']))
+      const teardown = blobUrlManager.retainEditor()
+
+      blobUrlManager.releaseAll()
+      expect(blobUrlManager.size).toBe(1)
+
+      teardown()
+
+      expect(blobUrlManager.size).toBe(0)
+      expect(revokedUrls.has(url)).toBe(true)
+    })
+
+    it('keeps URLs when an editor unmounts without a cleanup request', () => {
+      const url = blobUrlManager.acquire('media-1', new Blob(['a']))
+      const teardown = blobUrlManager.retainEditor()
+
+      teardown()
+
+      expect(blobUrlManager.get('media-1')).toBe(url)
+      expect(revokedUrls.has(url)).toBe(false)
+    })
+
+    it('needs every retained editor to go away, and tolerates double teardown', () => {
+      blobUrlManager.acquire('media-1', new Blob(['a']))
+      const first = blobUrlManager.retainEditor()
+      blobUrlManager.retainEditor()
+
+      first()
+      first() // idempotent: a double teardown must not release the other editor's hold
+      blobUrlManager.releaseAll()
+      expect(blobUrlManager.size).toBe(1)
+    })
   })
 })
