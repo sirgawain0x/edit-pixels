@@ -4,6 +4,9 @@ import { useShallow } from 'zustand/react/shallow'
 import { perfMarkRender } from '@/shared/logging/perf-marks'
 import { useTimelineStore } from '../stores/timeline-store'
 import { useItemsStore } from '../stores/items-store'
+import { useTransitionsStore } from '../stores/transitions-store'
+import { resolveTransitionWindows } from '@/shared/timeline/transitions/transition-planner'
+import type { TimelineItem } from '@/types/timeline'
 import { useRollingEditPreviewStore } from '../stores/rolling-edit-preview-store'
 import { useRippleEditPreviewStore } from '../stores/ripple-edit-preview-store'
 import { useSlideEditPreviewStore } from '../stores/slide-edit-preview-store'
@@ -57,6 +60,12 @@ interface TransitionPositionInputs {
   previewDuration: number
   alignment: number | undefined
   fps: number
+  /**
+   * From `resolveTransitionWindows`: the renderer scales a transition's portions down when the
+   * clip it shares carries another transition, so the bridge must draw the same portion it
+   * will actually cross-fade.
+   */
+  portions?: { leftPortion: number; rightPortion: number }
 }
 
 interface TransitionPixelPosition {
@@ -73,13 +82,14 @@ function getTransitionPixelPosition(
   inputs: TransitionPositionInputs,
   pixelsPerSecond: number,
 ): TransitionPixelPosition {
-  const { leftClip, rightClip, previewDuration, alignment, fps } = inputs
+  const { leftClip, rightClip, previewDuration, alignment, fps, portions } = inputs
   const bridge = getTransitionBridgeBounds(
     leftClip.from,
     leftClip.durationInFrames,
     rightClip.from,
     previewDuration,
     alignment,
+    portions,
   )
   const bridgeRight = frameToPixelsAtScale(bridge.rightFrame, fps, pixelsPerSecond)
   const bridgeLeft = frameToPixelsAtScale(bridge.leftFrame, fps, pixelsPerSecond)
@@ -487,6 +497,43 @@ export const TransitionItem = memo(function TransitionItem({
     trackPushRight,
   ])
 
+  /**
+   * The portions this transition will actually cross-fade over.
+   *
+   * When the clip between two transitions is too short for both, the planner scales each
+   * transition down (`solveClipTransitionPressure`). The bridge used to be drawn from the
+   * requested duration regardless, so two neighbouring bridges overlapped and each looked wider
+   * than the fade it stood for — dragging one wider moved a rectangle the renderer never
+   * followed. Resolving here keeps the rectangle and the fade the same length, including while
+   * a resize is in flight (`previewDuration`).
+   */
+  const bridgePortions = useMemo(() => {
+    if (!transition.trackId) return undefined
+    const allTransitions = useTransitionsStore.getState().transitions
+    if (allTransitions.length < 2) return undefined
+
+    const itemById = useItemsStore.getState().itemById
+    const clipsById = new Map<string, TimelineItem>()
+    for (const candidate of allTransitions) {
+      const left = itemById[candidate.leftClipId]
+      const right = itemById[candidate.rightClipId]
+      if (left) clipsById.set(candidate.leftClipId, left)
+      if (right) clipsById.set(candidate.rightClipId, right)
+    }
+
+    const windows = resolveTransitionWindows(
+      allTransitions.map((candidate) =>
+        candidate.id === transition.id
+          ? { ...candidate, durationInFrames: previewDuration }
+          : candidate,
+      ),
+      clipsById,
+    )
+    const own = windows.find((window) => window.transition.id === transition.id)
+    if (!own) return undefined
+    return { leftPortion: own.leftPortion, rightPortion: own.rightPortion }
+  }, [previewDuration, transition.id, transition.trackId])
+
   const positionInputs = useMemo<TransitionPositionInputs | null>(() => {
     if (!effectiveLeftClip || !effectiveRightClip) return null
     return {
@@ -495,8 +542,16 @@ export const TransitionItem = memo(function TransitionItem({
       previewDuration,
       alignment: transition.alignment,
       fps,
+      portions: bridgePortions,
     }
-  }, [effectiveLeftClip, effectiveRightClip, previewDuration, transition.alignment, fps])
+  }, [
+    bridgePortions,
+    effectiveLeftClip,
+    effectiveRightClip,
+    previewDuration,
+    transition.alignment,
+    fps,
+  ])
   const position = useMemo(
     () => (positionInputs ? getTransitionPixelPosition(positionInputs, pixelsPerSecond) : null),
     [pixelsPerSecond, positionInputs],
