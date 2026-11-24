@@ -7,7 +7,10 @@
  */
 
 import { createMediabunnyInputSource } from '@/infrastructure/browser/mediabunny-input-source'
-import type { ObjectUrlSourceMetadata } from '@/infrastructure/browser/object-url-registry'
+import {
+  isObjectUrlRegistryMessage,
+  type ObjectUrlSourceMetadata,
+} from '@/infrastructure/browser/object-url-registry'
 import { ensureProResDecoderRegistered } from '@/infrastructure/browser/register-prores-decoder'
 import { fitFilmstripFrameSize } from '../utils/fit-filmstrip-frame-size'
 
@@ -359,6 +362,8 @@ async function extractAndSave(request: ExtractRequest, state: { aborted: boolean
  * Message handler
  */
 self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
+  if (isObjectUrlRegistryMessage(event.data)) return
+
   const { type } = event.data
 
   try {

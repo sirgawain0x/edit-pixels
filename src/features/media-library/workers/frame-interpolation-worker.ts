@@ -14,6 +14,7 @@
  * than up front, or the muxer buffers the entire video track.
  */
 
+import { isObjectUrlRegistryMessage } from '@/infrastructure/browser/object-url-registry'
 import { ensureProResDecoderRegistered } from '@/infrastructure/browser/register-prores-decoder'
 import {
   clampRenderSize,
@@ -348,6 +349,8 @@ async function interpolate(request: InterpolateRequest): Promise<void> {
 }
 
 self.onmessage = async (event: MessageEvent<InterpolationWorkerRequest>) => {
+  if (isObjectUrlRegistryMessage(event.data)) return
+
   const request = event.data
 
   if (request.type === 'cancel') {
