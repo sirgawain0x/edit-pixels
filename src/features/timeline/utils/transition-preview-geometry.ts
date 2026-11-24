@@ -119,11 +119,18 @@ export function getTransitionBridgeBounds(
   rightClipFrom: number,
   transitionDurationInFrames: number,
   alignment: number | undefined = 0.5,
+  /**
+   * Portions from `resolveTransitionWindows`. Pass them whenever they are available: a clip
+   * carrying two transitions has its portions scaled down by the planner's pressure solve, and
+   * the drawn bridge has to shrink with the crossfade it represents.
+   */
+  portionsOverride?: { leftPortion: number; rightPortion: number },
 ): { leftFrame: number; rightFrame: number } {
   const leftEnd = leftClipFrom + leftClipDurationInFrames
 
   if (Math.abs(leftEnd - rightClipFrom) <= 1) {
-    const portions = calculateTransitionPortions(transitionDurationInFrames, alignment)
+    const portions =
+      portionsOverride ?? calculateTransitionPortions(transitionDurationInFrames, alignment)
     return {
       leftFrame: leftEnd - portions.leftPortion,
       rightFrame: rightClipFrom + portions.rightPortion,
