@@ -25,19 +25,6 @@ export const SYNC_OBJECT_URL_REGISTRY = 'edit-pixels:sync-object-url-registry'
 export const ADD_OBJECT_URL = 'edit-pixels:add-object-url'
 export const REMOVE_OBJECT_URL = 'edit-pixels:remove-object-url'
 
-const OBJECT_URL_REGISTRY_MESSAGE_TYPES: ReadonlySet<string> = new Set([
-  SYNC_OBJECT_URL_REGISTRY,
-  ADD_OBJECT_URL,
-  REMOVE_OBJECT_URL,
-])
-
-/** Inbound worker `message` payloads broadcast by {@link attachObjectUrlRegistrySync}. */
-export function isObjectUrlRegistryMessage(value: unknown): boolean {
-  if (!value || typeof value !== 'object') return false
-  const type = (value as { type?: unknown }).type
-  return typeof type === 'string' && OBJECT_URL_REGISTRY_MESSAGE_TYPES.has(type)
-}
-
 export interface ObjectUrlRegistrySnapshot {
   entries: Array<{
     url: string

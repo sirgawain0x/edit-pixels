@@ -31,7 +31,6 @@ import type {
   AudioDecodeWindowResponse,
   AudioDecodeWorkerMessage,
 } from './audio-decode-worker.types'
-import { isObjectUrlRegistryMessage } from '@/infrastructure/browser/object-url-registry'
 
 const log = createLogger('AudioDecodeWorker')
 
@@ -395,8 +394,6 @@ function assembleBins(message: AudioAssembleBinsRequest): void {
 }
 
 self.onmessage = async (event: MessageEvent<AudioDecodeWorkerMessage>) => {
-  if (isObjectUrlRegistryMessage(event.data)) return
-
   const message = event.data
   // The object-URL registry shares `self` with this handler, so its sync messages arrive here too.
   if (isObjectUrlRegistryMessage(event.data)) return
