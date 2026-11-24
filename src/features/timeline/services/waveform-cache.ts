@@ -153,6 +153,8 @@ class WaveformCacheService {
   private readonly workerManager = createManagedWorker({
     createWorker: () =>
       new Worker(new URL('./waveform-worker.ts', import.meta.url), { type: 'module' }),
+    // Waveform decoding reads `blob:` sources through mediabunny.
+    syncObjectUrlRegistry: true,
   })
 
   /**
@@ -870,8 +872,7 @@ class WaveformCacheService {
               if (settled) {
                 break
               }
-              const isComplete =
-                isCompleteResult && !workerPartial && loadedSamples >= peaks.length
+              const isComplete = isCompleteResult && !workerPartial && loadedSamples >= peaks.length
 
               if (persistBins && isComplete) {
                 const metaBinSamples = WAVEFORM_BIN_SAMPLES * (stereo ? 2 : 1)

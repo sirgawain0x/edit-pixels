@@ -13,6 +13,8 @@ export interface ManagedWorkerPool<TWorker extends Worker = Worker> {
 export interface ManagedWorkerPoolOptions<TWorker extends Worker = Worker> {
   createWorker: () => TWorker
   resetWorker?: (worker: TWorker) => void
+  /** See `ManagedWorkerOptions.syncObjectUrlRegistry` — opt-in, for blob-decoding workers only. */
+  syncObjectUrlRegistry?: boolean
 }
 
 export function createManagedWorkerPool<TWorker extends Worker = Worker>(
@@ -24,7 +26,7 @@ export function createManagedWorkerPool<TWorker extends Worker = Worker>(
   function createWorker(): TWorker {
     const worker = options.createWorker()
     allWorkers.add(worker)
-    attachObjectUrlRegistrySync(worker)
+    if (options.syncObjectUrlRegistry) attachObjectUrlRegistrySync(worker)
     return worker
   }
 

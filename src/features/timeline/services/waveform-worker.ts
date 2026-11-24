@@ -12,6 +12,7 @@ import {
   type ObjectUrlSourceMetadata,
 } from '@/infrastructure/browser/object-url-registry'
 import { ensureAc3DecoderRegistered, isAc3AudioCodec } from '@/shared/utils/ac3-decoder'
+import { isObjectUrlRegistryMessage } from '@/infrastructure/browser/object-url-registry'
 
 interface WaveformRequest {
   type: 'generate'
@@ -81,6 +82,8 @@ self.onmessage = async (event: MessageEvent<WaveformWorkerMessage>) => {
   if (isObjectUrlRegistryMessage(event.data)) return
 
   const { type } = event.data
+  // The object-URL registry shares `self` with this handler, so its sync messages arrive here too.
+  if (isObjectUrlRegistryMessage(event.data)) return
 
   if (type === 'abort') {
     const state = activeRequests.get(event.data.requestId)

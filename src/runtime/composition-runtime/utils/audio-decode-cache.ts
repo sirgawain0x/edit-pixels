@@ -703,7 +703,11 @@ function createAudioDecodeWorker(): Worker {
 /** Background lane for full decodes. */
 function getAudioDecodeWorker(): Worker {
   if (!audioDecodeWorkerManager) {
-    audioDecodeWorkerManager = createManagedWorker({ createWorker: createAudioDecodeWorker })
+    audioDecodeWorkerManager = createManagedWorker({
+      createWorker: createAudioDecodeWorker,
+      // Decodes `blob:` sources with mediabunny.
+      syncObjectUrlRegistry: true,
+    })
   }
   return audioDecodeWorkerManager.getWorker()
 }

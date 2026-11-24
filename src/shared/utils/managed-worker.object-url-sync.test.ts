@@ -61,7 +61,10 @@ describe('managed worker object-URL sync', () => {
     registerObjectUrl('blob:existing', blob, { mediaId: 'media-existing' })
 
     const worker = createMockWorker()
-    createManagedWorker({ createWorker: () => worker as unknown as Worker }).getWorker()
+    createManagedWorker({
+      createWorker: () => worker as unknown as Worker,
+      syncObjectUrlRegistry: true,
+    }).getWorker()
 
     const snapshot = messagesOf(worker).find((m) => m.type === SYNC_OBJECT_URL_REGISTRY)
     expect(snapshot).toBeDefined()
@@ -72,7 +75,10 @@ describe('managed worker object-URL sync', () => {
 
   it('keeps the worker current for blobs created after it started', () => {
     const worker = createMockWorker()
-    createManagedWorker({ createWorker: () => worker as unknown as Worker }).getWorker()
+    createManagedWorker({
+      createWorker: () => worker as unknown as Worker,
+      syncObjectUrlRegistry: true,
+    }).getWorker()
 
     const laterBlob = new Blob(['imported-later'])
     registerObjectUrl('blob:later', laterBlob, { mediaId: 'media-later' })
@@ -97,7 +103,10 @@ describe('managed worker object-URL sync', () => {
     registerObjectUrl('blob:pooled', blob, { mediaId: 'media-pooled' })
 
     const worker = createMockWorker()
-    const pool = createManagedWorkerPool({ createWorker: () => worker as unknown as Worker })
+    const pool = createManagedWorkerPool({
+      createWorker: () => worker as unknown as Worker,
+      syncObjectUrlRegistry: true,
+    })
     pool.acquireWorker()
 
     const snapshot = messagesOf(worker).find((m) => m.type === SYNC_OBJECT_URL_REGISTRY)
@@ -148,6 +157,32 @@ describe('managed worker object-URL sync', () => {
 
     removeObjectUrlSyncTarget(worker as unknown as Worker)
     registerObjectUrl('blob:after-removal', new Blob(['y']), { mediaId: 'media-removal' })
+
+    expect(messagesOf(worker)).toEqual([])
+  })
+})
+
+describe('object-URL sync is opt-in', () => {
+  beforeEach(() => {
+    clearObjectUrlRegistry()
+  })
+
+  it('leaves a worker that did not ask for it untouched', () => {
+    // Blanket syncing broke workers whose handler throws on an unknown `type`: filmstrip extraction
+    // aborted and fell back to the video element. Only blob-decoding workers opt in.
+    registerObjectUrl('blob:existing', new Blob(['a']), { mediaId: 'media-existing' })
+
+    const worker = createMockWorker()
+    createManagedWorker({ createWorker: () => worker as unknown as Worker }).getWorker()
+
+    expect(messagesOf(worker)).toEqual([])
+  })
+
+  it('leaves pooled workers that did not ask for it untouched', () => {
+    registerObjectUrl('blob:existing', new Blob(['a']), { mediaId: 'media-existing' })
+
+    const worker = createMockWorker()
+    createManagedWorkerPool({ createWorker: () => worker as unknown as Worker }).acquireWorker()
 
     expect(messagesOf(worker)).toEqual([])
   })
