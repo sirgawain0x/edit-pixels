@@ -41,6 +41,14 @@ class BlobUrlManager {
    * teardown releases what it acquired.
    */
   private retainedEditors = 0
+  /**
+   * A `releaseAll()` arrived while an editor was still mounted.
+   *
+   * Navigation runs `beforeLoad` *before* unmounting the outgoing route, so the request always
+   * lands while the editor still holds its URLs. Remember it and honour it at teardown, or the
+   * cleanup is skipped for the session and those blobs stay in memory.
+   */
+  private pendingReleaseAll = false
 
   /** Notify React subscribers that blob URLs have changed */
   private notify(): void {
@@ -185,11 +193,18 @@ class BlobUrlManager {
    */
   releaseAll(): void {
     if (this.retainedEditors > 0) {
+      // Deferred to teardown — see `pendingReleaseAll`.
+      this.pendingReleaseAll = true
       logger.debug(
-        `Skipped releaseAll: ${this.retainedEditors} editor surface(s) still hold media URLs`,
+        `Deferred releaseAll: ${this.retainedEditors} editor surface(s) still hold media URLs`,
       )
       return
     }
+    this.releaseAllNow()
+  }
+
+  private releaseAllNow(): void {
+    this.pendingReleaseAll = false
     for (const [mediaId, entry] of this.entries) {
       this.revokeEntry(entry)
       logger.debug(`Revoked blob URL for media ${mediaId}`)
@@ -209,6 +224,10 @@ class BlobUrlManager {
       if (released) return
       released = true
       this.retainedEditors = Math.max(0, this.retainedEditors - 1)
+      // Honour a cleanup that arrived while this surface was still rendering.
+      if (this.retainedEditors === 0 && this.pendingReleaseAll) {
+        this.releaseAllNow()
+      }
     }
   }
 
