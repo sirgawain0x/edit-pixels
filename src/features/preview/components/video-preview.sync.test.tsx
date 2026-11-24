@@ -1542,7 +1542,10 @@ describe('VideoPreview sync behavior', () => {
       await Promise.resolve()
     })
 
-    expect(staleRenderer.dispose).toHaveBeenCalledOnce()
+    // Disposal runs in the promise chain after the stale renderer resolves. Asserting it
+    // straight after one microtask flush depends on how many hops that chain takes, which is
+    // not constant under a loaded parallel run — wait for the effect instead of the timing.
+    await waitFor(() => expect(staleRenderer.dispose).toHaveBeenCalledOnce())
     act(() => {
       usePlaybackStore.getState().setPreviewFrame(24)
     })
