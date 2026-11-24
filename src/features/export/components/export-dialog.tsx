@@ -69,6 +69,7 @@ import {
 } from '@/features/export/deps/timeline-compositions'
 import { formatTimecode, framesToSeconds } from '@/shared/utils/time-utils'
 import { useExportElapsedSeconds } from '../hooks/use-export-elapsed'
+import { formatExportDuration } from '../utils/format-export-duration'
 import type { ExportPreflightResult } from '../utils/export-preflight'
 import { assessExportPreflight, summarizePreflightSeverity } from '../utils/export-preflight'
 import {
@@ -124,13 +125,6 @@ const VIDEO_CONTAINER_DESCRIPTION_KEYS: Record<ClientVideoContainer, string> = {
   mov: 'export.videoContainer.mov',
   webm: 'export.videoContainer.webm',
   mkv: 'export.videoContainer.mkv',
-}
-
-function formatTime(seconds: number): string {
-  if (seconds < 60) return `${Math.round(seconds)}s`
-  const minutes = Math.floor(seconds / 60)
-  const remainingSeconds = Math.round(seconds % 60)
-  return `${minutes}m ${remainingSeconds}s`
 }
 
 function formatFileSize(bytes: number): string {
@@ -1179,7 +1173,7 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
                         {t('export.settings.duration')}
                       </div>
                       <div className="font-mono text-foreground">
-                        {formatTime(framesToSeconds(exportRange.duration, fps))}
+                        {formatExportDuration(framesToSeconds(exportRange.duration, fps))}
                       </div>
                     </div>
                   </div>
@@ -1674,7 +1668,9 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
                     <span className="text-muted-foreground">
                       {t('export.progress.elapsedLabel')}
                     </span>
-                    <span className="font-medium tabular-nums">{formatTime(elapsedSeconds)}</span>
+                    <span className="font-medium tabular-nums">
+                      {formatExportDuration(elapsedSeconds)}
+                    </span>
                   </div>
                 )}
               </div>
@@ -1714,13 +1710,13 @@ export function ExportDialog({ open, onClose, onOpenRenderQueue }: ExportDialogP
                   <span className="font-medium">{formatFileSize(fileSize)}</span>
                 </div>
               )}
-              {elapsedSeconds > 0 && (
+              {exportStartedAt !== null && (
                 <div className="flex items-center gap-2 text-sm">
                   <Clock className="h-4 w-4 text-muted-foreground" />
                   <span className="text-muted-foreground">
                     {t('export.complete.timeTakenLabel')}
                   </span>
-                  <span className="font-medium">{formatTime(elapsedSeconds)}</span>
+                  <span className="font-medium">{formatExportDuration(elapsedSeconds)}</span>
                 </div>
               )}
             </div>
