@@ -9,6 +9,7 @@
  * This prevents UI blocking when importing media files.
  */
 
+import { isObjectUrlRegistryMessage } from '@/infrastructure/browser/object-url-registry'
 import { ensureProResDecoderRegistered } from '@/infrastructure/browser/register-prores-decoder'
 import { createLogger, createOperationId } from '@/shared/logging/logger'
 import { DEFAULT_PROJECT_HEIGHT, DEFAULT_PROJECT_WIDTH } from '@/shared/projects/defaults'
@@ -767,6 +768,8 @@ async function processMedia(
 
 // Message handler
 self.onmessage = async (e: MessageEvent<ProcessMediaRequest>) => {
+  if (isObjectUrlRegistryMessage(e.data)) return
+
   const msg = e.data
 
   if (msg.type === 'process') {

@@ -31,6 +31,59 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 describe('requestPrecisionQuote', () => {
+  it('authenticates the request, or the route answers 401', async () => {
+    // Regression: only `content-type` was sent, and `resolvePixelsIdentity` on the route accepts a
+    // bearer token or `body.token` — so every run failed with `401 missing authorization`.
+    const { registerPrecisionAccessToken } = await import('../lib/precision-auth')
+    const unregister = registerPrecisionAccessToken(async () => 'privy-token')
+    try {
+      const fetchImpl = vi.fn(async () =>
+        jsonResponse({
+          jobId: 'job-1',
+          free: true,
+          quote: { quoteId: 'q-1', estimatedUsdc6: 0, minCrtvaiWei: '0', expiresAtMs: 1 },
+        }),
+      ) as unknown as typeof fetch
+
+      await requestPrecisionQuote({
+        mediaId: 'media-1',
+        model: 'gemini-3.5-transcribe',
+        sourceDurationSec: 30,
+        parts: PARTS,
+        fetchImpl,
+      })
+
+      const [, init] = vi.mocked(fetchImpl).mock.calls[0] ?? []
+      const headers = (init as RequestInit).headers as Record<string, string>
+      expect(headers['authorization']).toBe('Bearer privy-token')
+      expect(headers['content-type']).toBe('application/json')
+    } finally {
+      unregister()
+    }
+  })
+
+  it('omits the header when no bridge is mounted, leaving the 401 to the route', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        jobId: 'job-1',
+        free: true,
+        quote: { quoteId: 'q-1', estimatedUsdc6: 0, minCrtvaiWei: '0', expiresAtMs: 1 },
+      }),
+    ) as unknown as typeof fetch
+
+    await requestPrecisionQuote({
+      mediaId: 'media-1',
+      model: 'gemini-3.5-transcribe',
+      sourceDurationSec: 30,
+      parts: PARTS,
+      fetchImpl,
+    })
+
+    const [, init] = vi.mocked(fetchImpl).mock.calls[0] ?? []
+    const headers = (init as RequestInit).headers as Record<string, string>
+    expect(headers['authorization']).toBeUndefined()
+  })
+
   it('sends the plan the server prices, with each part’s spoken span', async () => {
     const fetchImpl = vi.fn(async () =>
       jsonResponse({

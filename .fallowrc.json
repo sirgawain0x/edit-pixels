@@ -59,6 +59,13 @@
       // one option and cannot absorb a component split; every finding here predates the change
       // that surfaces it.
       "src/features/media-library/components/media-card.tsx",
+      // Same shape as media-card above: the object-URL registry sync is wired in by one option per
+      // file. Every listed function predates it — the audit reports a total complexity delta of 0,
+      // they surface only because the file is now touched.
+      "src/runtime/composition-runtime/utils/audio-decode-cache.ts",
+      "src/runtime/composition-runtime/utils/audio-decode-worker.ts",
+      "src/features/timeline/services/waveform-cache.ts",
+      "src/features/timeline/services/filmstrip-cache.ts",
       "scripts/probe-transcription-billing.mjs",
       "api/_live-style-lib/**",
       "headless/test.mjs",

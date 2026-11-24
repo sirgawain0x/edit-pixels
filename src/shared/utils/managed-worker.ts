@@ -1,3 +1,8 @@
+import {
+  attachObjectUrlRegistrySync,
+  removeObjectUrlSyncTarget,
+} from '@/infrastructure/browser/object-url-registry'
+
 export interface ManagedWorker<TWorker extends Worker = Worker> {
   getWorker(): TWorker
   peekWorker(): TWorker | null
@@ -7,6 +12,14 @@ export interface ManagedWorker<TWorker extends Worker = Worker> {
 export interface ManagedWorkerOptions<TWorker extends Worker = Worker> {
   createWorker: () => TWorker
   setupWorker?: (worker: TWorker) => void | (() => void)
+  /**
+   * Give this worker the object-URL registry, so it can decode `blob:` sources with mediabunny.
+   *
+   * Opt-in on purpose: the sync is a `postMessage` the worker also sees, and a handler that throws
+   * on an unknown `type` aborts whatever it was doing. Set this only for workers that decode blob
+   * URLs, and guard their handler with `isObjectUrlRegistryMessage`.
+   */
+  syncObjectUrlRegistry?: boolean
 }
 
 export interface RejectablePendingRequest {
@@ -31,6 +44,7 @@ export function createManagedWorker<TWorker extends Worker = Worker>(
 
   function instantiateWorker(): TWorker {
     const nextWorker = options.createWorker()
+    if (options.syncObjectUrlRegistry) attachObjectUrlRegistrySync(nextWorker)
     cleanup = options.setupWorker?.(nextWorker) ?? null
     worker = nextWorker
     return nextWorker
@@ -56,6 +70,7 @@ export function createManagedWorker<TWorker extends Worker = Worker>(
       cleanup?.()
     } finally {
       cleanup = null
+      removeObjectUrlSyncTarget(activeWorker)
       activeWorker.terminate()
     }
   }

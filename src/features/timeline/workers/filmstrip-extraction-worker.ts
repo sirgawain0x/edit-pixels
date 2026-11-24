@@ -7,9 +7,10 @@
  */
 
 import { createMediabunnyInputSource } from '@/infrastructure/browser/mediabunny-input-source'
-import type { ObjectUrlSourceMetadata } from '@/infrastructure/browser/object-url-registry'
+import { type ObjectUrlSourceMetadata } from '@/infrastructure/browser/object-url-registry'
 import { ensureProResDecoderRegistered } from '@/infrastructure/browser/register-prores-decoder'
 import { fitFilmstripFrameSize } from '../utils/fit-filmstrip-frame-size'
+import { isObjectUrlRegistryMessage } from '@/infrastructure/browser/object-url-registry'
 
 const IMAGE_FORMAT = 'image/jpeg'
 const IMAGE_QUALITY = 0.7 // JPEG is substantially faster to encode for tiny thumbnails
@@ -359,7 +360,10 @@ async function extractAndSave(request: ExtractRequest, state: { aborted: boolean
  * Message handler
  */
 self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
+  if (isObjectUrlRegistryMessage(event.data)) return
+
   const { type } = event.data
+  // The object-URL registry shares `self` with this handler, so its sync messages arrive here too.
 
   try {
     switch (type) {

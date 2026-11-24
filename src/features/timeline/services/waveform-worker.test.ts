@@ -88,6 +88,8 @@ describe('waveform-worker', () => {
         posted.push(message)
       }),
       onmessage: null as ((event: MessageEvent) => void) | null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
     })
     vi.resetModules()
     await import('./waveform-worker')

@@ -1,7 +1,7 @@
 {
   "current": {
     "version": "current",
-    "date": "2026-11-04",
+    "date": "2026-11-24",
     "groups": {
       "added": [
         {
@@ -29,6 +29,12 @@
         },
         {
           "title": "Director session packs show estimated minutes instead of outdated credit counts"
+        },
+        {
+          "title": "Export progress shows elapsed time correctly, including a \"<1s\" label when an export finishes in under a second"
+        },
+        {
+          "title": "Precision transcription sends your sign-in token so the cloud service no longer fails with a sign-in error"
         }
       ],
       "improved": [
@@ -40,6 +46,9 @@
         },
         {
           "title": "Director automation now always uses your signed-in wallet"
+        },
+        {
+          "title": "Previews and exports stay reliable because background workers keep media blob references in sync without treating registry updates as jobs"
         }
       ]
     }

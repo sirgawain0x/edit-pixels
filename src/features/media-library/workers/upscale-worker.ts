@@ -11,6 +11,7 @@
  * in `render-support.ts`.
  */
 
+import { isObjectUrlRegistryMessage } from '@/infrastructure/browser/object-url-registry'
 import { ensureProResDecoderRegistered } from '@/infrastructure/browser/register-prores-decoder'
 import {
   Anime4kUpscaler,
@@ -291,6 +292,8 @@ async function upscale(request: UpscaleRequest): Promise<void> {
 }
 
 self.onmessage = async (event: MessageEvent<UpscaleWorkerRequest>) => {
+  if (isObjectUrlRegistryMessage(event.data)) return
+
   const request = event.data
 
   if (request.type === 'cancel') {

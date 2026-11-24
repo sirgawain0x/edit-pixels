@@ -1,3 +1,4 @@
+import { isObjectUrlRegistryMessage } from '@/infrastructure/browser/object-url-registry'
 import { ALL_FORMATS, BlobSource, EncodedPacketSink, Input } from 'mediabunny'
 import { Chunker } from '../lib/chunker'
 import { downmixToMono, resampleTo16kHz } from '../lib/resampler'
@@ -10,6 +11,8 @@ let paused = false
 let pauseWaiter: (() => void) | null = null
 
 self.onmessage = async (event: MessageEvent) => {
+  if (isObjectUrlRegistryMessage(event.data)) return
+
   const message = event.data as { type: string; port?: MessagePort; file?: File }
 
   if (message.type === 'port' && message.port) {

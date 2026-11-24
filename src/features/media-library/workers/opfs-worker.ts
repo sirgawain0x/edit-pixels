@@ -7,6 +7,7 @@
  * File structure: media/{uuid}/{filename}
  */
 
+import { isObjectUrlRegistryMessage } from '@/infrastructure/browser/object-url-registry'
 import { createLogger } from '@/shared/logging/logger'
 
 const logger = createLogger('OPFSWorker')
@@ -356,6 +357,8 @@ async function saveUploadStreaming(
  * Message handler
  */
 self.onmessage = async (event: MessageEvent<OPFSWorkerMessage>) => {
+  if (isObjectUrlRegistryMessage(event.data)) return
+
   const { type, payload } = event.data
   const port = event.ports[0]
 
