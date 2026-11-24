@@ -66,6 +66,8 @@
       "src/runtime/composition-runtime/utils/audio-decode-worker.ts",
       "src/features/timeline/services/waveform-cache.ts",
       "src/features/timeline/services/filmstrip-cache.ts",
+      "src/features/preview/utils/decoder-prewarm.ts",
+      "src/features/preview/workers/decoder-prewarm-worker.ts",
       "scripts/probe-transcription-billing.mjs",
       "api/_live-style-lib/**",
       "headless/test.mjs",
